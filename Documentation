@@ -33,4 +33,10 @@ Authorization: Bearer Token (btok)
 Header: User-Agent	YOUR_APP_NAME/0.1 by Samu_Miki
 
 
+API X COMPANY FOUNDAMENTALS
 
+API_KEY: PJcSVU8gR4wG9S9HVANWyssG62n2M6Sy
+url = f"https://financialmodelingprep.com/api/v3/{endpoint}/{symbol}?limit={LIMIT}&apikey{API_KEY}"
+
+LIMIT = 1 (if you want more then 1 years, you can change the number)
+endpoint = "income-statement", "balance-sheet-statement", "cash-flow-statement"
