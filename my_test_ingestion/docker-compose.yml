@@ -63,3 +63,16 @@ services:
     depends_on:
       - spark-master
       - spark-worker
+
+  spark-app:
+    build: ./spark-app
+    depends_on:
+      - kafka
+      - spark-master
+      - spark-worker
+    environment:
+      - PYSPARK_PYTHON=python3
+    volumes:
+      - ./spark-app:/app
+    command: >
+      bash -c "spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.4 /app/app.py"
