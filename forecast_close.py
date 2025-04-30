@@ -1,62 +1,25 @@
-# per ora è fatto solo per una company, da modificare per fare
-# un modello per ogni company oppure uno generale
-# con la variabile company
 import pandas as pd
-import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error
 import os
+import joblib
+import datetime
+
+# Performance logging
+mse_results = []
 
 # Load data
-df = pd.read_parquet('historical_data.parquet')
-df = df.reset_index()
+df = pd.read_parquet('historical_data.parquet').reset_index()
+symbols = df['symbol'].unique()
 
-# Choose one company
-company = 'AAPL'  # Change as needed
-df_company = df[df['symbol'] == company].copy()
-df_company = df_company.sort_values('timestamp')
-
-# Create lag features
-df_company['close_lag1'] = df_company['close'].shift(1)
-df_company['close_lag2'] = df_company['close'].shift(2)
-df_company = df_company.dropna()
-
-# Input & target
-X = df_company[['close_lag1', 'close_lag2']].copy()
-y = df_company['close'].copy()
-
-# Split train/test
-if len(X) > 10:
-    split_index = int(len(X) * 0.8)
-    X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
-    y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]
-else:
-    X_train, X_test = X.iloc[:-2], X.iloc[-2:]
-    y_train, y_test = y.iloc[:-2], y.iloc[-2:]
-
-# Scale X and y
-X_scaler = StandardScaler()
-X_train_scaled = X_scaler.fit_transform(X_train)
-X_test_scaled = X_scaler.transform(X_test)
-
-y_scaler = StandardScaler()
-y_train_scaled = y_scaler.fit_transform(y_train.values.reshape(-1, 1))
-y_test_scaled = y_scaler.transform(y_test.values.reshape(-1, 1))
-
-# Convert to tensors
-X_train_tensor = torch.tensor(X_train_scaled, dtype=torch.float32)
-y_train_tensor = torch.tensor(y_train_scaled, dtype=torch.float32)
-X_test_tensor = torch.tensor(X_test_scaled, dtype=torch.float32)
-y_test_tensor = torch.tensor(y_test_scaled, dtype=torch.float32)
-
-# Define model
+# Define model class
 class StockPredictor(nn.Module):
-    def __init__(self):
+    def __init__(self, input_dim):
         super(StockPredictor, self).__init__()
-        self.fc1 = nn.Linear(2, 64)
+        self.fc1 = nn.Linear(input_dim, 64)
         self.relu = nn.ReLU()
         self.fc2 = nn.Linear(64, 32)
         self.fc3 = nn.Linear(32, 1)
@@ -67,52 +30,95 @@ class StockPredictor(nn.Module):
         x = self.fc3(x)
         return x
 
-model = StockPredictor()
-criterion = nn.MSELoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+# Create model folder
+os.makedirs('models', exist_ok=True)
 
-# Train
-epochs = 100
-for epoch in range(epochs):
-    model.train()
-    optimizer.zero_grad()
-    outputs = model(X_train_tensor)
-    loss = criterion(outputs, y_train_tensor)
-    loss.backward()
-    optimizer.step()
-    if (epoch+1) % 20 == 0:
-        print(f"Epoch {epoch+1}/{epochs}, Loss: {loss.item():.4f}")
+# Features to use
+feature_cols = ['close_lag1', 'close_lag2', 'volume_lag1', 'volume_lag2', 'vwap_lag1', 'vwap_lag2']
+input_dim = len(feature_cols)
 
-# Predict and inverse scale
-model.eval()
-with torch.no_grad():
-    y_pred_tensor = model(X_test_tensor)
-    y_pred_rescaled = y_scaler.inverse_transform(y_pred_tensor.numpy())
-    y_test_rescaled = y_scaler.inverse_transform(y_test_tensor.numpy())
+for company in symbols:
+    print(f"\n🔁 Training model for {company}")
+    df_company = df[df['symbol'] == company].copy().sort_values('timestamp')
 
-# MSE
-mse = mean_squared_error(y_test_rescaled, y_pred_rescaled)
-print(f"Mean Squared Error: {mse:.2f}")
+    # Create lag features
+    df_company['close_lag1'] = df_company['close'].shift(1)
+    df_company['close_lag2'] = df_company['close'].shift(2)
+    df_company['volume_lag1'] = df_company['volume'].shift(1)
+    df_company['volume_lag2'] = df_company['volume'].shift(2)
+    df_company['vwap_lag1'] = df_company['vwap'].shift(1)
+    df_company['vwap_lag2'] = df_company['vwap'].shift(2)
+    df_company = df_company.dropna()
 
-# Plot
-timestamps_full = df_company['timestamp']
-timestamps_test = df_company.loc[y_test.index]['timestamp']
+    if len(df_company) < 20:
+        print(f"❌ Skipping {company}: not enough data.")
+        continue
 
-plt.figure(figsize=(14,7))
-plt.plot(timestamps_full, y.values, label='True Close Price', color='blue')
-plt.plot(timestamps_test, y_pred_rescaled.flatten(), label='Predicted Close Price (Test Set)', color='red')
-plt.legend()
-plt.title(f'True vs Predicted Close Prices for {company}')
-plt.xlabel('Date')
-plt.ylabel('Price')
-plt.xticks(rotation=45)
-plt.grid(True)
-plt.tight_layout()
-plt.show()
+    X = df_company[feature_cols]
+    y = df_company['close']
 
-# Save model + scalers
-#os.makedirs('models', exist_ok=True)
-#torch.save(model.state_dict(), f'models/{company}_model.pth')
-#joblib.dump(X_scaler, f'models/{company}_X_scaler.pkl')
-#joblib.dump(y_scaler, f'models/{company}_y_scaler.pkl')
-#print(f"Model and scalers for {company} saved.")
+    # Split
+    split_index = int(len(X) * 0.8)
+    X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
+    y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]
+
+    # Scale
+    X_scaler = StandardScaler()
+    y_scaler = StandardScaler()
+    X_train_scaled = X_scaler.fit_transform(X_train)
+    X_test_scaled = X_scaler.transform(X_test)
+    y_train_scaled = y_scaler.fit_transform(y_train.values.reshape(-1, 1))
+    y_test_scaled = y_scaler.transform(y_test.values.reshape(-1, 1))
+
+    # Tensors
+    X_train_tensor = torch.tensor(X_train_scaled, dtype=torch.float32)
+    y_train_tensor = torch.tensor(y_train_scaled, dtype=torch.float32)
+    X_test_tensor = torch.tensor(X_test_scaled, dtype=torch.float32)
+    y_test_tensor = torch.tensor(y_test_scaled, dtype=torch.float32)
+
+    # Model
+    model = StockPredictor(input_dim=input_dim)
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+    # Train
+    for epoch in range(100):
+        model.train()
+        optimizer.zero_grad()
+        outputs = model(X_train_tensor)
+        loss = criterion(outputs, y_train_tensor)
+        loss.backward()
+        optimizer.step()
+
+    # Predict and inverse scale
+    model.eval()
+    with torch.no_grad():
+        y_pred_tensor = model(X_test_tensor)
+        y_pred_rescaled = y_scaler.inverse_transform(y_pred_tensor.numpy())
+        y_test_rescaled = y_scaler.inverse_transform(y_test_tensor.numpy())
+
+    mse = mean_squared_error(y_test_rescaled, y_pred_rescaled)
+    print(f"✅ {company} MSE: {mse:.2f}")
+
+    # Save model + scalers
+    torch.save(model.state_dict(), f'models/{company}_model.pth')
+    joblib.dump(X_scaler, f'models/{company}_X_scaler.pkl')
+    joblib.dump(y_scaler, f'models/{company}_y_scaler.pkl')
+
+    mse_results.append({'symbol': company, 'mse': mse})
+
+# Dopo il ciclo FOR, salva su CSV
+timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+mse_df = pd.DataFrame(mse_results).set_index("symbol")
+
+csv_path = "model_performance.csv"
+
+# Se esiste già, lo aggiorniamo aggiungendo una nuova colonna
+if os.path.exists(csv_path):
+    prev = pd.read_csv(csv_path, index_col="symbol")
+    merged = prev.join(mse_df.rename(columns={"mse": f"mse_{timestamp}"}), how="outer")
+    merged.to_csv(csv_path)
+else:
+    mse_df.rename(columns={"mse": f"mse_{timestamp}"}).to_csv(csv_path)
+
+print(f"\n📊 Saved MSE results to {csv_path}")
