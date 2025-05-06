@@ -4,7 +4,12 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-RUN pip install kafka-python
+RUN pip3 install --no-cache-dir \
+    pyspark \
+    pandas \
+    kafka-python \
+    alpaca-trade-api \
+    alpaca-py
 
 COPY producer.py /app/producer.py
 

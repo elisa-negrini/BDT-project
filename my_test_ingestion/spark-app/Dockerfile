@@ -10,7 +10,12 @@ WORKDIR /app
 COPY app.py .
 
 # Install pyspark
-RUN pip3 install pyspark
+RUN pip3 install --no-cache-dir \
+    pyspark \
+    pandas \
+    kafka-python \
+    alpaca-trade-api
+
 
 CMD ["python3", "app.py"]
 
