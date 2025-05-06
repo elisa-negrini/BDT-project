@@ -7,32 +7,29 @@ from datetime import datetime, timedelta
 import nest_asyncio
 from kafka import KafkaProducer
 
-# Applica patch per permettere asyncio in ambienti Jupyter o simili
 nest_asyncio.apply()
 
-# Configurazione Kafka Producer
+# Kafka Producer
 producer = KafkaProducer(
     bootstrap_servers='kafka:9092',
     value_serializer=lambda v: json.dumps(v).encode('utf-8')
 )
 
-# Chiave API di Finnhub (modifica se serve)
 FINNHUB_API_KEY = "d056jb9r01qoigrsmf5gd056jb9r01qoigrsmf60"
 
-# Tickers S&P 500
+# S&P 500 tickers (limit to first 5 for demo)
 url = "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/master/data/constituents.csv"
 tickers = pd.read_csv(url)['Symbol'].tolist()
 
-# WebSocket endpoint di Finnhub
+# WebSocket endpoint
 FINNHUB_WS_URL = f"wss://ws.finnhub.io?token={FINNHUB_API_KEY}"
 
-# Storage in memoria
+# In-memory storage
 df_all_data = pd.DataFrame()
 
-# Crea cartella per salvare dati CSV
+# Create directory
 os.makedirs("dati_stream", exist_ok=True)
 
-# Salvataggio periodico su file CSV
 async def save_data_periodically(interval_sec=60):
     global df_all_data
     while True:
@@ -43,17 +40,16 @@ async def save_data_periodically(interval_sec=60):
             df_all_data.to_csv(path, index=False)
             print(f"💾 Salvato {len(df_all_data)} righe in {path}")
 
-# Stream dei dati da Finnhub e invio a Kafka
 async def stream_finnhub(duration_seconds=60):
     global df_all_data
 
     async with websockets.connect(FINNHUB_WS_URL) as ws:
-        # Subscribe ai tickers
+        # Subscribe to tickers
         for symbol in tickers:
             await ws.send(json.dumps({"type": "subscribe", "symbol": symbol}))
             print(f"📡 Subscribed to {symbol}")
 
-        # Avvia task di salvataggio periodico
+        # Start saving data
         save_task = asyncio.create_task(save_data_periodically(30))
 
         end_time = datetime.utcnow() + timedelta(seconds=duration_seconds)
@@ -67,22 +63,16 @@ async def stream_finnhub(duration_seconds=60):
                     for trade in data.get("data", []):
                         row = {
                             "Ticker": trade["s"],
-                            "Timestamp": pd.to_datetime(trade["t"], unit="ms", utc=True).isoformat(),
+                            "Timestamp": pd.to_datetime(trade["t"], unit="ms", utc=True),
                             "Price": trade["p"],
                             "Size": trade["v"]
                         }
-                        # Aggiungi al DataFrame
                         df_all_data = pd.concat([df_all_data, pd.DataFrame([row])], ignore_index=True)
-                        print("📈 Trade ricevuto:", row)
-
-                        # Invia a Kafka
-                        producer.send("finnhub_trades", value=row)
+                        print(df_all_data.tail(1))
         finally:
             await ws.close()
             save_task.cancel()
-            print("✅ Streaming terminato.")
+            print("✅ Streaming finished.")
 
-# Esegui lo streaming (modifica la durata se vuoi)
-if __name__ == "__main__":
-    asyncio.run(stream_finnhub(duration_seconds=60))
-
+# Run the stream
+await stream_finnhub(duration_seconds=60)

@@ -9,7 +9,10 @@ RUN pip3 install --no-cache-dir \
     pandas \
     kafka-python \
     alpaca-trade-api \
-    alpaca-py
+    alpaca-py \
+    websockets \ 
+    nest_asyncio
+
 
 COPY producer.py /app/producer.py
 
