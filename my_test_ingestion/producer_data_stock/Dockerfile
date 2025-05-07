@@ -1,4 +1,4 @@
-# producer/Dockerfile
+# producer Data Stream/Dockerfile
 
 FROM python:3.9-slim
 
@@ -8,12 +8,10 @@ RUN pip3 install --no-cache-dir \
     pyspark \
     pandas \
     kafka-python \
-    alpaca-trade-api \
-    alpaca-py \
     websockets \ 
     nest_asyncio
 
 
-COPY producer.py /app/producer.py
+COPY producer_data_stock.py /app/producer_data_stock.py
 
-CMD ["python", "producer.py"]
+CMD ["python", "producer_data_stock.py"]

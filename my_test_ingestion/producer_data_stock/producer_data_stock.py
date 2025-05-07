@@ -3,7 +3,7 @@ import asyncio
 import websockets
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import nest_asyncio
 from kafka import KafkaProducer
 
@@ -28,20 +28,7 @@ FINNHUB_WS_URL = f"wss://ws.finnhub.io?token={FINNHUB_API_KEY}"
 
 # Storage in memoria
 df_all_data = pd.DataFrame()
-
-# Crea cartella per salvare dati CSV
-os.makedirs("dati_stream", exist_ok=True)
-
-# Salvataggio periodico su file CSV
-async def save_data_periodically(interval_sec=60):
-    global df_all_data
-    while True:
-        await asyncio.sleep(interval_sec)
-        if not df_all_data.empty:
-            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-            path = f"dati_stream/finnhub_stream_{timestamp}.csv"
-            df_all_data.to_csv(path, index=False)
-            print(f"💾 Salvato {len(df_all_data)} righe in {path}")
+topic = "stock market"
 
 # Stream dei dati da Finnhub e invio a Kafka
 async def stream_finnhub(duration_seconds=60):
@@ -53,13 +40,11 @@ async def stream_finnhub(duration_seconds=60):
             await ws.send(json.dumps({"type": "subscribe", "symbol": symbol}))
             print(f"📡 Subscribed to {symbol}")
 
-        # Avvia task di salvataggio periodico
-        save_task = asyncio.create_task(save_data_periodically(30))
 
-        end_time = datetime.utcnow() + timedelta(seconds=duration_seconds)
+        end_time = datetime.now(timezone.utc) + timedelta(seconds=duration_seconds)
 
         try:
-            while datetime.utcnow() < end_time:
+            while datetime.now(timezone.utc) < end_time:
                 message = await ws.recv()
                 data = json.loads(message)
 
@@ -76,13 +61,13 @@ async def stream_finnhub(duration_seconds=60):
                         print("📈 Trade ricevuto:", row)
 
                         # Invia a Kafka
-                        producer.send("finnhub_trades", value=row)
+                        producer.send(topic, value=row)
         finally:
-            await ws.close()
-            save_task.cancel()
+            
             print("✅ Streaming terminato.")
+            await ws.close()
 
 # Esegui lo streaming (modifica la durata se vuoi)
 if __name__ == "__main__":
-    asyncio.run(stream_finnhub(duration_seconds=60))
+    asyncio.run(stream_finnhub(duration_seconds=10))
 

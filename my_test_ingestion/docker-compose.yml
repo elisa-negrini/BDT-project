@@ -43,9 +43,33 @@ services:
     ports:
       - "8081:8081"  # Spark worker web UI
 
-  # Kafka producer that pushes data into Kafka
-  kafka-producer:
-    build: ./producer
+  # Kafka producer data_stock
+  kafka-producer_data_stock:
+    build: ./producer_data_stock
+    environment:
+      KAFKA_SERVER: kafka:9092
+    depends_on:
+      - kafka
+
+  # Kafka producer data_reddit
+  kafka-producer_reddit:
+    build: ./producer_reddit
+    environment:
+      KAFKA_SERVER: kafka:9092
+    depends_on:
+      - kafka
+  
+  # Kafka producer data_finnhub_news
+  kafka-producer_finnhub_news:
+    build: ./producer_finnhub_news
+    environment:
+      KAFKA_SERVER: kafka:9092
+    depends_on:
+      - kafka
+
+  # Kafka producer data_macrodata_daily
+  kafka-producer_macrodata_daily:
+    build: ./producer_finnhub_news
     environment:
       KAFKA_SERVER: kafka:9092
     depends_on:
