@@ -40,3 +40,8 @@ url = f"https://financialmodelingprep.com/api/v3/{endpoint}/{symbol}?limit={LIMI
 
 LIMIT = 1 (if you want more then 1 years, you can change the number)
 endpoint = "income-statement", "balance-sheet-statement", "cash-flow-statement"
+
+BLUESkY
+
+"handle": "michelelovatomenin.bsky.social",
+"accessJwt": "eyJ0eXAiOiJhdCtqd3QiLCJhbGciOiJFUzI1NksifQ.eyJzY29wZSI6ImNvbS5hdHByb3RvLmFjY2VzcyIsInN1YiI6ImRpZDpwbGM6NDNuYnhodGQyZHFuM3g2djcyZHpuN2ZxIiwiaWF0IjoxNzQ2NzM3MTE2LCJleHAiOjE3NDY3NDQzMTYsImF1ZCI6ImRpZDp3ZWI6ZW50b2xvbWEudXMtd2VzdC5ob3N0LmJza3kubmV0d29yayJ9.w79bu--f4c5vryFXpFOjsVtKTPglCisei31ryju__DNxQ2dStzs_OyiVJKJIE3_O42zk06yTuBLERORu1_a3xA",
