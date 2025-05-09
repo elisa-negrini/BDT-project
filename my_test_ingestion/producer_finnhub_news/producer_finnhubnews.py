@@ -6,8 +6,12 @@ from datetime import date
 from kafka import KafkaProducer
 
 # Carica simboli S&P 500
-url = "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/master/data/constituents.csv"
-tickers = pd.read_csv(url)['Symbol'].tolist()
+top_30_tickers = [
+    "AAPL", "MSFT", "NVDA", "AMZN", "META", "BRK.B", "GOOGL", "AVGO", "TSLA", "GOOG",
+    "LLY", "JPM", "V", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA",
+    "CVX", "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO"
+]
+tickers = top_30_tickers
 
 # Chiave API
 API_KEY = "d056jb9r01qoigrsmf5gd056jb9r01qoigrsmf60"
@@ -65,5 +69,6 @@ while True:
 
         time.sleep(2)  # evitare rate limit
 
-    print("⏳ Pausa 10 minuti...\n")
-    time.sleep(600)  # 600 secondi = 10 minuti
+    producer.flush()
+    print("⏳ Pausa 1 minuto...\n")
+    time.sleep(60)

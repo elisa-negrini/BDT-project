@@ -69,49 +69,57 @@ services:
 
   # Kafka producer data_macrodata_daily
   kafka-producer_macrodata_daily:
-    build: ./producer_finnhub_news
+    build: ./producer_macrodata_daily
+    environment:
+      KAFKA_SERVER: kafka:9092
+    depends_on:
+      - kafka
+
+  # Kafka producer bluesky
+  kafka-producer_bluesky:
+    build: ./producer_bluesky
     environment:
       KAFKA_SERVER: kafka:9092
     depends_on:
       - kafka
 
   # Kafka consumer that reads from Kafka
-  kafka-consumer:
-    build: ./consumer
-    environment:
-      KAFKA_SERVER: kafka:9092
-    depends_on:
-      - kafka
-    volumes:
-      - ./consumer:/app
-      - ./data:/data
-    working_dir: /app
-    command: python consumer.py
+  # kafka-consumer:
+  #   build: ./consumer
+  #   environment:
+  #     KAFKA_SERVER: kafka:9092
+  #   depends_on:
+  #     - kafka
+  #   volumes:
+  #     - ./consumer:/app
+  #     - ./data:/data
+  #   working_dir: /app
+  #   command: python consumer.py
 
-  kafka-consumer_alpaca:
-    build: ./consumer_alpaca
-    depends_on:
-      - kafka
-      - minio
-    environment:
-      KAFKA_SERVER: kafka:9092
-    volumes:
-      - ./consumer_alpaca:/app
-    working_dir: /app
-    command: python consumer_alpaca.py
+  # kafka-consumer_alpaca:
+  #   build: ./consumer_alpaca
+  #   depends_on:
+  #     - kafka
+  #     - minio
+  #   environment:
+  #     KAFKA_SERVER: kafka:9092
+  #   volumes:
+  #     - ./consumer_alpaca:/app
+  #   working_dir: /app
+  #   command: python consumer_alpaca.py
 
-  minio:
-    image: minio/minio
-    container_name: minio
-    ports:
-    - "9000:9000"   # S3 API
-    - "9001:9001"   # MinIO Console (GUI)
-    environment:
-      MINIO_ROOT_USER: admin
-      MINIO_ROOT_PASSWORD: admin123
-    volumes:
-    - ./data/minio:/data
-    command: server /data --console-address ":9001"
+  # minio:
+  #   image: minio/minio
+  #   container_name: minio
+  #   ports:
+  #   - "9000:9000"   # S3 API
+  #   - "9001:9001"   # MinIO Console (GUI)
+  #   environment:
+  #     MINIO_ROOT_USER: admin
+  #     MINIO_ROOT_PASSWORD: admin123
+  #   volumes:
+  #   - ./data/minio:/data
+  #   command: server /data --console-address ":9001"
 
 
   # spark-app:
