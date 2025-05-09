@@ -43,14 +43,6 @@ services:
     ports:
       - "8081:8081"  # Spark worker web UI
 
-  # Kafka producer data_stock
-  kafka-producer_data_stock:
-    build: ./producer_data_stock
-    environment:
-      KAFKA_SERVER: kafka:9092
-    depends_on:
-      - kafka
-
   # Kafka producer data_reddit
   kafka-producer_reddit:
     build: ./producer_reddit
@@ -62,6 +54,14 @@ services:
   # Kafka producer data_finnhub_news
   kafka-producer_finnhub_news:
     build: ./producer_finnhub_news
+    environment:
+      KAFKA_SERVER: kafka:9092
+    depends_on:
+      - kafka
+
+  # Kafka producer data_alpaca
+  kafka-producer_alpaca:
+    build: ./producer_alpaca
     environment:
       KAFKA_SERVER: kafka:9092
     depends_on:
@@ -88,27 +88,16 @@ services:
     working_dir: /app
     command: python consumer.py
 
-  # Jupyter Notebook for easy Spark interaction
-  jupyter-notebook:
-    image: jupyter/pyspark-notebook:latest
-    environment:
-      - PYSPARK_SUBMIT_ARGS="--master spark://spark-master:7077 pyspark-shell"
-    ports:
-      - "8888:8888"  # Jupyter UI
-    depends_on:
-      - spark-master
-      - spark-worker
-
-  spark-app:
-    build: ./spark-app
-    depends_on:
-      - kafka
-      - spark-master
-      - spark-worker
-    environment:
-      - PYSPARK_PYTHON=python3
-    volumes:
-      - ./spark-app:/app
-    command: >
-      bash -c "spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.4 /app/app.py"
+  # spark-app:
+  #   build: ./spark-app
+  #   depends_on:
+  #     - kafka
+  #     - spark-master
+  #     - spark-worker
+  #   environment:
+  #     - PYSPARK_PYTHON=python3
+  #   volumes:
+  #     - ./spark-app:/app
+  #   command: >
+  #     bash -c "spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.4 /app/app.py"
 
