@@ -88,6 +88,32 @@ services:
     working_dir: /app
     command: python consumer.py
 
+  kafka-consumer_alpaca:
+    build: ./consumer_alpaca
+    depends_on:
+      - kafka
+      - minio
+    environment:
+      KAFKA_SERVER: kafka:9092
+    volumes:
+      - ./consumer_alpaca:/app
+    working_dir: /app
+    command: python consumer_alpaca.py
+
+  minio:
+    image: minio/minio
+    container_name: minio
+    ports:
+    - "9000:9000"   # S3 API
+    - "9001:9001"   # MinIO Console (GUI)
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: admin123
+    volumes:
+    - ./data/minio:/data
+    command: server /data --console-address ":9001"
+
+
   # spark-app:
   #   build: ./spark-app
   #   depends_on:
