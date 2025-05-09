@@ -13,8 +13,8 @@ STREAM DATA S&P 500 THROUGH FINNHUB AND FINNHUB STOCK NEWS:
 
 *historical data.ipynb* 
 HISTORICAL DATA WITH 15' DELAY FROM ALPACA:
-- ALPACA_API_KEY = "AKP52FXPKKRCHO0R1QJ5"
-- ALPACA_SECRET_KEY = "cvdzZzgt7QZHjF5n1vNFL4wUKo6Rq0Hy6gLnCdVt"
+alpaca secret = fDrBXt5omT71frwtJrrwlL5fgiiCim6gwrlJ6RpQ
+alpaca key = AKMFU3E7GI5IL5C2BI3V
 
 *news.ipynb*
 NEWS_API:"https://newsapi.org/v2/everything?/q=stockmarket&language=en&sortBy=publishedAt&apiKey=d406db3b904248e1af2c59cdf1327a80&from=YYYY-MM-DDto=YYYY-MM-DD"
