@@ -16,8 +16,8 @@ subreddit = [
     "worldnews", "news", "Economics"
 ]
 
-topic = "reddit"
-kafka_server = "kafka:9092"
+KAFKA_TOPIC = "reddit"
+KAFKA_BROKER = "kafka:9092"
 refresh_interval = 23  # ore
 pause_seconds = 30
 
@@ -26,11 +26,21 @@ seen_ids = set()
 token = None
 token_time = None
 
-# === Kafka Producer ===
-producer = KafkaProducer(
-    bootstrap_servers=kafka_server,
-    value_serializer=lambda v: json.dumps(v).encode('utf-8')
-)
+
+def connect_kafka():
+    while True:
+        try:
+            producer = KafkaProducer(
+                bootstrap_servers=KAFKA_BROKER,
+                value_serializer=lambda v: json.dumps(v).encode('utf-8')
+            )
+            print("✅ Connessione a Kafka riuscita.")
+            return producer
+        except Exception as e:
+            print(f"⏳ Kafka non disponibile, ritento in 5 secondi... ({e})")
+            time.sleep(5)
+
+producer = connect_kafka()
 
 # === FUNZIONI ===
 
@@ -60,13 +70,14 @@ def get_new_reddit_posts(subreddit, token):
         for post in posts:
             post_data = post['data']
             post_id = post_data.get('id')
+            text = post_data.get('selftext', '')
             if post_id not in seen_ids:
                 seen_ids.add(post_id)
                 new_posts.append({
                     'id': post_id,
                     'title': post_data.get('title'),
                     'author': post_data.get('author'),
-                    'text': post_data.get('selftext', ''),
+                    'text': text[:],
                     'score': post_data.get('score'),
                     'num_comments': post_data.get('num_comments'),
                     'created_utc': post_data.get('created_utc'),
@@ -104,15 +115,15 @@ if __name__ == "__main__":
                 if posts:
                     try:
                         for post in posts:
-                            print(f"📨 [{post['subreddit']}] {post['title'][:80]}")
-                            producer.send(topic, value=post)
+                            print(f"📨 [{post['subreddit']}] {post['title'][:80]} | text chars: {len(post['text'])}")
+                            producer.send(KAFKA_TOPIC, value=post)
                         producer.flush()  # 🔒 forza invio dei messaggi Kafka
                         print(f"📤 Inviati {len(posts)} post da /r/{sub}")
                     except Exception as e:
                         print(f"❗ Errore nell'invio a Kafka da /r/{sub}: {e}")
                 else:
                     print(f"📭 Nessun nuovo post da /r/{sub}")
-
+                time.sleep(2)
 
             # Forza invio
             producer.flush()

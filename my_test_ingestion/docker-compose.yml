@@ -105,9 +105,9 @@ services:
     depends_on:
       - kafka
 
-  # Kafka consumer that reads from Kafka
+  # Kafka consumer bluesky
   kafka-consumer_bluesky:
-    build: ./consumer
+    build: ./consumer_bluesky
     environment:
       KAFKA_SERVER: kafka:9092
     depends_on:
@@ -117,6 +117,20 @@ services:
       - ./data:/data
     working_dir: /app
     command: python consumer_bluesky.py
+
+  # Kafka consumer redit
+  kafka-consumer_reddit:
+    build: ./consumer_reddit
+    environment:
+      KAFKA_SERVER: kafka:9092
+    depends_on:
+      - kafka
+    volumes:
+      - ./consumer_reddit:/app
+      - ./data:/data
+    working_dir: /app
+    command: python consumer_reddit.py
+
 
 
   # minio:
