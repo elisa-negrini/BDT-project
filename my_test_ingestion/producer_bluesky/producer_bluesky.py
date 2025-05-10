@@ -5,10 +5,8 @@ from datetime import datetime
 from kafka import KafkaProducer
 
 # Il tuo accessJwt (access token)
-access_jwt = "eyJ0eXAiOiJhdCtqd3QiLCJhbGciOiJFUzI1NksifQ.eyJzY29wZSI6ImNvbS5hdHByb3RvLmFjY2VzcyIsInN1YiI6ImRpZDpwbGM6NDNuYnhodGQyZHFuM3g2djcyZHpuN2ZxIiwiaWF0IjoxNzQ2ODEzNTEyLCJleHAiOjE3NDY4MjA3MTIsImF1ZCI6ImRpZDp3ZWI6ZW50b2xvbWEudXMtd2VzdC5ob3N0LmJza3kubmV0d29yayJ9.7sLkO2J4G6F1KZLrrwINZAZeG_Uh5zZMYWq6J6zZ_6yEIwBbuW9gOqXDb0amhzt8axLAjdjUcaCGBYPtZMc19Q"
-# Il tuo refreshJwt (refresh token)
-refresh_jwt = "eyJ0eXAiOiJyZWZyZXNoK2p3dCIsImFsZyI6IkVTMjU2SyJ9.eyJzY29wZSI6ImNvbS5hdHByb3RvLnJlZnJlc2giLCJzdWIiOiJkaWQ6cGxjOjQzbmJ4aHRkMmRxbjN4NnY3MmR6bjdmcSIsImF1ZCI6ImRpZDp3ZWI6YnNreS5zb2NpYWwiLCJqdGkiOiJYN3M0R2VlSmhGcUUxSUJyZC81SjRUZzRRRU9DMUNrTkdwOGFqVUtMbzhNIiwiaWF0IjoxNzQ2ODEzNTEyLCJleHAiOjE3NTQ1ODk1MTJ9.hcgH7f8oYQdYK6g3tc84oHJZe1j48B84jNhkbJflFWKTBubT39iBFWP8zcJIzjUf10RIss2JH_WMFCxn_OxBgg"
-# Il tuo identifier (client ID)
+access_jwt = ""
+refresh_jwt = ""
 identifier = "michelelovatomenin.bsky.social"
 # La tua password (client secret)
 password = "BDT-project"
@@ -20,11 +18,22 @@ url = "https://bsky.social/xrpc/app.bsky.feed.searchPosts"
 KAFKA_BROKER = 'kafka:9092'
 KAFKA_TOPIC = 'bluesky'
 
-# Kafka producer
-producer = KafkaProducer(
-    bootstrap_servers=KAFKA_BROKER,
-    value_serializer=lambda v: json.dumps(v).encode('utf-8')
-)
+# Kafka producer con retry finché il broker non è disponibile
+def connect_kafka():
+    while True:
+        try:
+            producer = KafkaProducer(
+                bootstrap_servers=KAFKA_BROKER,
+                value_serializer=lambda v: json.dumps(v).encode('utf-8')
+            )
+            print("✅ Connessione a Kafka riuscita.")
+            return producer
+        except Exception as e:
+            print(f"⏳ Kafka non disponibile, ritento in 5 secondi... ({e})")
+            time.sleep(5)
+
+producer = connect_kafka()
+
 
 # Set per memorizzare gli ID dei post già processati
 processed_posts = set()
@@ -39,7 +48,7 @@ keywords = [
     "financial markets", "volatility", "dividends", "valuation",
     "price target", "IPO", "stock split", "options", "ETF", "SPY",
     "AAPL", "MSFT", "NVDA", "AMZN", "META", "BRK.B", "GOOGL", "AVGO", "TSLA", "GOOG",
-    "LLY", "JPM", "V", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA", "CVX",
+    "LLY", "JPM", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA", "CVX",
     "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO",
     "Apple", "Microsoft", "Nvidia", "Amazon", "Meta", "Berkshire", "Alphabet",
     "Broadcom", "Tesla", "Eli Lilly", "JPMorgan", "Visa", "Exxon", "Netflix",
@@ -47,6 +56,28 @@ keywords = [
     "Merck", "Pepsi", "AbbVie", "Adobe", "Walmart", "BofA", "Home Depot", 
     "Coca-Cola", "Thermo Fisher"
 ]
+
+def get_initial_tokens():
+    global access_jwt, refresh_jwt
+    session_url = "https://bsky.social/xrpc/com.atproto.server.createSession"
+    payload = {
+        "identifier": identifier,
+        "password": password
+    }
+    headers = {
+        "Content-Type": "application/json"
+    }
+    response = requests.post(session_url, headers=headers, json=payload)
+    
+    if response.status_code == 200:
+        token_data = response.json()
+        access_jwt = token_data['accessJwt']
+        refresh_jwt = token_data['refreshJwt']
+        print("Access token e refresh token ottenuti con successo.")
+    else:
+        print("Errore nell'ottenere i token iniziali:", response.status_code, response.text)
+        access_jwt = None
+        refresh_jwt = None
 
 def get_new_access_token():
     global access_jwt
@@ -83,8 +114,11 @@ def fetch_posts(keyword):
 
 def track_posts():
     global access_jwt
+    get_initial_tokens()
+
     if access_jwt is None:
-        get_new_access_token()
+        print("Impossibile proseguire senza un accessJwt valido.")
+        return
 
     last_token_renewal_time = time.time()
     

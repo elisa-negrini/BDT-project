@@ -2,7 +2,7 @@ import requests
 import pandas as pd
 import time
 import json
-from datetime import date
+from datetime import date, timedelta
 from kafka import KafkaProducer
 
 # Carica simboli S&P 500
@@ -30,7 +30,10 @@ sent_ids = set()
 # Ciclo infinito
 while True:
     today = date.today().strftime("%Y-%m-%d")
-    FROM_DATE = TO_DATE = today
+    yesterday = (date.today() - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    FROM_DATE = today
+    TO_DATE = today
     print(f"\n🔁 Inizio ciclo per il {FROM_DATE}")
 
     for i, symbol in enumerate(tickers):
