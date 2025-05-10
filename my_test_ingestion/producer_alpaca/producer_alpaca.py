@@ -1,6 +1,7 @@
 from alpaca.data.live import StockDataStream
 from datetime import datetime, timedelta
 from kafka import KafkaProducer
+import time
 import pytz
 import pandas as pd
 import nest_asyncio
@@ -18,11 +19,20 @@ API_SECRET = "fDrBXt5omT71frwtJrrwlL5fgiiCim6gwrlJ6RpQ"
 KAFKA_BROKER = 'kafka:9092'
 KAFKA_TOPIC = 'stock_trades'
 
-# Kafka producer
-producer = KafkaProducer(
-    bootstrap_servers=KAFKA_BROKER,
-    value_serializer=lambda v: json.dumps(v).encode('utf-8')
-)
+def connect_kafka():
+    while True:
+        try:
+            producer = KafkaProducer(
+                bootstrap_servers=KAFKA_BROKER,
+                value_serializer=lambda v: json.dumps(v).encode('utf-8')
+            )
+            print("✅ Connessione a Kafka riuscita.")
+            return producer
+        except Exception as e:
+            print(f"⏳ Kafka non disponibile, ritento in 5 secondi... ({e})")
+            time.sleep(5)
+
+producer = connect_kafka()
 
 # Lista dei 30 principali ticker S&P 500
 top_30_tickers = [

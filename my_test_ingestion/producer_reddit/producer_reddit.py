@@ -77,7 +77,7 @@ def get_new_reddit_posts(subreddit, token):
                     'id': post_id,
                     'title': post_data.get('title'),
                     'author': post_data.get('author'),
-                    'text': text[:],
+                    'text': text,
                     'score': post_data.get('score'),
                     'num_comments': post_data.get('num_comments'),
                     'created_utc': post_data.get('created_utc'),

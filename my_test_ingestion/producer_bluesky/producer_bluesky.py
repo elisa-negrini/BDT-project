@@ -46,7 +46,7 @@ keywords = [
     "earnings", "earnings report", "buy the dip", "short selling", 
     "federal reserve", "interest rates", "inflation", "wall street",
     "financial markets", "volatility", "dividends", "valuation",
-    "price target", "IPO", "stock split", "options", "ETF", "SPY",
+    "price target", "IPO", "stock split", "ETF", "SPY",
     "AAPL", "MSFT", "NVDA", "AMZN", "META", "BRK.B", "GOOGL", "AVGO", "TSLA", "GOOG",
     "LLY", "JPM", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA", "CVX",
     "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO",

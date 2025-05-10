@@ -8,7 +8,8 @@ RUN pip3 install --no-cache-dir \
     kafka-python \
     pandas \
     pyarrow \
-    s3fs 
+    s3fs \
+    boto3
 
 COPY consumer_bluesky.py /app/consumer_blueksy.py
 

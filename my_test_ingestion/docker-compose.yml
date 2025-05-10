@@ -104,33 +104,9 @@ services:
       KAFKA_SERVER: kafka:9092
     depends_on:
       - kafka
+    
 
-  # Kafka consumer bluesky
-  kafka-consumer_bluesky:
-    build: ./consumer_bluesky
-    environment:
-      KAFKA_SERVER: kafka:9092
-    depends_on:
-      - kafka
-    volumes:
-      - ./consumer_bluesky:/app
-      - ./data:/data
-    working_dir: /app
-    command: python consumer_bluesky.py
-
-  # Kafka consumer redit
-  kafka-consumer_reddit:
-    build: ./consumer_reddit
-    environment:
-      KAFKA_SERVER: kafka:9092
-    depends_on:
-      - kafka
-    volumes:
-      - ./consumer_reddit:/app
-      - ./data:/data
-    working_dir: /app
-    command: python consumer_reddit.py
-
+  # Kafka consumer sentiment
   kafka-consumer_sentiment:
     build: ./sentiment_bluesky
     environment:
@@ -145,44 +121,71 @@ services:
     working_dir: /app
     command: python sentiment_bluesky.py
 
+  # Kafka consumer alpaca
+  kafka-consumer_alpaca:
+    build: ./consumer_alpaca
+    depends_on:
+      - kafka
+      - minio
+    environment:
+      KAFKA_SERVER: kafka:9092
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: admin
+      S3_SECRET_KEY: admin123
+      S3_BUCKET: stock-data  # Usa il nome del bucket che vuoi utilizzare
+    volumes:
+      - ./consumer_alpaca:/app
+    working_dir: /app
+    command: python consumer_alpaca.py
 
-  # minio:
-  #   image: minio/minio
-  #   container_name: minio
-  #   ports:
-  #    - "9000:9000"   # S3 API
-  #    - "9001:9001"   # MinIO Console (GUI)
-  #   environment:
-  #     MINIO_ROOT_USER: admin
-  #     MINIO_ROOT_PASSWORD: admin123
-  #   volumes:
-  #    - ./data/minio:/data
-  #   command: server /data --console-address ":9001"
+  # Kafka consumer reddit
+  kafka-consumer_reddit:
+    build: ./consumer_reddit 
+    environment:
+      KAFKA_SERVER: kafka:9092
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: admin
+      S3_SECRET_KEY: admin123
+      S3_BUCKET: reddit-data
+    depends_on:
+      - kafka
+      - minio
+    volumes:
+      - ./consumer_reddit:/app
+    working_dir: /app
+    command: python consumer_reddit.py
 
-  # Kafka consumer that reads from Kafka
-  # kafka-consumer:
-  #   build: ./consumer
-  #   environment:
-  #     KAFKA_SERVER: kafka:9092
-  #   depends_on:
-  #     - kafka
-  #   volumes:
-  #     - ./consumer:/app
-  #     - ./data:/data
-  #   working_dir: /app
-  #   command: python consumer.py
+  #kafka consumer bluesky
+  kafka-consumer_bluesky:
+    build: ./consumer_bluesky
+    depends_on:
+      - kafka
+      - minio
+    environment:
+      KAFKA_SERVER: kafka:9092
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: admin
+      S3_SECRET_KEY: admin123
+      S3_BUCKET: bluesky-data
+    volumes:
+      - ./consumer_bluesky:/app
+    working_dir: /app
+    command: python consumer_bluesky.py
 
-  # kafka-consumer_alpaca:
-  #   build: ./consumer_alpaca
-  #   depends_on:
-  #     - kafka
-  #     - minio
-  #   environment:
-  #     KAFKA_SERVER: kafka:9092
-  #   volumes:
-  #     - ./consumer_alpaca:/app
-  #   working_dir: /app
-  #   command: python consumer_alpaca.py
+
+  minio:
+    image: minio/minio
+    container_name: minio
+    ports:
+     - "9000:9000"   # S3 API
+     - "9001:9001"   # MinIO Console (GUI)
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: admin123
+    volumes:
+     - ./data/minio:/data
+    command: server /data --console-address ":9001"
+
 
 
   # spark-app:
