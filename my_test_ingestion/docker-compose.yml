@@ -131,6 +131,19 @@ services:
     working_dir: /app
     command: python consumer_reddit.py
 
+  kafka-consumer_sentiment:
+    build: ./sentiment_bluesky
+    environment:
+      KAFKA_SERVER: kafka:9092
+      SOURCE_TOPIC: bluesky
+      # Optional: Uncomment if you have a target topic
+      # TARGET_TOPIC: bluesky_sentiment
+    depends_on:
+      - kafka
+    volumes:
+      - ./sentiment_bluesky:/app
+    working_dir: /app
+    command: python sentiment_bluesky.py
 
 
   # minio:
