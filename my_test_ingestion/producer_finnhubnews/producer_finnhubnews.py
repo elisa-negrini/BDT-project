@@ -12,7 +12,7 @@ print("🚀 Avvio producer notizie Finnhub")
 # === CONFIG ===
 API_KEY = "d056jb9r01qoigrsmf5gd056jb9r01qoigrsmf60"
 KAFKA_BROKER = os.environ.get("KAFKA_SERVER", "kafka:9092")
-KAFKA_TOPIC = "finnhub"
+KAFKA_TOPIC = 'finnhub'
 
 tickers = [
     "AAPL", "MSFT", "NVDA", "AMZN", "META", "BRK.B", "GOOGL", "AVGO", "TSLA", "GOOG",

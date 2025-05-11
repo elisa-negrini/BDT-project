@@ -26,7 +26,7 @@ def connect_kafka_consumer():
                 value_deserializer=lambda m: json.loads(m.decode('utf-8')),
                 auto_offset_reset='earliest',
                 enable_auto_commit=True,
-                group_id='finnhub_saver_group'
+                group_id='finnhub_saver_group_v2'
             )
             print("✅ Connessione a Kafka riuscita (consumer).")
             return consumer
@@ -64,6 +64,8 @@ print(f"📡 In ascolto sul topic '{TOPIC_NAME}'...")
 
 for message in consumer:
     data = message.value
+    print(f"📨 Messaggio ricevuto: {data}")
+
 
     # Dati richiesti
     symbol = data.get("symbol_requested")

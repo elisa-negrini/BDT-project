@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir \
     transformers \
     scipy
 
-RUN pip install --no-cache-dir --timeout 1000 --retries 10 torch
+RUN pip install --no-cache-dir --timeout 10000 --retries 10 torch
 
 # Copy source code
 COPY sentiment_bluesky.py /app/sentiment_bluesky.py
