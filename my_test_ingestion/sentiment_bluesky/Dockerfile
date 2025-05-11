@@ -8,8 +8,9 @@ WORKDIR /app
 RUN pip install --no-cache-dir \
     kafka-python \
     transformers \
-    torch \
     scipy
+
+RUN pip install --no-cache-dir --timeout 1000 --retries 10 torch
 
 # Copy source code
 COPY sentiment_bluesky.py /app/sentiment_bluesky.py
