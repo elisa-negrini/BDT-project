@@ -105,6 +105,14 @@ services:
     depends_on:
       - kafka
     
+  # Kafka producer macrodata
+  kafka-producer_macrodata:
+    build: ./producer_macrodata
+    environment:
+      KAFKA_SERVER: kafka:9092
+    depends_on:
+      - kafka
+
   # Kafka consumer finnhubnews
   kafka-consumer_finnhubnews:
     build: ./consumer_finnhubnews
@@ -187,6 +195,23 @@ services:
       - ./consumer_bluesky:/app
     working_dir: /app
     command: python consumer_bluesky.py
+
+  #kafka consumer bluesky
+  kafka-consumer_macrodata:
+    build: ./consumer_macrodata
+    depends_on:
+      - kafka
+      - minio
+    environment:
+      KAFKA_SERVER: kafka:9092
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: admin
+      S3_SECRET_KEY: admin123
+      S3_BUCKET: macro-data
+    volumes:
+      - ./consumer_macrodata:/app
+    working_dir: /app
+    command: python consumer_macrodata.py
 
 
   minio:
