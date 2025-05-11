@@ -89,7 +89,7 @@ for message in consumer:
     date = timestamp[:10]
 
     filename = f"bluesky_{timestamp}.parquet"
-    path = f"{S3_BUCKET}/bluesky/date={date}/keyword={keyword}/{filename}"
+    path = f"{S3_BUCKET}/date={date}/keyword={keyword}/{filename}"
 
     df.to_parquet(f"s3://{path}", engine="pyarrow", filesystem=fs, index=False)
     print(f"✓ Salvato: {path}")

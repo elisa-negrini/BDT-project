@@ -1,9 +1,10 @@
 import json
 import time
-import pandas as pd
 import s3fs
 from kafka import KafkaConsumer
 from datetime import datetime
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 # === Configurazioni ===
 KAFKA_TOPIC = 'reddit'
@@ -55,21 +56,25 @@ for message in consumer:
     data = message.value
 
     # Costruisci il DataFrame (adatta alle tue chiavi reali)
-    df = pd.DataFrame([{
-        "id": data.get("id"),
-        "author": data.get("author"),
-        "title": data.get("title"),
-        "body": data.get("body"),
-        "subreddit": data.get("subreddit"),
-        "created_utc": pd.to_datetime(data.get("created_utc"), unit='s', utc=True).isoformat()
-    }])
+    record = {
+        "id": [data.get("id")],
+        "author": [data.get("author")],
+        "title": [data.get("title")],
+        "text": [data.get("text")],
+        "subreddit": [data.get("subreddit")],
+        "created_utc": [datetime.utcfromtimestamp(data.get("created_utc")).isoformat()]
+    }
+
+    table = pa.Table.from_pydict(record)
 
     # Crea percorso con subreddit e data
-    subreddit = df["subreddit"].iloc[0] or "unknown"
-    date = df["created_utc"].iloc[0][:10]
-    filename = f"reddit_{df['id'].iloc[0]}.parquet"
-    path = f"{S3_BUCKET}/subreddit={subreddit}/date={date}/{filename}"
+    subreddit = record["subreddit"][0] or "unknown"
+    date = record["created_utc"][0][:10]
+    filename = f"reddit_{record['id'][0]}.parquet"
+    path = f"{S3_BUCKET}/date={date}/subreddit={subreddit}/{filename}"
 
-    # Salva su MinIO
-    df.to_parquet(f"s3://{path}", engine='pyarrow', filesystem=fs, index=False)
+    # Scrivi su MinIO
+    with fs.open(f"s3://{path}", 'wb') as f:
+        pq.write_table(table, f)
+
     print(f"💾 Salvato: {path}")
