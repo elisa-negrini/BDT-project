@@ -18,9 +18,9 @@ services:
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-    volumes:
-      - ./create-topics.sh:/tmp/create-topics.sh
-    command: ["bash", "/tmp/create-topics.sh"]
+    # volumes:
+    #   - ./create-topics.sh:/tmp/create-topics.sh
+    # command: ["bash", "/tmp/create-topics.sh"]
 
   spark-master:
     image: bitnami/spark:latest
@@ -208,6 +208,20 @@ services:
     working_dir: /app
     command: python consumer_macrodata.py
 
+  # historical data stock
+  historical_data_stock:
+    build: ./historical_data_stock/
+    container_name: historical_data_stock
+    environment:
+      ALPACA_API_KEY: AKKQBQSDHZA7EPUZ2QAL
+      ALPACA_SECRET_KEY: Hfj9tvgC7Ug0FJjMtAcnhWTRn9FLQgmK0X3Lu33g
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: admin
+      S3_SECRET_KEY: admin123
+    volumes:
+      - ./historical_data_stock:/app
+    networks:
+      - minio_network
 
   minio:
     image: minio/minio
@@ -222,6 +236,9 @@ services:
      - ./data/minio:/data
     command: server /data --console-address ":9001"
 
+networks:
+  minio_network:
+    driver: bridge
 
 
   # spark-app:

@@ -4,7 +4,7 @@ import pandas as pd
 import s3fs
 from kafka import KafkaConsumer
 
-KAFKA_TOPIC = 'stock_alpaca'
+KAFKA_TOPIC = 'stock_trades'
 KAFKA_BOOTSTRAP_SERVERS = 'kafka:9092'
 
 S3_ENDPOINT = 'http://minio:9000'
@@ -46,21 +46,29 @@ fs = s3fs.S3FileSystem(
 for message in consumer:
     data = message.value
 
+    # Salta messaggi che non contengono i campi attesi
+    required_keys = {"ticker", "timestamp", "price", "size", "exchange"}
+    if not required_keys.issubset(data):
+        print(f"⚠️ Messaggio scartato: {data}")
+        continue
+
     row = {
-        "Ticker": data["symbol"],
-        "Timestamp": pd.to_datetime(data["timestamp"], utc=True).isoformat(),
-        "Price": data["price"],
-        "Size": data["size"],
-        "Exchange": data["exchange"]
+        "ticker": data["ticker"],
+        "timestamp": data["timestamp"],
+        "price": float(data["price"]),
+        "size": data["size"],
+        "exchange": data["exchange"]
     }
 
     df = pd.DataFrame([row])
-    date = df["Timestamp"].iloc[0][:10]
-    ticker = df["Ticker"].iloc[0]
+    date = df["timestamp"].iloc[0][:10]
+    ticker = df["ticker"].iloc[0]
 
-    filename = f"stock_{df['Timestamp'].iloc[0]}.parquet"
+    filename = f"stock_{df['timestamp'].iloc[0]}.parquet"
     path = f"{S3_BUCKET}/stock/ticker={ticker}/date={date}/{filename}"
 
     df.to_parquet(f"s3://{path}", engine="pyarrow", filesystem=fs, index=False)
     print(f"✓ Salvato: {path}")
+
+
 

@@ -12,8 +12,8 @@ import json
 nest_asyncio.apply()
 
 # Alpaca API config
-API_KEY = "AKMFU3E7GI5IL5C2BI3V"
-API_SECRET = "fDrBXt5omT71frwtJrrwlL5fgiiCim6gwrlJ6RpQ"
+API_KEY = "AK6C3H9YZ2V5TIW1UVIZ"
+API_SECRET = "P4I01elSvfbV57mie90iDdRc2qVp6orGuUucToal"
 
 # Kafka config
 KAFKA_BROKER = 'kafka:9092'
@@ -50,11 +50,11 @@ stream = StockDataStream(API_KEY, API_SECRET)
 # Callback per ogni trade ricevuto
 async def handle_trade_data(data):
     row = {
-        "Ticker": data.symbol,
-        "Timestamp": pd.to_datetime(data.timestamp, utc=True).isoformat(),
-        "Price": data.price,
-        "Size": data.size,
-        "Exchange": data.exchange
+        "ticker": data.symbol,
+        "timestamp": pd.to_datetime(data.timestamp, utc=True).isoformat(),
+        "price": data.price,
+        "size": data.size,
+        "exchange": data.exchange
     }
 
     # Stampa e invia su Kafka

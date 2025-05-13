@@ -2,13 +2,13 @@ import os
 import time
 import json
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 from kafka import KafkaProducer
 import pandas as pd
 
 # Kafka Config
 KAFKA_BROKER = 'kafka:9092'
-KAFKA_TOPIC = 'fred_data'
+KAFKA_TOPIC = 'macrodata'
 
 # FRED API Config
 API_KEY = "119c5415679f73cb0da3b62e9c2a534d"
@@ -36,6 +36,7 @@ seen_timestamps = {alias: set() for alias in series_dict.values()}
 
 # Fissa la data di partenza a oggi, eseguito una sola volta
 today = datetime.today().strftime('%Y-%m-%d')
+ten_days_ago = (datetime.today() - timedelta(days=10)).strftime('%Y-%m-%d')
 
 # Connessione a Kafka con retry
 def connect_kafka():
@@ -56,7 +57,7 @@ producer = connect_kafka()
 # Funzione per fetch e invio
 def fetch_and_send():
     for series_id, alias in series_dict.items():
-        url = f"{BASE_URL}?series_id={series_id}&api_key={API_KEY}&file_type=json&observation_start={today}"
+        url = f"{BASE_URL}?series_id={series_id}&api_key={API_KEY}&file_type=json&observation_start={ten_days_ago}"
         try:
             response = requests.get(url)
             if response.status_code == 200:
