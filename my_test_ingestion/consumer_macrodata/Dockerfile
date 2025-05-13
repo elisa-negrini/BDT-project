@@ -11,6 +11,6 @@ RUN pip3 install --no-cache-dir \
     s3fs \
     boto3
 
-COPY consumer_bluesky.py /app/consumer_macrodata.py
+COPY consumer_macrodata.py /app/consumer_macrodata.py
 
 CMD ["python", "consumer_macrodata.py"]

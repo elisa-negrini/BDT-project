@@ -18,6 +18,9 @@ services:
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    volumes:
+      - ./create-topics.sh:/tmp/create-topics.sh
+    command: ["bash", "/tmp/create-topics.sh"]
 
   spark-master:
     image: bitnami/spark:latest
@@ -84,14 +87,6 @@ services:
   # Kafka producer data_alpaca
   kafka-producer_alpaca:
     build: ./producer_alpaca
-    environment:
-      KAFKA_SERVER: kafka:9092
-    depends_on:
-      - kafka
-
-  # Kafka producer data_macrodata_daily
-  kafka-producer_macrodata_daily:
-    build: ./producer_macrodata_daily
     environment:
       KAFKA_SERVER: kafka:9092
     depends_on:
