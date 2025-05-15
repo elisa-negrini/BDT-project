@@ -1,15 +1,17 @@
 # historical alpaca/Dockerfile
 
-FROM python:3.9-slim
+FROM bitnami/spark:3.5.0
+
+USER root
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir \
-    alpaca-py \
-    pandas \
-    s3fs \
-    pyarrow
+RUN apt-get update && apt-get install -y python3-pip && \
+    pip install --no-cache-dir \
+        alpaca-py \
+        pandas
 
 COPY historical_alpaca.py /app/historical_alpaca.py
 
-CMD ["python", "historical_alpaca.py"]
+CMD ["spark-submit", "historical_alpaca.py"]
+
