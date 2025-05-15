@@ -14,7 +14,7 @@ TOPIC_NAME = 'macrodata'
 S3_ENDPOINT = os.getenv('S3_ENDPOINT', 'http://minio:9000')
 S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY', 'admin')
 S3_SECRET_KEY = os.getenv('S3_SECRET_KEY', 'admin123')
-S3_BUCKET = os.getenv('S3_BUCKET', 'macrodata')
+S3_BUCKET = os.getenv('S3_BUCKET', 'macro-data')
 
 # === Connessione a Kafka ===
 def connect_kafka_consumer():

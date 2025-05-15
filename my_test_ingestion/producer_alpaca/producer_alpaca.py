@@ -12,8 +12,8 @@ import json
 nest_asyncio.apply()
 
 # Alpaca API config
-API_KEY = "AK6C3H9YZ2V5TIW1UVIZ"
-API_SECRET = "P4I01elSvfbV57mie90iDdRc2qVp6orGuUucToal"
+API_KEY = "AKALIZA66I0M7HGJVNTO"
+API_SECRET = "k5hw9IxWpIP3WCNbzuo2I7NegamWamUX0nFujWdN"
 
 # Kafka config
 KAFKA_BROKER = 'kafka:9092'
@@ -36,7 +36,7 @@ producer = connect_kafka()
 
 # Lista dei 30 principali ticker S&P 500
 top_30_tickers = [
-    "AAPL", "MSFT", "NVDA", "AMZN", "META", "BRK.B", "GOOGL", "AVGO", "TSLA", "GOOG",
+    "AAPL", "MSFT", "NVDA", "AMZN", "META", "BRK.B", "GOOGL", "AVGO", "TSLA", "IBM",
     "LLY", "JPM", "V", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA",
     "CVX", "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO"
 ]

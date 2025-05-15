@@ -47,14 +47,14 @@ keywords = [
     "federal reserve", "interest rates", "inflation", "wall street",
     "financial markets", "volatility", "dividends", "valuation",
     "price target", "IPO", "stock split", "ETF", "SPY",
-    "AAPL", "MSFT", "NVDA", "AMZN", "META", "BRK.B", "GOOGL", "AVGO", "TSLA", "GOOG",
+    "AAPL", "MSFT", "NVDA", "AMZN", "META", "BRK.B", "GOOGL", "AVGO", "TSLA", "IBM",
     "LLY", "JPM", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA", "CVX",
     "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO",
     "Apple", "Microsoft", "Nvidia", "Amazon", "Meta", "Berkshire", "Alphabet",
     "Broadcom", "Tesla", "Eli Lilly", "JPMorgan", "Visa", "Exxon", "Netflix",
     "Costco", "UnitedHealth", "Johnson", "Procter", "Mastercard", "Chevron",
     "Merck", "Pepsi", "AbbVie", "Adobe", "Walmart", "BofA", "Home Depot", 
-    "Coca-Cola", "Thermo Fisher"
+    "Coca-Cola", "Thermo Fisher", "Big Blue"
 ]
 
 def get_initial_tokens():
@@ -79,22 +79,23 @@ def get_initial_tokens():
         access_jwt = None
         refresh_jwt = None
 
+
 def get_new_access_token():
-    global access_jwt
-    token_url = "https://bsky.social/oauth/token"
-    payload = {
-        'grant_type': 'refresh_token',
-        'refresh_token': refresh_jwt,
-        'client_id': identifier,
-        'client_secret': password
+    global access_jwt, refresh_jwt
+    url = "https://bsky.social/xrpc/com.atproto.server.refreshSession"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {refresh_jwt}"
     }
-    response = requests.post(token_url, data=payload)
+    response = requests.post(url, headers=headers)
+    
     if response.status_code == 200:
         token_data = response.json()
-        access_jwt = token_data['access_token']
-        print("Access token rinnovato.")
+        access_jwt = token_data['accessJwt']
+        refresh_jwt = token_data['refreshJwt']
+        print("✅ Token rinnovato con successo.")
     else:
-        print("Errore nel rinnovo del token:", response.status_code)
+        print(f"❌ Errore nel rinnovo del token: {response.status_code}, {response.text}")
         access_jwt = None
 
 def fetch_posts(keyword):

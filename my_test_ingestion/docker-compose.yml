@@ -69,7 +69,7 @@ services:
 
 
   # Kafka producer data_reddit
-  kafka-producer_reddit:
+  kp_reddit:
     build: ./producer_reddit
     environment:
       KAFKA_SERVER: kafka:9092
@@ -77,7 +77,7 @@ services:
       - kafka
   
   # Kafka producer data_finnhubnews
-  kafka-producer_finnhubnews:
+  kp_finnhubnews:
     build: ./producer_finnhubnews
     environment:
       KAFKA_SERVER: kafka:9092
@@ -85,7 +85,7 @@ services:
       - kafka
 
   # Kafka producer data_alpaca
-  kafka-producer_alpaca:
+  kp_alpaca:
     build: ./producer_alpaca
     environment:
       KAFKA_SERVER: kafka:9092
@@ -93,7 +93,7 @@ services:
       - kafka
 
   # Kafka producer bluesky
-  kafka-producer_bluesky:
+  kp_bluesky:
     build: ./producer_bluesky
     environment:
       KAFKA_SERVER: kafka:9092
@@ -101,7 +101,7 @@ services:
       - kafka
     
   # Kafka producer macrodata
-  kafka-producer_macrodata:
+  kp_macrodata:
     build: ./producer_macrodata
     environment:
       KAFKA_SERVER: kafka:9092
@@ -109,7 +109,7 @@ services:
       - kafka
 
   # Kafka consumer finnhubnews
-  kafka-consumer_finnhubnews:
+  kc_finnhubnews:
     build: ./consumer_finnhubnews
     environment:
       KAFKA_SERVER: kafka:9092
@@ -125,23 +125,23 @@ services:
     working_dir: /app
     command: python consumer_finnhubnews.py
 
-  # Kafka consumer sentiment
-  kafka-consumer_sentiment:
-    build: ./sentiment_bluesky
-    environment:
-      KAFKA_SERVER: kafka:9092
-      SOURCE_TOPIC: bluesky
-      # Optional: Uncomment if you have a target topic
-      # TARGET_TOPIC: bluesky_sentiment
-    depends_on:
-      - kafka
-    volumes:
-      - ./sentiment_bluesky:/app
-    working_dir: /app
-    command: python sentiment_bluesky.py
+  # # Kafka consumer sentiment
+  # kafka-consumer_sentiment:
+  #   build: ./sentiment_bluesky
+  #   environment:
+  #     KAFKA_SERVER: kafka:9092
+  #     SOURCE_TOPIC: bluesky
+  #     # Optional: Uncomment if you have a target topic
+  #     # TARGET_TOPIC: bluesky_sentiment
+  #   depends_on:
+  #     - kafka
+  #   volumes:
+  #     - ./sentiment_bluesky:/app
+  #   working_dir: /app
+  #   command: python sentiment_bluesky.py
 
   # Kafka consumer alpaca
-  kafka-consumer_alpaca:
+  kc_alpaca:
     build: ./consumer_alpaca
     depends_on:
       - kafka
@@ -158,7 +158,7 @@ services:
     command: python consumer_alpaca.py
 
   # Kafka consumer reddit
-  kafka-consumer_reddit:
+  kc_reddit:
     build: ./consumer_reddit 
     environment:
       KAFKA_SERVER: kafka:9092
@@ -175,7 +175,7 @@ services:
     command: python consumer_reddit.py
 
   #kafka consumer bluesky
-  kafka-consumer_bluesky:
+  kc_bluesky:
     build: ./consumer_bluesky
     depends_on:
       - kafka
@@ -191,8 +191,8 @@ services:
     working_dir: /app
     command: python consumer_bluesky.py
 
-  #kafka consumer bluesky
-  kafka-consumer_macrodata:
+  #kafka consumer macrodata
+  kc_macrodata:
     build: ./consumer_macrodata
     depends_on:
       - kafka
@@ -208,18 +208,35 @@ services:
     working_dir: /app
     command: python consumer_macrodata.py
 
-  # historical data stock
-  historical_data_stock:
-    build: ./historical_data_stock/
-    container_name: historical_data_stock
+  # # historical alpaca
+  # historical_alpaca:
+  #   build: ./historical_alpaca/
+  #   container_name: historical_alpaca
+  #   environment:
+  #     ALPACA_API_KEY: AKKQBQSDHZA7EPUZ2QAL
+  #     ALPACA_SECRET_KEY: Hfj9tvgC7Ug0FJjMtAcnhWTRn9FLQgmK0X3Lu33g
+  #     S3_ENDPOINT: http://minio:9000
+  #     S3_ACCESS_KEY: admin
+  #     S3_SECRET_KEY: admin123
+  #   volumes:
+  #     - ./historical_alpaca:/app
+  #   networks:
+  #     - minio_network
+
+  # historical macrodata
+  historical-macrodata:
+    build: ./historical_macrodata/
+    container_name: historical_macrodata
+    depends_on:
+      - kafka
+      - minio
     environment:
-      ALPACA_API_KEY: AKKQBQSDHZA7EPUZ2QAL
-      ALPACA_SECRET_KEY: Hfj9tvgC7Ug0FJjMtAcnhWTRn9FLQgmK0X3Lu33g
       S3_ENDPOINT: http://minio:9000
       S3_ACCESS_KEY: admin
       S3_SECRET_KEY: admin123
+      S3_BUCKET: macro-data
     volumes:
-      - ./historical_data_stock:/app
+      - ./historical_macrodata:/app
     networks:
       - minio_network
 
@@ -235,6 +252,7 @@ services:
     volumes:
      - ./data/minio:/data
     command: server /data --console-address ":9001"
+
 
 networks:
   minio_network:

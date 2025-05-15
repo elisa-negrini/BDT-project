@@ -34,7 +34,6 @@ consumer = connect_kafka_consumer()
 print(f"📡 In ascolto sul topic '{KAFKA_TOPIC}'...")
 
 
-
 # S3 filesystem (MinIO)
 fs = s3fs.S3FileSystem(
     anon=False,
@@ -42,6 +41,12 @@ fs = s3fs.S3FileSystem(
     secret=S3_SECRET_KEY,
     client_kwargs={'endpoint_url': S3_ENDPOINT}
 )
+
+if not fs.exists(S3_BUCKET):
+    fs.mkdir(S3_BUCKET)
+    print(f"🪣 Bucket '{S3_BUCKET}' creato su MinIO.")
+else:
+    print(f"✅ Bucket '{S3_BUCKET}' già esistente.")
 
 for message in consumer:
     data = message.value

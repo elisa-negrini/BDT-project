@@ -24,7 +24,7 @@ COMPANY_TICKER_MAP = {
     "mastercard": "MA", "broadcom": "AVGO", "lilly": "LLY", "jpmorgan": "JPM", "home depot": "HD",
     "chevron": "CVX", "merck": "MRK", "pepsico": "PEP", "coca cola": "KO", "abbvie": "ABBV",
     "costco": "COST", "adobe": "ADBE", "walmart": "WMT", "bank of america": "BAC",
-    "salesforce": "CRM", "mcdonald": "MCD", "thermo fisher": "TMO"
+    "salesforce": "CRM", "mcdonald": "MCD", "thermo fisher": "TMO", "ibm" : "IBM"
 }
 
 def extract_tickers(text):

@@ -98,7 +98,7 @@ for message in consumer:
 
     df = pd.DataFrame([row])
     filename = f"finnhub_{timestamp.strftime('%Y%m%dT%H%M%S')}.parquet"
-    s3_path = f"{S3_BUCKET}/finnhub_news/ticker={symbol}/date={date_str}/{filename}"
+    s3_path = f"{S3_BUCKET}/ticker={symbol}/date={date_str}/{filename}"
 
     try:
         df.to_parquet(f"s3://{s3_path}", engine="pyarrow", filesystem=fs, index=False)
