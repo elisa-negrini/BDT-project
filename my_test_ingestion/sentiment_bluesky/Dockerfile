@@ -1,19 +1,23 @@
-# Dockerfile
-FROM python:3.10-slim
+FROM bitnami/spark:latest
 
-# Set workdir
+USER root
+
+# Installa Python e pip
+RUN apt-get update && apt-get install -y python3 python3-pip wget
+
+# Crea la cartella dell'app
 WORKDIR /app
 
-# Install dependencies
-RUN pip install --no-cache-dir \
-    kafka-python \
-    transformers \
-    scipy
+# Copia lo script
+COPY sentiment_bluesky.py /app/sentiment_bluesky.py 
 
-RUN pip install --no-cache-dir --timeout 10000 --retries 10 torch
+# Installa librerie Python necessarie
+RUN pip3 install torch transformers scipy
 
-# Copy source code
-COPY sentiment_bluesky.py /app/sentiment_bluesky.py
+# # Aggiungi i JAR per Hadoop AWS/S3 support (necessari per MinIO)
+# RUN mkdir -p /opt/spark/jars && \
+#     wget https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar -P /opt/spark/jars && \
+#     wget https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.11.1026/aws-java-sdk-bundle-1.11.1026.jar -P /opt/spark/jars
 
-# Run script
-CMD ["python", "sentiment_bluesky.py"]
+# Comando di default
+CMD ["python3", "sentiment_bluesky.py"]
