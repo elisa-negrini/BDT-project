@@ -7,8 +7,8 @@ from datetime import datetime
 import os
 
 # === ENV ===
-ALPACA_API_KEY = os.getenv("ALPACA_API_KEY", "PKCAB7RKX3K5IH490XM6")
-ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY", "j0t7VFg1B1Ew2vzUIPe4GssT7rAkmvxXpczi5htP")
+ALPACA_API_KEY = os.getenv("ALPACA_API_KEY", "PKDIQVSRHAGVB1SMJDV1")
+ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY", "T7NAfaVIscGDDYT6VSW0bBaQQwF0SexEGfDNSJSA")
 S3_ENDPOINT = os.getenv("S3_ENDPOINT", "http://minio:9000")
 S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "admin")
 S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "admin123")
@@ -35,10 +35,10 @@ top_30_tickers = [
 client = StockHistoricalDataClient(ALPACA_API_KEY, ALPACA_SECRET_KEY)
 
 request_params = StockBarsRequest(
-    symbol_or_symbols=top_30_tickers,
+    symbol_or_symbols="AAPL",
     timeframe=TimeFrame.Day,
-    start=datetime(2021, 4, 23),
-    end=datetime.(2025, 5, 14)
+    start=datetime(2025, 4, 23),
+    end=datetime(2025, 5, 14)
 )
 
 print("⬇️  Scarico i dati storici da Alpaca...")
@@ -64,3 +64,4 @@ spark_df.write \
     .save(output_path)
 
 print("✅ Dati salvati su MinIO partizionati per ticker e giorno.")
+
