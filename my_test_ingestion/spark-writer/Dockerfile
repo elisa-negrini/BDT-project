@@ -1,8 +1,3 @@
 FROM bitnami/spark:latest
-
-USER root
-
-RUN pip install --no-cache-dir pyspark
-
+COPY . /app
 WORKDIR /app
-COPY spark_writer.py .

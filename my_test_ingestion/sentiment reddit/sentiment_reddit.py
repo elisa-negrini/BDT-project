@@ -9,20 +9,12 @@ import re
 
 # Spark Session
 spark = SparkSession.builder \
-    .appName("SentimentBluesky") \
+    .appName("KafkaFinBERTSentimentReddit") \
     .getOrCreate()
 spark.sparkContext.setLogLevel("WARN")
 
-# # MinIO config (S3 compatible)
-# spark._jsc.hadoopConfiguration().set("fs.s3a.endpoint", "http://minio:9000")
-# spark._jsc.hadoopConfiguration().set("fs.s3a.access.key", "admin")
-# spark._jsc.hadoopConfiguration().set("fs.s3a.secret.key", "admin123")
-# spark._jsc.hadoopConfiguration().set("fs.s3a.path.style.access", "true")
-# spark._jsc.hadoopConfiguration().set("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-
 # Kafka config
-SOURCE_TOPIC = "bluesky"
-TARGET_TOPIC = "bluesky_sentiment"
+SOURCE_TOPIC = "reddit"
 KAFKA_BROKER = "kafka:9092"
 
 # Ticker mapping
@@ -36,7 +28,7 @@ COMPANY_TICKER_MAP = {
     "salesforce": "CRM", "mcdonald": "MCD", "thermo fisher": "TMO"
 }
 
-# Lazy-loaded model
+# Lazy-loaded tokenizer and model (safe for UDF)
 tokenizer = None
 model = None
 
@@ -67,15 +59,16 @@ def extract_tickers(text):
             tickers.add(ticker)
     return json.dumps(list(tickers) if tickers else ["GENERAL"])
 
-def to_kafka_payload(user, tickers_json, sentiment_json, timestamp):
+def to_kafka_payload(id, text, user, tickers_json, sentiment_json, timestamp):
     data = {
-        "timestamp": timestamp,
-        "social": "bluesky",  # Or "bluesky" if constant
+        "id": id,
+        "text": text,
+        "user": user,
         "ticker": json.loads(tickers_json),
-        **json.loads(sentiment_json)
+        **json.loads(sentiment_json),
+        "timestamp": timestamp
     }
     return json.dumps(data)
-
 
 # UDF registration
 extract_tickers_udf = udf(extract_tickers, StringType())
@@ -104,29 +97,13 @@ df_parsed = df_raw.selectExpr("CAST(value AS STRING) as json_str") \
     .withColumn("tickers", extract_tickers_udf(col("text"))) \
     .withColumn("sentiment", get_sentiment_udf(col("text"))) \
     .withColumn("timestamp", current_timestamp()) \
-    .withColumn("value", to_kafka_row_udf(
-    col("user"), col("tickers"), col("sentiment"), col("timestamp").cast("string"))
-)
+    .withColumn("value", to_kafka_row_udf(col("id"), col("text"), col("user"), col("tickers"), col("sentiment"), col("timestamp").cast("string")))
 
-
-# Stream to Kafka
-query_kafka = df_parsed.selectExpr("CAST(value AS STRING) as value") \
+# Write to Kafka (or console)
+query = df_parsed.select("id", "text", "tickers", "sentiment", "timestamp") \
     .writeStream \
-    .format("kafka") \
-    .option("kafka.bootstrap.servers", KAFKA_BROKER) \
-    .option("topic", TARGET_TOPIC) \
-    .option("checkpointLocation", "/tmp/checkpoints/kafka") \
+    .format("console") \
+    .option("truncate", False) \
     .start()
 
-# # Stream to MinIO
-# query_minio = df_parsed.select("value") \
-#     .writeStream \
-#     .format("json") \
-#     .option("path", "s3a://bluesky-data/") \
-#     .option("checkpointLocation", "/tmp/checkpoints/minio") \
-#     .outputMode("append") \
-#     .start()
-
-# Wait for any stream to finish
-query_kafka.awaitTermination()
-# query_minio.awaitTermination()
+query.awaitTermination()

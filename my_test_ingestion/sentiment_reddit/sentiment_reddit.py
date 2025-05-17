@@ -9,7 +9,7 @@ import re
 
 # Spark Session
 spark = SparkSession.builder \
-    .appName("SentimentBluesky") \
+    .appName("SentimentReddit") \
     .getOrCreate()
 spark.sparkContext.setLogLevel("WARN")
 
@@ -21,8 +21,8 @@ spark.sparkContext.setLogLevel("WARN")
 # spark._jsc.hadoopConfiguration().set("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
 
 # Kafka config
-SOURCE_TOPIC = "bluesky"
-TARGET_TOPIC = "bluesky_sentiment"
+SOURCE_TOPIC = "reddit"
+TARGET_TOPIC = "reddit_sentiment"
 KAFKA_BROKER = "kafka:9092"
 
 # Ticker mapping
@@ -67,15 +67,16 @@ def extract_tickers(text):
             tickers.add(ticker)
     return json.dumps(list(tickers) if tickers else ["GENERAL"])
 
-def to_kafka_payload(user, tickers_json, sentiment_json, timestamp):
+def to_kafka_payload(id, text, user, tickers_json, sentiment_json, timestamp):
     data = {
-        "timestamp": timestamp,
-        "social": "bluesky",  # Or "bluesky" if constant
+        "id": id,
+        "text": text,
+        "user": user,
         "ticker": json.loads(tickers_json),
-        **json.loads(sentiment_json)
+        **json.loads(sentiment_json),
+        "timestamp": timestamp
     }
     return json.dumps(data)
-
 
 # UDF registration
 extract_tickers_udf = udf(extract_tickers, StringType())
@@ -105,9 +106,8 @@ df_parsed = df_raw.selectExpr("CAST(value AS STRING) as json_str") \
     .withColumn("sentiment", get_sentiment_udf(col("text"))) \
     .withColumn("timestamp", current_timestamp()) \
     .withColumn("value", to_kafka_row_udf(
-    col("user"), col("tickers"), col("sentiment"), col("timestamp").cast("string"))
-)
-
+        col("id"), col("text"), col("user"), col("tickers"), col("sentiment"), col("timestamp").cast("string"))
+    )
 
 # Stream to Kafka
 query_kafka = df_parsed.selectExpr("CAST(value AS STRING) as value") \
@@ -129,4 +129,3 @@ query_kafka = df_parsed.selectExpr("CAST(value AS STRING) as value") \
 
 # Wait for any stream to finish
 query_kafka.awaitTermination()
-# query_minio.awaitTermination()
