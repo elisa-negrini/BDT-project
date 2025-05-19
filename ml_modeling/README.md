@@ -1,6 +1,6 @@
 | **Feature Name**           | **Description**                                   | **Window**   | **Type**            |
 | -------------------------- | ------------------------------------------------- | ------------ | ------------------- |
-| `price_mean_10sec`          | % price change vs previous minute                 | 10 sec        | Stock-derived       | `price_mean_1min`          | % price change vs previous minute                 | 1 min        | Stock-derived       |
+`price_mean_1min`          | % price change vs previous minute                 | 1 min        | Stock-derived       |
 | `price_mean_5min`          | % price change over last 5 minutes                | 5 min        | Stock-derived       |
 | `log_return_5min`          | Log return over 5 minutes                         | 5 min        | Stock-derived       |
 | `price_std_15min`          | Price standard deviation (volatility)             | 15 min       | Stock-derived       |
