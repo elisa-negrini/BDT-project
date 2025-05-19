@@ -25,7 +25,7 @@ END_DATE = datetime(2025, 5, 14)
 TICKERS = [
     "AAPL", "MSFT", "NVDA", "AMZN", "META", "BRK.B", "GOOGL", "AVGO", "TSLA", "LLY",
     "JPM", "V", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA",
-    "CVX", "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO", "CRM"
+    "CVX", "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO", "IBM"
 ]
 
 # === CLIENT MINIO ===
@@ -109,13 +109,15 @@ if __name__ == "__main__":
     ensure_bucket(MINIO_BUCKET)
 
     spark = SparkSession.builder \
-    .appName("AlpacaToMinIO") \
-    .master(f"local[{cpu_count()}]") \
-    .config("spark.driver.host", "127.0.0.1") \
-    .config("spark.driver.bindAddress", "127.0.0.1") \
-    .config("spark.pyspark.python", sys.executable) \
-    .config("spark.pyspark.driver.python", sys.executable) \
-    .getOrCreate()
+        .appName("AlpacaToMinIO") \
+        .master("spark://spark-master:7077") \
+        .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000") \
+        .config("spark.hadoop.fs.s3a.access.key", MINIO_ACCESS_KEY) \
+        .config("spark.hadoop.fs.s3a.secret.key", MINIO_SECRET_KEY) \
+        .config("spark.hadoop.fs.s3a.path.style.access", "true") \
+        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
+        .getOrCreate()
+
 
     for ticker in TICKERS:
         download_and_upload_ticker_data(ticker, spark)

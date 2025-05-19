@@ -1,16 +1,18 @@
-# historical macrodata/Dockerfile
+FROM bitnami/spark:3.5
 
-FROM python:3.9-slim
+USER root
 
+# Install Python packages needed per job
+RUN apt-get update && apt-get install -y python3-pip && \
+    pip3 install --no-cache-dir requests boto3
+
+USER 1001
+
+# Working dir
 WORKDIR /app
 
-RUN pip install --no-cache-dir \
-    pandas \
-    s3fs \
-    pyarrow \
-    boto3 \
-    requests
+# Copia lo script nel container
+COPY historical_macrodata.py .
 
-COPY historical_macrodata.py /app/historical_macrodata.py
-
-CMD ["python", "historical_macrodata.py"]
+# Default CMD: esegui lo script via spark-submit
+CMD ["spark-submit", "--master", "spark://spark-master:7077", "historical_macrodata.py"]

@@ -277,7 +277,7 @@ services:
   # historical macrodata spark
   h_macrodata:
     build:
-      context: ./historical_macrodata_spark
+      context: ./historical_macrodata
     container_name: h_macrodata
     depends_on:
       - spark-master
