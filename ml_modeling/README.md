@@ -1,15 +1,15 @@
 | **Feature Name**           | **Description**                                   | **Window**   | **Type**            |
 | -------------------------- | ------------------------------------------------- | ------------ | ------------------- |
-| `price_diff_1min`          | % price change vs previous minute                 | 1 min        | Stock-derived       |
-| `price_diff_5min`          | % price change over last 5 minutes                | 5 min        | Stock-derived       |
+`price_mean_1min`          | % price change vs previous minute                 | 1 min        | Stock-derived       |
+| `price_mean_5min`          | % price change over last 5 minutes                | 5 min        | Stock-derived       |
 | `log_return_5min`          | Log return over 5 minutes                         | 5 min        | Stock-derived       |
 | `price_std_15min`          | Price standard deviation (volatility)             | 15 min       | Stock-derived       |
 | `price_max_30min`          | Max price in last 30 minutes                      | 30 min       | Stock-derived       |
 
-| `volume_1min`              | Sum of trade sizes in the last minute             | 1 min        | Volume              |
-| `volume_diff_1min`         | % change in volume compared to previous min       | 1 min        | Volume              |
-| `volume_mean_15min`        | Rolling average volume                            | 15 min       | Volume              |
-| `volume_std_15min`         | Rolling volume volatility                         | 15 min       | Volume              |
+| `Size_1min`              | Sum of trade sizes in the last minute             | 1 min        | Size              |
+| `Size_diff_1min`         | % change in Size compared to previous min       | 1 min        | Size              |
+| `Size_mean_15min`        | Rolling average Size                            | 15 min       | Size              |
+| `Size_std_15min`         | Rolling Size volatility                         | 15 min       | Size              |
 
 | `rsi_14`                   | Relative Strength Index (momentum)                | 14 min       | Technical indicator |
 | `ema_10`                   | Exponential Moving Average                        | 10 min       | Technical indicator |
@@ -28,7 +28,7 @@
 | `Unemployment_Rate` | % of unemployed individuals actively seeking work               | Monthly       | Level (forward-filled)        |
 | `UMich_Sentiment`   | University of Michigan Consumer Sentiment Index                 | Monthly       | Survey Score (forward-filled) |
 
-Bluesly/reddit
+Bluesky/reddit
 | `sentiment_mean_2hours`  | Avg. sentiment from news/social in last 2 hours                | 2 hours     | Sentiment     |
 | `sentiment_mean_1day`    | Avg. sentiment over the last day                               | 1 day       | Sentiment     |
 | `sentiment_delta_2hour_1day` | Δ between 2hours and 1day sentiment means                  | 30 min – 2h | Sentiment     |
@@ -48,8 +48,6 @@ Newspapers
 | `month_of_year`            | Month number (1–12)                                        | Yearly       | Temporal               |
 | `is_month_end`             | 1 if the current day is the last trading day of the month  | Monthly      | Binary flag            |
 | `is_quarter_end`           | 1 if         //                    of a financial quarter  | Quarterly    | Binary flag            |
-| `is_earnings_week`         | 1 if the current week includes earnings for the ticker     | Weekly       | Binary flag (optional) |
-| `days_since_last_earnings` | Days since the last earnings release                       | Days         | Counter (optional)     |
 | `holiday_proximity`        | Distance(in days) to the next/previous U.S. market holiday | Daily        | Numerical              |
 | `market_open_spike_flag`   | 1 if the current min is within first 5 min of market open  | Intraday     | Binary flag            |
 | `market_close_spike_flag`  | 1 if the current min is within last 5 min of market close  | Intraday     | Binary flag            |
@@ -69,3 +67,5 @@ Newspapers
    ---                                                               for capturing business    ---                                                               momentum.                                                 |
 
 IMPORTANTE: per questi ultimi il modello verrà allenato sul dato dell'anno precedente, dato che ad esempio ad oggni abbiamo quel del 2024 ma non del 2025
+
+al modello dovremmo dire che quando la borsa è chiusa non deve considerare price mean 5 min, ma l'altra variabile fatta sugli ultimi 20
