@@ -6,6 +6,9 @@ import s3fs
 import boto3
 from kafka import KafkaConsumer
 from botocore.exceptions import ClientError
+from pyarrow.fs import S3FileSystem
+from datetime import datetime
+
 
 # === Parametri configurabili ===
 KAFKA_BROKER = 'kafka:9092'
@@ -74,7 +77,9 @@ for message in consumer:
         continue
 
     try:
-        date_str = pd.to_datetime(date).strftime("%Y-%m-%d")
+        dt = pd.to_datetime(date)
+        date_str = dt.strftime("%Y-%m-%d")
+        year = dt.year
     except Exception as e:
         print(f"⚠️ Errore parsing data: {e}, saltato.")
         continue
@@ -85,11 +90,24 @@ for message in consumer:
     }
 
     df = pd.DataFrame([row])
+    
+    # Path compatibile con lo storico
     filename = f"{alias}_{date_str}.parquet"
-    path = f"{S3_BUCKET}/{alias}/{filename}"
+    path = f"{S3_BUCKET}/{alias}/year={year}/{filename}"
 
     try:
         df.to_parquet(f"s3://{path}", engine="pyarrow", filesystem=fs, index=False)
         print(f"✓ Salvato: {path}")
     except Exception as e:
         print(f"❌ Errore nel salvataggio del file {filename}: {e}")
+
+import pandas as pd
+from pyarrow.fs import S3FileSystem
+from datetime import datetime
+
+# === Connessioni iniziali ===
+fs = S3FileSystem(endpoint_override="http://minio:9000", access_key="minioadmin", secret_key="minioadmin")  # Adatta se diverso
+ensure_bucket_exists()
+consumer = connect_kafka_consumer()
+
+

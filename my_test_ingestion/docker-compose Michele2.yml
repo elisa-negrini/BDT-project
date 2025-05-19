@@ -45,6 +45,33 @@ services:
       - SPARK_WORKER_CORES=1
     ports:
       - "8081:8081"  # Spark worker web UI
+    
+  # spark-worker-2:
+  #   image: bitnami/spark:latest
+  #   container_name: spark-worker-2
+  #   depends_on:
+  #     - spark-master
+  #   environment:
+  #     - SPARK_MODE=worker
+  #     - SPARK_MASTER_URL=spark://spark-master:7077
+  #     - SPARK_WORKER_MEMORY=1G
+  #     - SPARK_WORKER_CORES=1
+  #   ports:
+  #     - "8082:8081"   # Worker 2 UI (host:container)
+
+  # spark-worker-3:
+  #   image: bitnami/spark:latest
+  #   container_name: spark-worker-3
+  #   depends_on:
+  #     - spark-master
+  #   environment:
+  #     - SPARK_MODE=worker
+  #     - SPARK_MASTER_URL=spark://spark-master:7077
+  #     - SPARK_WORKER_MEMORY=1G
+  #     - SPARK_WORKER_CORES=1
+  #   ports:
+  #     - "8083:8081"   # Worker 3 UI (host:container)
+
 
   spark-writer:
     build: ./spark-writer
@@ -247,18 +274,21 @@ services:
       - minio_network
     restart: "no"
 
-  # historical macrodata
+  # historical macrodata spark
   h_macrodata:
-    build: ./historical_macrodata
+    build:
+      context: ./historical_macrodata_spark
     container_name: h_macrodata
     depends_on:
+      - spark-master
       - minio
     environment:
       S3_ENDPOINT: http://minio:9000
       S3_ACCESS_KEY: admin
       S3_SECRET_KEY: admin123
       S3_BUCKET: macro-data
-
+    networks:
+      - default
 
   # historical company
   h_company:
