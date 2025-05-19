@@ -1,17 +1,11 @@
 # historical alpaca/Dockerfile
 
-FROM bitnami/spark:3.5.0
+FROM bitnami/spark:latest
 
 USER root
+RUN pip install --no-cache-dir alpaca-py boto3 pandas
 
+COPY . /app
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y python3-pip && \
-    pip install --no-cache-dir \
-        alpaca-py \
-        pandas
-
-COPY historical_alpaca.py /app/historical_alpaca.py
-
-CMD ["spark-submit", "historical_alpaca.py"]
-
+CMD ["spark-submit", "--master", "spark://spark-master:7077", "historical_alpaca.py"]

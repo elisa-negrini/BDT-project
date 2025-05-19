@@ -17,17 +17,13 @@ S3_SECRET_KEY = os.getenv('S3_SECRET_KEY', 'admin123')
 S3_BUCKET = os.getenv('S3_BUCKET', 'macro-data')
 
 series_dict = {
-    "GDP": "gdp_nominal",
     "GDPC1": "gdp_real",
-    "A191RL1Q225SBEA": "gdp_qoq",
     "CPIAUCSL": "cpi",
-    "CPILFESL": "cpi_core",
     "FEDFUNDS": "ffr",
     "DGS10": "t10y",
     "DGS2": "t2y",
     "T10Y2Y": "spread_10y_2y",
     "UNRATE": "unemployment",
-    # "UMCSENT": "sentiment"
 }
 
 # === Ensure S3 Bucket ===
@@ -52,6 +48,9 @@ def ensure_bucket_exists():
 spark = SparkSession.builder \
     .appName("FRED MacroData Ingestion") \
     .master("spark://spark-master:7077") \
+    .config("spark.executor.cores", "1") \
+    .config("spark.cores.max", "1") \
+    .config("spark.executor.memory", "1g") \
     .config("spark.hadoop.fs.s3a.endpoint", S3_ENDPOINT) \
     .config("spark.hadoop.fs.s3a.access.key", S3_ACCESS_KEY) \
     .config("spark.hadoop.fs.s3a.secret.key", S3_SECRET_KEY) \
