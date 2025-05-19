@@ -81,6 +81,17 @@ services:
     networks:
       - flink_net
 
+  # predictor_consumer:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   depends_on:
+  #     - broker
+  #   environment:
+  #     KAFKA_BROKER: broker:9092
+  #   volumes:
+  #     - ./ml_modeling/models_multivariate:/app/ml_modeling/models_multivariate
+
 
   # Kafka producer data_reddit
   kp_reddit:
