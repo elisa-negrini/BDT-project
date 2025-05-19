@@ -142,22 +142,38 @@ services:
     environment:
       - PYSPARK_PYTHON=python3
 
-  # sentiment_reddit:
-  #   build: ./sentiment_reddit
-  #   depends_on:
-  #     - kafka
-  #     - spark-master
-  #     - spark-worker
-  #   volumes:
-  #     - ./sentiment_reddit:/app
-  #   working_dir: /app
-  #   command: >
-  #     spark-submit
-  #     --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
-  #     sentiment_reddit.py
-  #   environment:
-  #     - PYSPARK_PYTHON=python3
+  sentiment_reddit:
+    build: ./sentiment_reddit
+    depends_on:
+      - kafka
+      - spark-master
+      - spark-worker
+    volumes:
+      - ./sentiment_reddit:/app
+    working_dir: /app
+    command: >
+      spark-submit
+      --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
+      sentiment_reddit.py
+    environment:
+       - PYSPARK_PYTHON=python3
 
+
+  sentiment_news:
+    build: ./sentiment_news
+    depends_on:
+      - kafka
+      - spark-master
+      - spark-worker
+    volumes:
+      - ./sentiment_news:/app
+    working_dir: /app
+    command: >
+      spark-submit
+      --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
+      sentiment_news.py
+    environment:
+       - PYSPARK_PYTHON=python3
 
     
   # Kafka consumer alpaca

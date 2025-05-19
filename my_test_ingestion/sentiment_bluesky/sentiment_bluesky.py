@@ -7,25 +7,18 @@ import torch
 import json
 import re
 
-# Spark Session
+# 1. Spark Session
 spark = SparkSession.builder \
     .appName("SentimentBluesky") \
     .getOrCreate()
 spark.sparkContext.setLogLevel("WARN")
 
-# # MinIO config (S3 compatible)
-# spark._jsc.hadoopConfiguration().set("fs.s3a.endpoint", "http://minio:9000")
-# spark._jsc.hadoopConfiguration().set("fs.s3a.access.key", "admin")
-# spark._jsc.hadoopConfiguration().set("fs.s3a.secret.key", "admin123")
-# spark._jsc.hadoopConfiguration().set("fs.s3a.path.style.access", "true")
-# spark._jsc.hadoopConfiguration().set("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-
-# Kafka config
+# 2. Kafka config
 SOURCE_TOPIC = "bluesky"
 TARGET_TOPIC = "bluesky_sentiment"
 KAFKA_BROKER = "kafka:9092"
 
-# Ticker mapping
+# 3. Mapping nomi aziendali → ticker
 COMPANY_TICKER_MAP = {
     "apple": "AAPL", "microsoft": "MSFT", "google": "GOOGL", "amazon": "AMZN", "nvidia": "NVDA",
     "meta": "META", "facebook": "META", "berkshire": "BRK.B", "tesla": "TSLA", "unitedhealth": "UNH",
@@ -36,25 +29,26 @@ COMPANY_TICKER_MAP = {
     "salesforce": "CRM", "mcdonald": "MCD", "thermo fisher": "TMO"
 }
 
-# Lazy-loaded model
+# 4. Lazy-load modello FinBERT
 tokenizer = None
 model = None
 
 def get_finbert_sentiment(text):
-    global tokenizer, model
-    if tokenizer is None or model is None:
-        tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
-        model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
-    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
-    with torch.no_grad():
-        logits = model(**inputs).logits
-    probs = softmax(logits.numpy()[0])
-    return json.dumps({
-        "positive_prob": float(probs[0]),
-        "neutral_prob": float(probs[1]),
-        "negative_prob": float(probs[2])
-    })
+    try:
+        global tokenizer, model
+        if tokenizer is None or model is None:
+            tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
+            model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
+        inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
+        with torch.no_grad():
+            logits = model(**inputs).logits
+        probs = softmax(logits.numpy()[0])
+        sentiment_score = float(probs[0] - probs[2])  # positive - negative
+        return str(sentiment_score)
+    except Exception as e:
+        return "0.0"
 
+# 5. Estrazione ticker da testo
 def extract_tickers(text):
     tickers = set()
     matches = re.findall(r"\$([A-Z]{1,5})", text.upper())
@@ -67,29 +61,27 @@ def extract_tickers(text):
             tickers.add(ticker)
     return json.dumps(list(tickers) if tickers else ["GENERAL"])
 
-def to_kafka_payload(user, tickers_json, sentiment_json, timestamp):
-    data = {
+# 6. Creazione JSON da scrivere su Kafka
+def to_kafka_payload(tickers_json, sentiment_score_str, timestamp):
+    return json.dumps({
         "timestamp": timestamp,
-        "social": "bluesky",  # Or "bluesky" if constant
         "ticker": json.loads(tickers_json),
-        **json.loads(sentiment_json)
-    }
-    return json.dumps(data)
+        "sentiment": float(sentiment_score_str)
+    })
 
-
-# UDF registration
+# 7. UDF registration
 extract_tickers_udf = udf(extract_tickers, StringType())
 get_sentiment_udf = udf(get_finbert_sentiment, StringType())
 to_kafka_row_udf = udf(to_kafka_payload, StringType())
 
-# Kafka schema
+# 8. Schema dati in input da Kafka
 schema = StructType([
     StructField("id", StringType(), True),
     StructField("text", StringType(), True),
     StructField("user", StringType(), True)
 ])
 
-# Read Kafka stream
+# 9. Lettura stream da Kafka
 df_raw = spark.readStream \
     .format("kafka") \
     .option("kafka.bootstrap.servers", KAFKA_BROKER) \
@@ -97,7 +89,7 @@ df_raw = spark.readStream \
     .option("startingOffsets", "latest") \
     .load()
 
-# Transform data
+# 10. Parsing + sentiment + ticker + timestamp
 df_parsed = df_raw.selectExpr("CAST(value AS STRING) as json_str") \
     .select(from_json("json_str", schema).alias("data")) \
     .select("data.*") \
@@ -105,11 +97,10 @@ df_parsed = df_raw.selectExpr("CAST(value AS STRING) as json_str") \
     .withColumn("sentiment", get_sentiment_udf(col("text"))) \
     .withColumn("timestamp", current_timestamp()) \
     .withColumn("value", to_kafka_row_udf(
-    col("user"), col("tickers"), col("sentiment"), col("timestamp").cast("string"))
-)
+        col("tickers"), col("sentiment"), col("timestamp").cast("string"))
+    )
 
-
-# Stream to Kafka
+# 11. Scrittura su Kafka (risultato finale)
 query_kafka = df_parsed.selectExpr("CAST(value AS STRING) as value") \
     .writeStream \
     .format("kafka") \
@@ -118,15 +109,14 @@ query_kafka = df_parsed.selectExpr("CAST(value AS STRING) as value") \
     .option("checkpointLocation", "/tmp/checkpoints/kafka") \
     .start()
 
-# # Stream to MinIO
-# query_minio = df_parsed.select("value") \
-#     .writeStream \
-#     .format("json") \
-#     .option("path", "s3a://bluesky-data/") \
-#     .option("checkpointLocation", "/tmp/checkpoints/minio") \
-#     .outputMode("append") \
-#     .start()
+# 12. Stampa su console per debugging
+query_console = df_parsed.select("value") \
+    .writeStream \
+    .format("console") \
+    .option("truncate", False) \
+    .option("numRows", 10) \
+    .start()
 
-# Wait for any stream to finish
+# 13. Attendi fine streaming
 query_kafka.awaitTermination()
-# query_minio.awaitTermination()
+query_console.awaitTermination()
