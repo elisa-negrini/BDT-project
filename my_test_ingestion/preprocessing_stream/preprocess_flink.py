@@ -16,7 +16,7 @@ from pandas import Timestamp
 
 
 macro_alias = {
-    "GDPC1": "gdp_real"
+    "GDPC1": "gdp_real",
     "CPIAUCSL": "cpi",
     "FEDFUNDS": "ffr",
     "DGS10": "t10y",

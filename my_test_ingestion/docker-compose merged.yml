@@ -94,6 +94,7 @@ services:
       KAFKA_SERVER: kafka:9092
     depends_on:
       - kafka
+    restart: always
   
   # Kafka producer data_finnhubnews
   kp_finnhubnews:
@@ -102,6 +103,7 @@ services:
       KAFKA_SERVER: kafka:9092
     depends_on:
       - kafka
+    restart: always
 
   # Kafka producer data_alpaca
   kp_alpaca:
@@ -110,6 +112,7 @@ services:
       KAFKA_SERVER: kafka:9092
     depends_on:
       - kafka
+    restart: always
 
   # Kafka producer bluesky
   kp_bluesky:
@@ -118,6 +121,7 @@ services:
       KAFKA_SERVER: kafka:9092
     depends_on:
       - kafka
+    restart: always
     
   # Kafka producer macrodata
   kp_macrodata:
@@ -126,6 +130,7 @@ services:
       KAFKA_SERVER: kafka:9092
     depends_on:
       - kafka
+    restart: always
 
   # Kafka consumer finnhubnews
   kc_finnhubnews:
@@ -143,6 +148,7 @@ services:
       - ./consumer_finnhubnews:/app
     working_dir: /app
     command: python consumer_finnhubnews.py
+    restart: always
 
   # # Kc sentiment bluesky
   # kafka-consumer_sentiment:
@@ -175,6 +181,7 @@ services:
       - ./consumer_alpaca:/app
     working_dir: /app
     command: python consumer_alpaca.py
+    restart: always
 
   # Kafka consumer reddit
   kc_reddit:
@@ -192,6 +199,7 @@ services:
       - ./consumer_reddit:/app
     working_dir: /app
     command: python consumer_reddit.py
+    restart: always
 
   #kafka consumer bluesky
   kc_bluesky:
@@ -209,6 +217,7 @@ services:
       - ./consumer_bluesky:/app
     working_dir: /app
     command: python consumer_bluesky.py
+    restart: always
 
   #kafka consumer macrodata
   kc_macrodata:
@@ -226,6 +235,7 @@ services:
       - ./consumer_macrodata:/app
     working_dir: /app
     command: python consumer_macrodata.py
+    restart: always
 
 
   # # historical macrodata
@@ -289,22 +299,24 @@ services:
       sentiment_bluesky.py
     environment:
       - PYSPARK_PYTHON=python3
+    restart: always
 
-  sentiment_reddit:
-    build: ./sentiment_reddit
-    depends_on:
-      - kafka
-      - spark-master
-      - spark-worker
-    volumes:
-      - ./sentiment_reddit:/app
-    working_dir: /app
-    command: >
-      spark-submit
-      --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
-      sentiment_reddit.py
-    environment:
-       - PYSPARK_PYTHON=python3
+  # sentiment_reddit:
+  #   build: ./sentiment_reddit
+  #   depends_on:
+  #     - kafka
+  #     - spark-master
+  #     - spark-worker
+  #   volumes:
+  #     - ./sentiment_reddit:/app
+  #   working_dir: /app
+  #   command: >
+  #     spark-submit
+  #     --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
+  #     sentiment_reddit.py
+  #   environment:
+  #      - PYSPARK_PYTHON=python3
+  #   restart: always
 
 
   sentiment_news:
@@ -322,19 +334,22 @@ services:
       sentiment_news.py
     environment:
        - PYSPARK_PYTHON=python3
+    restart: always
+    
+  
 
 
-  flink_preprocessor:
-    build:
-      context: ./preprocessing_stream  # <-- cartella dove sta il Dockerfile e preprocess_flink.py
-      #dockerfile: Dockerfile
-    container_name: flink_preprocessor
-    depends_on:
-      - kafka
-    #environment:
-      #- PYFLINK_GATEWAY_DISABLED=true
-    networks:
-      - flink_net
+  # flink_preprocessor:
+  #   build:
+  #     context: ./preprocessing_stream  # <-- cartella dove sta il Dockerfile e preprocess_flink.py
+  #     #dockerfile: Dockerfile
+  #   container_name: flink_preprocessor
+  #   depends_on:
+  #     - kafka
+  #   #environment:
+  #     #- PYFLINK_GATEWAY_DISABLED=true
+  #   networks:
+  #     - flink_net
 
 
   minio:
@@ -350,7 +365,12 @@ services:
      - ./data/minio:/data
     command: server /data --console-address ":9001"
 
-
+  sentiment_consumer:
+    build:
+      context: ./consumer_sentiment  # <-- Puntamento corretto alla cartella
+    depends_on:
+      - kafka
+    restart: always
 
 networks:
   flink_net:
