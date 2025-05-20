@@ -70,7 +70,7 @@ for message in consumer:
     ticker = df["ticker"].iloc[0]
 
     filename = f"stock_{df['timestamp'].iloc[0]}.parquet"
-    path = f"{S3_BUCKET}/stock/ticker={ticker}/date={date}/{filename}"
+    path = f"{S3_BUCKET}/ticker={ticker}/date={date}/{filename}"
 
     df.to_parquet(f"s3://{path}", engine="pyarrow", filesystem=fs, index=False)
     print(f"✓ Salvato: {path}")

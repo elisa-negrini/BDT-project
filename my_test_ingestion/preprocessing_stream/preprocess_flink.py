@@ -6,7 +6,7 @@ from pyflink.datastream.connectors import FlinkKafkaConsumer, FlinkKafkaProducer
 from pyflink.datastream.functions import KeyedProcessFunction, RuntimeContext
 from pyflink.common.typeinfo import Types
 from pyflink.datastream.state import MapStateDescriptor
-from datetime import datetime, timedelta, time as dtime, date
+from datetime import datetime, timezone, timedelta, time as dtime, date
 import json
 import math
 import numpy as np
@@ -42,11 +42,17 @@ class Aggregator(KeyedProcessFunction):
         self.sentiment_news_state_1d = ctx.get_map_state(MapStateDescriptor("sentiment_news_state_1d", Types.STRING(), Types.FLOAT()))
         self.sentiment_news_state_3d = ctx.get_map_state(MapStateDescriptor("sentiment_news_state_3d", Types.STRING(), Types.FLOAT()))
 
+        # General (per Reddit e Bluesky)
+        self.sentiment_general_bluesky_state_2h = ctx.get_map_state(MapStateDescriptor("sentiment_general_bluesky_state_2h", Types.STRING(), Types.FLOAT()))
+        self.sentiment_general_bluesky_state_1d = ctx.get_map_state(MapStateDescriptor("sentiment_general_bluesky_state_1d", Types.STRING(), Types.FLOAT()))
+        self.sentiment_general_reddit_state_2h = ctx.get_map_state(MapStateDescriptor("sentiment_general_reddit_state_2h", Types.STRING(), Types.FLOAT()))
+        self.sentiment_general_reddit_state_1d = ctx.get_map_state(MapStateDescriptor("sentiment_general_reddit_state_1d", Types.STRING(), Types.FLOAT()))
+        
         self.macro_state = ctx.get_map_state(MapStateDescriptor("macro_state", Types.STRING(), Types.FLOAT()))
         self.last_timer = None
 
     def _cleanup_old_entries(self, state, window_minutes):
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         threshold = now - timedelta(minutes=window_minutes)
         for k in list(state.keys()):
             try:
@@ -85,16 +91,33 @@ class Aggregator(KeyedProcessFunction):
             elif "sentiment" in data:
                 source = data.get("source")
                 sentiment_value = float(data["sentiment"])
+                tickers = data.get("ticker", [])
+                is_general = tickers == "GENERAL" or tickers == ["GENERAL"]
+
                 if source == "bluesky":
-                    self.sentiment_bluesky_state_2h.put(ts_str, sentiment_value)
-                    self.sentiment_bluesky_state_1d.put(ts_str, sentiment_value)
-                    self._cleanup_old_entries(self.sentiment_bluesky_state_2h, 120)
-                    self._cleanup_old_entries(self.sentiment_bluesky_state_1d, 1440)
+                    if is_general:
+                        self.sentiment_general_bluesky_state_2h.put(ts_str, sentiment_value)
+                        self.sentiment_general_bluesky_state_1d.put(ts_str, sentiment_value)
+                        self._cleanup_old_entries(self.sentiment_general_bluesky_state_2h, 120)
+                        self._cleanup_old_entries(self.sentiment_general_bluesky_state_1d, 1440)
+                    else:
+                        self.sentiment_bluesky_state_2h.put(ts_str, sentiment_value)
+                        self.sentiment_bluesky_state_1d.put(ts_str, sentiment_value)
+                        self._cleanup_old_entries(self.sentiment_bluesky_state_2h, 120)
+                        self._cleanup_old_entries(self.sentiment_bluesky_state_1d, 1440)
+
                 elif source == "reddit":
-                    self.sentiment_reddit_state_2h.put(ts_str, sentiment_value)
-                    self.sentiment_reddit_state_1d.put(ts_str, sentiment_value)
-                    self._cleanup_old_entries(self.sentiment_reddit_state_2h, 120)
-                    self._cleanup_old_entries(self.sentiment_reddit_state_1d, 1440)
+                    if is_general:
+                        self.sentiment_general_reddit_state_2h.put(ts_str, sentiment_value)
+                        self.sentiment_general_reddit_state_1d.put(ts_str, sentiment_value)
+                        self._cleanup_old_entries(self.sentiment_general_reddit_state_2h, 120)
+                        self._cleanup_old_entries(self.sentiment_general_reddit_state_1d, 1440)
+                    else:
+                        self.sentiment_reddit_state_2h.put(ts_str, sentiment_value)
+                        self.sentiment_reddit_state_1d.put(ts_str, sentiment_value)
+                        self._cleanup_old_entries(self.sentiment_reddit_state_2h, 120)
+                        self._cleanup_old_entries(self.sentiment_reddit_state_1d, 1440)
+
                 elif source == "news" and data.get("ticker") == "general":
                     self.sentiment_news_state_1d.put(ts_str, sentiment_value)
                     self.sentiment_news_state_3d.put(ts_str, sentiment_value)
@@ -117,7 +140,8 @@ class Aggregator(KeyedProcessFunction):
 
     def on_timer(self, timestamp, ctx: 'KeyedProcessFunction.OnTimerContext'):
         try:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
+
             ts_str = now.isoformat()
             key = ctx.get_current_key()
 
@@ -150,6 +174,10 @@ class Aggregator(KeyedProcessFunction):
                 "sentiment_reddit_mean_1day": safe_mean_sentiment(self.sentiment_reddit_state_1d.values()),
                 "sentiment_news_mean_1day": safe_mean_sentiment(self.sentiment_news_state_1d.values()),
                 "sentiment_news_mean_3days": safe_mean_sentiment(self.sentiment_news_state_3d.values()),
+                "sentiment_general_bluesky_mean_2hours": safe_mean_sentiment(self.sentiment_general_bluesky_state_2h.values()),
+                "sentiment_general_bluesky_mean_1day": safe_mean_sentiment(self.sentiment_general_bluesky_state_1d.values()),
+                "sentiment_general_reddit_mean_2hours": safe_mean_sentiment(self.sentiment_general_reddit_state_2h.values()),
+                "sentiment_general_reddit_mean_1day": safe_mean_sentiment(self.sentiment_general_reddit_state_1d.values()),
                 "minutes_since_open": (now - now.replace(hour=13, minute=30, second=0, microsecond=0)).total_seconds() // 60,
                 "day_of_week": now.weekday(),
                 "day_of_month": now.day,
@@ -197,7 +225,7 @@ if __name__ == "__main__":
     }
 
     consumer = FlinkKafkaConsumer(
-        topics=["stock_trades", "macrodata"],
+        topics=["stock_trades", "macrodata", "bluesky_sentiment", "reddit_sentiment", "news_sentiment"],
         deserialization_schema=SimpleStringSchema(),
         properties=kafka_props
     )

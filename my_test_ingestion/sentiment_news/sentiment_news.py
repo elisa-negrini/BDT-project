@@ -79,9 +79,9 @@ df_parsed = df_raw.selectExpr("CAST(value AS STRING) as json_str") \
     .select("data.*") \
     .withColumn("text", concat_ws(" ", col("headline"), col("summary"))) \
     .withColumn("sentiment_score", get_sentiment_udf(col("text"))) \
-    .withColumn("timestamp", current_timestamp()) \
+    .withColumn("timestamp", col("date")) \
     .withColumn("value", to_kafka_row_udf(
-        col("symbol_requested"), col("sentiment_score"), col("timestamp").cast("string"))
+        col("symbol_requested"), col("sentiment_score"), col("timestamp"))
     )
 
 # === Write to Kafka ===

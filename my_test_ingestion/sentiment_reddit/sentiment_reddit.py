@@ -42,7 +42,7 @@ COMPANY_TICKER_MAP = {
     "mastercard": "MA", "broadcom": "AVGO", "lilly": "LLY", "jpmorgan": "JPM", "home depot": "HD",
     "chevron": "CVX", "merck": "MRK", "pepsico": "PEP", "coca cola": "KO", "abbvie": "ABBV",
     "costco": "COST", "adobe": "ADBE", "walmart": "WMT", "bank of america": "BAC",
-    "salesforce": "CRM", "mcdonald": "MCD", "thermo fisher": "TMO"
+    "salesforce": "CRM", "mcdonald": "MCD", "thermo fisher": "TMO", "ibm" : "IBM"
 }
 
 # === Lazy-loaded FinBERT ===
@@ -91,19 +91,21 @@ def contains_finance_keywords(text):
     text_lower = text.lower()
     return any(keyword in text_lower for keyword in FINANCE_KEYWORDS)
 
-finance_filter_udf = udf(contains_finance_keywords, BooleanType())
+
 
 
 # === UDF Registration ===
 extract_tickers_udf = udf(extract_tickers, StringType())
 get_sentiment_udf = udf(compute_sentiment_score, StringType())
 to_kafka_row_udf = udf(to_kafka_payload, StringType())
+finance_filter_udf = udf(contains_finance_keywords, BooleanType())
 
 # === Kafka Schema ===
 schema = StructType([
     StructField("id", StringType(), True),
     StructField("text", StringType(), True),
-    StructField("user", StringType(), True)
+    StructField("user", StringType(), True),
+    StructField("created_utc", StringType(), True)  # timestamp originale Reddit
 ])
 
 # === Read from Kafka ===
@@ -118,13 +120,13 @@ df_raw = spark.readStream \
 df_parsed = df_raw.selectExpr("CAST(value AS STRING) as json_str") \
     .select(from_json("json_str", schema).alias("data")) \
     .select("data.*") \
-    .filter(finance_filter_udf(col("text"))) \
     .withColumn("tickers", extract_tickers_udf(col("text"))) \
     .withColumn("sentiment_score", get_sentiment_udf(col("text"))) \
-    .withColumn("timestamp", current_timestamp()) \
+    .withColumn("timestamp", col("created_utc")) \
     .withColumn("value", to_kafka_row_udf(
-        col("tickers"), col("sentiment_score"), col("timestamp").cast("string"))
+        col("tickers"), col("sentiment_score"), col("timestamp"))
     )
+    #.filter(finance_filter_udf(col("text")))
 
 # === Write to Kafka ===
 query_kafka = df_parsed.selectExpr("CAST(value AS STRING) as value") \

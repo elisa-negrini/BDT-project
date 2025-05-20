@@ -26,7 +26,7 @@ COMPANY_TICKER_MAP = {
     "mastercard": "MA", "broadcom": "AVGO", "lilly": "LLY", "jpmorgan": "JPM", "home depot": "HD",
     "chevron": "CVX", "merck": "MRK", "pepsico": "PEP", "coca cola": "KO", "abbvie": "ABBV",
     "costco": "COST", "adobe": "ADBE", "walmart": "WMT", "bank of america": "BAC",
-    "salesforce": "CRM", "mcdonald": "MCD", "thermo fisher": "TMO"
+    "salesforce": "CRM", "mcdonald": "MCD", "thermo fisher": "TMO", "ibm" : "IBM"
 }
 
 # 4. Lazy-load modello FinBERT
@@ -65,6 +65,7 @@ def extract_tickers(text):
 def to_kafka_payload(tickers_json, sentiment_score_str, timestamp):
     return json.dumps({
         "timestamp": timestamp,
+        "social": "bluesky",
         "ticker": json.loads(tickers_json),
         "sentiment": float(sentiment_score_str)
     })
@@ -78,7 +79,8 @@ to_kafka_row_udf = udf(to_kafka_payload, StringType())
 schema = StructType([
     StructField("id", StringType(), True),
     StructField("text", StringType(), True),
-    StructField("user", StringType(), True)
+    StructField("user", StringType(), True),
+    StructField("created_at", StringType(), True) 
 ])
 
 # 9. Lettura stream da Kafka
@@ -95,9 +97,9 @@ df_parsed = df_raw.selectExpr("CAST(value AS STRING) as json_str") \
     .select("data.*") \
     .withColumn("tickers", extract_tickers_udf(col("text"))) \
     .withColumn("sentiment", get_sentiment_udf(col("text"))) \
-    .withColumn("timestamp", current_timestamp()) \
+    .withColumn("timestamp", col("created_at")) \
     .withColumn("value", to_kafka_row_udf(
-        col("tickers"), col("sentiment"), col("timestamp").cast("string"))
+        col("tickers"), col("sentiment"), col("timestamp"))
     )
 
 # 11. Scrittura su Kafka (risultato finale)

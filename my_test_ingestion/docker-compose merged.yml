@@ -301,22 +301,22 @@ services:
       - PYSPARK_PYTHON=python3
     restart: always
 
-  # sentiment_reddit:
-  #   build: ./sentiment_reddit
-  #   depends_on:
-  #     - kafka
-  #     - spark-master
-  #     - spark-worker
-  #   volumes:
-  #     - ./sentiment_reddit:/app
-  #   working_dir: /app
-  #   command: >
-  #     spark-submit
-  #     --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
-  #     sentiment_reddit.py
-  #   environment:
-  #      - PYSPARK_PYTHON=python3
-  #   restart: always
+  sentiment_reddit:
+    build: ./sentiment_reddit
+    depends_on:
+      - kafka
+      - spark-master
+      - spark-worker
+    volumes:
+      - ./sentiment_reddit:/app
+    working_dir: /app
+    command: >
+      spark-submit
+      --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
+      sentiment_reddit.py
+    environment:
+       - PYSPARK_PYTHON=python3
+    restart: always
 
 
   sentiment_news:
@@ -337,20 +337,41 @@ services:
     restart: always
     
   
+  sentiment_consumer:
+    build:
+      context: ./consumer_sentiment
+    depends_on:
+      - kafka
+      - minio  # <-- Assicurati che ci sia un servizio "minio" definito
+    environment:
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: admin
+      S3_SECRET_KEY: admin123
+      S3_BUCKET: sentiment-data
+    networks:
+      - default  # o il nome della rete Docker se ne hai definita una custom
+    restart: always
 
 
-  # flink_preprocessor:
-  #   build:
-  #     context: ./preprocessing_stream  # <-- cartella dove sta il Dockerfile e preprocess_flink.py
-  #     #dockerfile: Dockerfile
-  #   container_name: flink_preprocessor
-  #   depends_on:
-  #     - kafka
-  #   #environment:
-  #     #- PYFLINK_GATEWAY_DISABLED=true
-  #   networks:
-  #     - flink_net
+  flink_preprocessor:
+    build:
+      context: ./preprocessing_stream 
+      #dockerfile: Dockerfile
+    container_name: flink_preprocessor
+    depends_on:
+      - kafka
+    #environment:
+      #- PYFLINK_GATEWAY_DISABLED=true
+    networks:
+      - flink_net
 
+
+  predictor_layer:
+    build:
+      context: ./prediction_layer 
+    depends_on:
+      - kafka
+    restart: always
 
   minio:
     image: minio/minio
@@ -365,12 +386,6 @@ services:
      - ./data/minio:/data
     command: server /data --console-address ":9001"
 
-  sentiment_consumer:
-    build:
-      context: ./consumer_sentiment  # <-- Puntamento corretto alla cartella
-    depends_on:
-      - kafka
-    restart: always
 
 networks:
   flink_net:
