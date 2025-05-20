@@ -1,3 +1,4 @@
+
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:latest
@@ -76,18 +77,22 @@ services:
   spark-writer:
     build: ./spark-writer
     depends_on:
-       - spark-master
-       - spark-worker
-       - kafka
-       - minio
+      - spark-master
+      - spark-worker
+      - kafka
+      - minio
     environment:
-      AWS_ACCESS_KEY_ID: admin
-      AWS_SECRET_ACCESS_KEY: admin123
+      AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
+      API_KEY_ALPACA: ${API_KEY_ALPACA}
+      API_SECRET_ALPACA: ${API_SECRET_ALPACA}
+      API_KEY_MACRO: ${API_KEY_MACRO}
+      BASE_URL_MACRO: ${BASE_URL_MACRO}
       SPARK_PROPERTIES: |
         {
-          "spark.hadoop.fs.s3a.endpoint":"http://minio:9000",
-          "spark.hadoop.fs.s3a.path.style.access":"true",
-          "spark.hadoop.fs.s3a.impl":"org.apache.hadoop.fs.s3a.S3AFileSystem"
+          "spark.hadoop.fs.s3a.endpoint": "${MINIO_ENDPOINT}",
+          "spark.hadoop.fs.s3a.path.style.access": "true",
+          "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem"
         }
     volumes:
       - ./spark-writer:/app
@@ -100,15 +105,20 @@ services:
   kp_reddit:
     build: ./producer_reddit
     environment:
-      KAFKA_SERVER: kafka:9092
+      KAFKA_SERVER: ${KAFKA_SERVER}
+      REDDIT_CLIENT_ID: ${REDDIT_CLIENT_ID}
+      REDDIT_CLIENT_SECRET: ${REDDIT_CLIENT_SECRET}
+      REDDIT_USER_AGENT: ${REDDIT_USER_AGENT}
     depends_on:
       - kafka
+
   
   # Kafka producer data_finnhubnews
   kp_finnhubnews:
     build: ./producer_finnhubnews
     environment:
-      KAFKA_SERVER: kafka:9092
+      KAFKA_SERVER: ${KAFKA_SERVER}
+      API_KEY_FINNHUB: ${API_KEY_FINNHUB}
     depends_on:
       - kafka
 
@@ -116,7 +126,9 @@ services:
   kp_alpaca:
     build: ./producer_alpaca
     environment:
-      KAFKA_SERVER: kafka:9092
+      KAFKA_SERVER: ${KAFKA_SERVER}
+      API_KEY_ALPACA: ${API_KEY_ALPACA}
+      API_SECRET_ALPACA: ${API_SECRET_ALPACA}
     depends_on:
       - kafka
 
@@ -124,7 +136,10 @@ services:
   kp_bluesky:
     build: ./producer_bluesky
     environment:
-      KAFKA_SERVER: kafka:9092
+      IDENTIFIER: ${IDENTIFIER}
+      PASSWORD: ${PASSWORD}
+      BLUESKY_URL: ${BLUESKY_URL}
+      KAFKA_SERVER: ${KAFKA_SERVER}
     depends_on:
       - kafka
     
@@ -132,7 +147,9 @@ services:
   kp_macrodata:
     build: ./producer_macrodata
     environment:
-      KAFKA_SERVER: kafka:9092
+      KAFKA_SERVER: ${KAFKA_SERVER}
+      API_KEY_MACRO: ${API_KEY_MACRO}
+      BASE_URL_MACRO: ${BASE_URL_MACRO}
     depends_on:
       - kafka
 
@@ -140,11 +157,10 @@ services:
   kc_finnhubnews:
     build: ./consumer_finnhubnews
     environment:
-      KAFKA_SERVER: kafka:9092
-      S3_ENDPOINT: http://minio:9000
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: admin123
-      S3_BUCKET: finnhub-data
+      KAFKA_SERVER: ${KAFKA_SERVER}
+      S3_ENDPOINT: ${MINIO_ENDPOINT}
+      S3_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      S3_SECRET_KEY: ${MINIO_SECRET_KEY}
     depends_on:
       - kafka
       - minio
@@ -157,8 +173,7 @@ services:
   kafka-consumer_sentiment:
     build: ./sentiment_bluesky
     environment:
-      KAFKA_SERVER: kafka:9092
-      SOURCE_TOPIC: bluesky
+      KAFKA_SERVER: ${KAFKA_SERVER}
       # Optional: Uncomment if you have a target topic
       # TARGET_TOPIC: bluesky_sentiment
     depends_on:
@@ -175,10 +190,10 @@ services:
       - kafka
       - minio
     environment:
-      KAFKA_SERVER: kafka:9092
-      S3_ENDPOINT: http://minio:9000
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: admin123
+      KAFKA_SERVER: ${KAFKA_SERVER}
+      S3_ENDPOINT: ${MINIO_ENDPOINT}
+      S3_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      S3_SECRET_KEY: ${MINIO_SECRET_KEY}
       S3_BUCKET: stock-data  # Usa il nome del bucket che vuoi utilizzare
     volumes:
       - ./consumer_alpaca:/app
@@ -189,10 +204,10 @@ services:
   kc_reddit:
     build: ./consumer_reddit 
     environment:
-      KAFKA_SERVER: kafka:9092
-      S3_ENDPOINT: http://minio:9000
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: admin123
+      KAFKA_SERVER: ${KAFKA_SERVER}
+      S3_ENDPOINT: ${MINIO_ENDPOINT}
+      S3_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      S3_SECRET_KEY: ${MINIO_SECRET_KEY}
       S3_BUCKET: reddit-data
     depends_on:
       - kafka
@@ -209,10 +224,10 @@ services:
       - kafka
       - minio
     environment:
-      KAFKA_SERVER: kafka:9092
-      S3_ENDPOINT: http://minio:9000
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: admin123
+      KAFKA_SERVER: ${KAFKA_SERVER}
+      S3_ENDPOINT: ${MINIO_ENDPOINT}
+      S3_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      S3_SECRET_KEY: ${MINIO_SECRET_KEY}
       S3_BUCKET: bluesky-data
     volumes:
       - ./consumer_bluesky:/app
@@ -226,10 +241,10 @@ services:
       - kafka
       - minio
     environment:
-      KAFKA_SERVER: kafka:9092
-      S3_ENDPOINT: http://minio:9000
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: admin123
+      KAFKA_SERVER: ${KAFKA_SERVER}
+      S3_ENDPOINT: ${MINIO_ENDPOINT}
+      S3_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      S3_SECRET_KEY: ${MINIO_SECRET_KEY}
       S3_BUCKET: macro-data
     volumes:
       - ./consumer_macrodata:/app
@@ -243,11 +258,11 @@ services:
     depends_on:
       - minio
     environment:
-      ALPACA_API_KEY: PKCAB7RKX3K5IH490XM6
-      ALPACA_SECRET_KEY: j0t7VFg1B1Ew2vzUIPe4GssT7rAkmvxXpczi5htP
-      S3_ENDPOINT: http://minio:9000
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: admin123
+      ALPACA_API_KEY: ${API_KEY_ALPACA}
+      ALPACA_SECRET_KEY: ${API_SECRET_ALPACA}
+      S3_ENDPOINT: ${MINIO_ENDPOINT}
+      S3_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      S3_SECRET_KEY: ${MINIO_SECRET_KEY}
       S3_BUCKET: historical_alpaca
     volumes:
       - ./historical_alpaca:/app
@@ -262,9 +277,9 @@ services:
     depends_on:
       - minio
     environment:
-      S3_ENDPOINT: http://minio:9000
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: admin123
+      S3_ENDPOINT: ${MINIO_ENDPOINT}
+      S3_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      S3_SECRET_KEY: ${MINIO_SECRET_KEY}
       S3_BUCKET: historical_data
     volumes:
       - ./historical_data:/app
@@ -283,9 +298,9 @@ services:
       - spark-master
       - minio
     environment:
-      S3_ENDPOINT: http://minio:9000
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: admin123
+      S3_ENDPOINT: ${MINIO_ENDPOINT}
+      S3_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      S3_SECRET_KEY: ${MINIO_SECRET_KEY}
       S3_BUCKET: macro-data
     networks:
       - default
@@ -296,9 +311,9 @@ services:
       context: ./historical_company
     container_name: h_company
     environment:
-      MINIO_URL: minio:9000
-      MINIO_ACCESS_KEY: admin
-      MINIO_SECRET_KEY: admin123
+      MINIO_URL: ${MINIO_ENDPOINT}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
     depends_on:
       - minio
 
@@ -309,8 +324,8 @@ services:
      - "9000:9000"   # S3 API
      - "9001:9001"   # MinIO Console (GUI)
     environment:
-      MINIO_ROOT_USER: admin
-      MINIO_ROOT_PASSWORD: admin123
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
     volumes:
      - ./data/minio:/data
     command: server /data --console-address ":9001"
