@@ -1,31 +1,40 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import udf, col, from_json, current_timestamp
-from pyspark.sql.types import StringType, StructType, StructField
+from pyspark.sql.types import StringType, StructType, StructField, BooleanType
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from scipy.special import softmax
 import torch
 import json
 import re
 
-# Spark Session
+# === Lista di 100 parole chiave finanza ===
+FINANCE_KEYWORDS = [
+    "stock", "stocks", "market", "finance", "invest", "investment", "money", "trading",
+    "nasdaq", "nyse", "earnings", "profits", "loss", "dividend", "portfolio", "equity",
+    "bond", "inflation", "deflation", "capital", "index", "etf", "mutual fund", "analyst",
+    "bull", "bear", "asset", "liability", "valuation", "ipo", "margin", "short", "long",
+    "call", "put", "option", "derivative", "buy", "sell", "share", "yield", "interest rate",
+    "revenue", "debt", "economy", "financial", "growth", "forex", "crypto", "bitcoin",
+    "dividends", "futures", "hedge", "tax", "return", "liquidity", "volatility", "leverage",
+    "securities", "speculation", "regulation", "currency", "exchange", "blue chip", "valuation",
+    "real estate", "retirement", "pension", "401k", "income", "capital gains", "dow", "s&p",
+    "nasdaq 100", "earnings report", "quarterly", "guidance", "broker", "buyback", "ceo",
+    "treasury", "yield curve", "fed", "interest", "devaluation", "recession", "gdp", "macroeconomics",
+    "microeconomics", "finance news", "stonks", "robinhood", "option chain", "day trade", "swing trade"
+]
+
+# === Spark Session ===
 spark = SparkSession.builder \
     .appName("SentimentReddit") \
     .getOrCreate()
 spark.sparkContext.setLogLevel("WARN")
 
-# # MinIO config (S3 compatible)
-# spark._jsc.hadoopConfiguration().set("fs.s3a.endpoint", "http://minio:9000")
-# spark._jsc.hadoopConfiguration().set("fs.s3a.access.key", "admin")
-# spark._jsc.hadoopConfiguration().set("fs.s3a.secret.key", "admin123")
-# spark._jsc.hadoopConfiguration().set("fs.s3a.path.style.access", "true")
-# spark._jsc.hadoopConfiguration().set("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-
-# Kafka config
+# === Kafka Config ===
 SOURCE_TOPIC = "reddit"
 TARGET_TOPIC = "reddit_sentiment"
 KAFKA_BROKER = "kafka:9092"
 
-# Ticker mapping
+# === Company Name to Ticker Map ===
 COMPANY_TICKER_MAP = {
     "apple": "AAPL", "microsoft": "MSFT", "google": "GOOGL", "amazon": "AMZN", "nvidia": "NVDA",
     "meta": "META", "facebook": "META", "berkshire": "BRK.B", "tesla": "TSLA", "unitedhealth": "UNH",
@@ -36,24 +45,24 @@ COMPANY_TICKER_MAP = {
     "salesforce": "CRM", "mcdonald": "MCD", "thermo fisher": "TMO"
 }
 
-# Lazy-loaded model
+# === Lazy-loaded FinBERT ===
 tokenizer = None
 model = None
 
-def get_finbert_sentiment(text):
-    global tokenizer, model
-    if tokenizer is None or model is None:
-        tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
-        model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
-    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
-    with torch.no_grad():
-        logits = model(**inputs).logits
-    probs = softmax(logits.numpy()[0])
-    return json.dumps({
-        "positive_prob": float(probs[0]),
-        "neutral_prob": float(probs[1]),
-        "negative_prob": float(probs[2])
-    })
+def compute_sentiment_score(text):
+    try:
+        global tokenizer, model
+        if tokenizer is None or model is None:
+            tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
+            model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
+        inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
+        with torch.no_grad():
+            logits = model(**inputs).logits
+        probs = softmax(logits.numpy()[0])
+        sentiment_score = float(probs[0]) - float(probs[2])
+        return str(round(sentiment_score, 4))
+    except Exception:
+        return "0.0"
 
 def extract_tickers(text):
     tickers = set()
@@ -67,30 +76,37 @@ def extract_tickers(text):
             tickers.add(ticker)
     return json.dumps(list(tickers) if tickers else ["GENERAL"])
 
-def to_kafka_payload(id, text, user, tickers_json, sentiment_json, timestamp):
-    data = {
-        "id": id,
-        "text": text,
-        "user": user,
+def to_kafka_payload(tickers_json, sentiment_score, timestamp):
+    return json.dumps({
+        "timestamp": timestamp,
+        "social": "reddit",
         "ticker": json.loads(tickers_json),
-        **json.loads(sentiment_json),
-        "timestamp": timestamp
-    }
-    return json.dumps(data)
+        "sentiment_score": float(sentiment_score)
+    })
 
-# UDF registration
+
+def contains_finance_keywords(text):
+    if text is None:
+        return False
+    text_lower = text.lower()
+    return any(keyword in text_lower for keyword in FINANCE_KEYWORDS)
+
+finance_filter_udf = udf(contains_finance_keywords, BooleanType())
+
+
+# === UDF Registration ===
 extract_tickers_udf = udf(extract_tickers, StringType())
-get_sentiment_udf = udf(get_finbert_sentiment, StringType())
+get_sentiment_udf = udf(compute_sentiment_score, StringType())
 to_kafka_row_udf = udf(to_kafka_payload, StringType())
 
-# Kafka schema
+# === Kafka Schema ===
 schema = StructType([
     StructField("id", StringType(), True),
     StructField("text", StringType(), True),
     StructField("user", StringType(), True)
 ])
 
-# Read Kafka stream
+# === Read from Kafka ===
 df_raw = spark.readStream \
     .format("kafka") \
     .option("kafka.bootstrap.servers", KAFKA_BROKER) \
@@ -98,34 +114,35 @@ df_raw = spark.readStream \
     .option("startingOffsets", "latest") \
     .load()
 
-# Transform data
+# === Process Stream ===
 df_parsed = df_raw.selectExpr("CAST(value AS STRING) as json_str") \
     .select(from_json("json_str", schema).alias("data")) \
     .select("data.*") \
+    .filter(finance_filter_udf(col("text"))) \
     .withColumn("tickers", extract_tickers_udf(col("text"))) \
-    .withColumn("sentiment", get_sentiment_udf(col("text"))) \
+    .withColumn("sentiment_score", get_sentiment_udf(col("text"))) \
     .withColumn("timestamp", current_timestamp()) \
     .withColumn("value", to_kafka_row_udf(
-        col("id"), col("text"), col("user"), col("tickers"), col("sentiment"), col("timestamp").cast("string"))
+        col("tickers"), col("sentiment_score"), col("timestamp").cast("string"))
     )
 
-# Stream to Kafka
+# === Write to Kafka ===
 query_kafka = df_parsed.selectExpr("CAST(value AS STRING) as value") \
     .writeStream \
     .format("kafka") \
     .option("kafka.bootstrap.servers", KAFKA_BROKER) \
     .option("topic", TARGET_TOPIC) \
-    .option("checkpointLocation", "/tmp/checkpoints/kafka") \
+    .option("checkpointLocation", "/tmp/checkpoints/reddit_kafka") \
     .start()
 
-# # Stream to MinIO
-# query_minio = df_parsed.select("value") \
-#     .writeStream \
-#     .format("json") \
-#     .option("path", "s3a://bluesky-data/") \
-#     .option("checkpointLocation", "/tmp/checkpoints/minio") \
-#     .outputMode("append") \
-#     .start()
+# === Also print to console for debugging ===
+query_console = df_parsed.select("value") \
+    .writeStream \
+    .format("console") \
+    .option("truncate", False) \
+    .outputMode("append") \
+    .start()
 
-# Wait for any stream to finish
+# === Wait for termination ===
 query_kafka.awaitTermination()
+query_console.awaitTermination()

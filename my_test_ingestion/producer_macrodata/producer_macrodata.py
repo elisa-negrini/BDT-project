@@ -16,17 +16,13 @@ BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 
 # Serie FRED
 series_dict = {
-    "GDP": "gdp_nominal",
     "GDPC1": "gdp_real",
-    "A191RL1Q225SBEA": "gdp_qoq",
     "CPIAUCSL": "cpi",
-    "CPILFESL": "cpi_core",
     "FEDFUNDS": "ffr",
     "DGS10": "t10y",
     "DGS2": "t2y",
     "T10Y2Y": "spread_10y_2y",
-    "UNRATE": "unemployment",
-    "UMCSENT": "sentiment"
+    "UNRATE": "unemployment"
 }
 
 series_ids = list(series_dict.keys())
@@ -36,7 +32,6 @@ seen_timestamps = {alias: set() for alias in series_dict.values()}
 
 # Fissa la data di partenza a oggi, eseguito una sola volta
 today = datetime.today().strftime('%Y-%m-%d')
-ten_days_ago = (datetime.today() - timedelta(days=10)).strftime('%Y-%m-%d')
 
 # Connessione a Kafka con retry
 def connect_kafka():
@@ -54,10 +49,31 @@ def connect_kafka():
 
 producer = connect_kafka()
 
+# Inizializza seen_timestamps con l'ultima osservazione disponibile per ogni serie
+def initialize_seen_timestamps():
+    print("📌 Inizializzazione: recupero ultimo valore per ogni serie FRED...")
+    for series_id, alias in series_dict.items():
+        url = f"{BASE_URL}?series_id={series_id}&api_key={API_KEY}&file_type=json&sort_order=desc&limit=1"
+        try:
+            response = requests.get(url)
+            if response.status_code == 200:
+                data = response.json().get("observations", [])
+                if data:
+                    latest_date = data[0]["date"]
+                    seen_timestamps[alias].add(latest_date)
+                    print(f"🔹 {alias} → Ultima data inizializzata: {latest_date}")
+                else:
+                    print(f"⚠️ Nessuna osservazione trovata per {series_id}")
+            else:
+                print(f"❌ Errore API iniziale {series_id} - status {response.status_code}")
+        except Exception as e:
+            print(f"❌ Errore inizializzazione {series_id}: {e}")
+
+
 # Funzione per fetch e invio
 def fetch_and_send():
     for series_id, alias in series_dict.items():
-        url = f"{BASE_URL}?series_id={series_id}&api_key={API_KEY}&file_type=json&observation_start={ten_days_ago}"
+        url = f"{BASE_URL}?series_id={series_id}&api_key={API_KEY}&file_type=json&observation_start={today}"
         try:
             response = requests.get(url)
             if response.status_code == 200:
@@ -82,6 +98,10 @@ def fetch_and_send():
             print(f"❌ Errore durante la richiesta per {series_id}: {e}")
 
 # Loop continuo con sleep di 1 ora
+
+# Inizializza i timestamp visti prima del loop
+initialize_seen_timestamps()
+
 while True:
     print("🔄 Avvio fetch dati FRED...")
     fetch_and_send()
