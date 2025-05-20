@@ -85,6 +85,8 @@ services:
   #   ports:
   #     - "8084:8081"  # UI access via http://localhost:8083
   
+
+
   # Kafka producer data_reddit
   kp_reddit:
     build: ./producer_reddit
@@ -142,20 +144,20 @@ services:
     working_dir: /app
     command: python consumer_finnhubnews.py
 
-  # Kc sentiment bluesky
-  kafka-consumer_sentiment:
-    build: ./sentiment_bluesky
-    environment:
-      KAFKA_SERVER: kafka:9092
-      SOURCE_TOPIC: bluesky
-      # Optional: Uncomment if you have a target topic
-      # TARGET_TOPIC: bluesky_sentiment
-    depends_on:
-      - kafka
-    volumes:
-      - ./sentiment_bluesky:/app
-    working_dir: /app
-    command: python sentiment_bluesky.py
+  # # Kc sentiment bluesky
+  # kafka-consumer_sentiment:
+  #   build: ./sentiment_bluesky
+  #   environment:
+  #     KAFKA_SERVER: kafka:9092
+  #     SOURCE_TOPIC: bluesky
+  #     # Optional: Uncomment if you have a target topic
+  #     # TARGET_TOPIC: bluesky_sentiment
+  #   depends_on:
+  #     - kafka
+  #   volumes:
+  #     - ./sentiment_bluesky:/app
+  #   working_dir: /app
+  #   command: python sentiment_bluesky.py
 
   # Kafka consumer alpaca
   kc_alpaca:
@@ -242,22 +244,22 @@ services:
   #   networks:
   #     - default
 
-  # historical alpaca
-  h_alpaca:
-    build:
-      context: ./historical_alpaca
-    container_name: h_alpaca
-    depends_on:
-      - spark-master
-      - minio
-    environment:
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: admin
-      MINIO_SECRET_KEY: admin123
-      MINIO_BUCKET: historical-data
-      ALPACA_API_KEY: PKLJ33WNVLC4SOZQKOB1
-      ALPACA_SECRET_KEY: ctJiahjzv11ihTZoNRkmOupIzbnwsYkasFMCJekt
-    restart: "no"
+  # # historical alpaca
+  # h_alpaca:
+  #   build:
+  #     context: ./historical_alpaca
+  #   container_name: h_alpaca
+  #   depends_on:
+  #     - spark-master
+  #     - minio
+  #   environment:
+  #     MINIO_ENDPOINT: minio:9000
+  #     MINIO_ACCESS_KEY: admin
+  #     MINIO_SECRET_KEY: admin123
+  #     MINIO_BUCKET: historical-data
+  #     ALPACA_API_KEY: PKLJ33WNVLC4SOZQKOB1
+  #     ALPACA_SECRET_KEY: ctJiahjzv11ihTZoNRkmOupIzbnwsYkasFMCJekt
+  #   restart: "no"
 
   # historical company
   h_company:
@@ -270,6 +272,69 @@ services:
       MINIO_SECRET_KEY: admin123
     depends_on:
       - minio
+
+  # Kafka consumer sentiment
+  sentiment_bluesky:
+    build: ./sentiment_bluesky
+    depends_on:
+      - kafka
+      - spark-master
+      - spark-worker
+    volumes:
+      - ./sentiment_bluesky:/app
+    working_dir: /app
+    command: >
+      spark-submit
+      --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
+      sentiment_bluesky.py
+    environment:
+      - PYSPARK_PYTHON=python3
+
+  sentiment_reddit:
+    build: ./sentiment_reddit
+    depends_on:
+      - kafka
+      - spark-master
+      - spark-worker
+    volumes:
+      - ./sentiment_reddit:/app
+    working_dir: /app
+    command: >
+      spark-submit
+      --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
+      sentiment_reddit.py
+    environment:
+       - PYSPARK_PYTHON=python3
+
+
+  sentiment_news:
+    build: ./sentiment_news
+    depends_on:
+      - kafka
+      - spark-master
+      - spark-worker
+    volumes:
+      - ./sentiment_news:/app
+    working_dir: /app
+    command: >
+      spark-submit
+      --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
+      sentiment_news.py
+    environment:
+       - PYSPARK_PYTHON=python3
+
+
+  flink_preprocessor:
+    build:
+      context: ./preprocessing_stream  # <-- cartella dove sta il Dockerfile e preprocess_flink.py
+      #dockerfile: Dockerfile
+    container_name: flink_preprocessor
+    depends_on:
+      - kafka
+    #environment:
+      #- PYFLINK_GATEWAY_DISABLED=true
+    networks:
+      - flink_net
 
 
   minio:
@@ -288,8 +353,12 @@ services:
 
 
 networks:
+  flink_net:
+    driver: bridge
+
   minio_network:
     driver: bridge
+
 
 
   # spark-app:
