@@ -1,0 +1,5 @@
+streamlit
+kafka-python
+pandas
+plotly
+streamlit-autorefresh
