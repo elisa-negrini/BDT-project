@@ -16,14 +16,15 @@ conf_producer = {
 consumer = Consumer(conf_consumer)
 producer = Producer(conf_producer)
 
-consumer.subscribe(['aggregated_data'])
+consumer.subscribe(['stock_trades'])
 
-print("✅ Predictor in ascolto su 'aggregated_data'...")
+print("✅ Predictor in ascolto su 'stock_trades'...")
 
-def compute_target_timestamp(iso_ts):
+def increment_minute_iso8601(timestamp_str):
     try:
-        dt = datetime.fromisoformat(iso_ts)
-        return (dt + timedelta(minutes=1)).isoformat()
+        dt = datetime.fromisoformat(timestamp_str)
+        dt_next = dt + timedelta(minutes=1)
+        return dt_next.isoformat()
     except ValueError:
         return None
 
@@ -41,26 +42,26 @@ try:
             data = json.loads(msg.value().decode('utf-8'))
             ticker = data.get("ticker", "unknown")
             timestamp = data.get("timestamp")
-            price = data.get("price_mean_1min")
+            price = data.get("price")
 
             if timestamp and price is not None:
-                target_timestamp = compute_target_timestamp(timestamp)
-                if not target_timestamp:
+                predicted_price = price  # modello banalissimo
+                predicted_timestamp = increment_minute_iso8601(timestamp)
+
+                if predicted_timestamp:
+                    prediction_data = {
+                        "ticker": ticker,
+                        "target-timestamp": predicted_timestamp,
+                        "price": predicted_price
+                    }
+
+                    producer.produce('prediction', json.dumps(prediction_data).encode('utf-8'))
+                    producer.flush()
+                    print(f"📤 Prediction inviata: {prediction_data}")
+                else:
                     print(f"⚠️ Timestamp non valido: {timestamp}")
-                    continue
-
-                prediction_data = {
-                    "ticker": ticker,
-                    "target_timestamp": target_timestamp,
-                    "price": price
-                }
-
-                producer.produce('prediction', json.dumps(prediction_data).encode('utf-8'))
-                producer.flush()
-
-                print(f"📤 Predizione inviata: {prediction_data}")
             else:
-                print("⚠️ Dati mancanti nel messaggio.")
+                print("⚠️ Messaggio incompleto (timestamp o price mancante).")
 
         except json.JSONDecodeError:
             print("⚠️ Messaggio non decodificabile come JSON.")
