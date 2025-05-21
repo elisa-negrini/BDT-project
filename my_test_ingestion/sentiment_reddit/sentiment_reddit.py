@@ -1,11 +1,12 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import udf, col, from_json, current_timestamp
+from pyspark.sql.functions import udf, col, from_json, current_timestamp,  from_unixtime, date_format
 from pyspark.sql.types import StringType, StructType, StructField, BooleanType
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from scipy.special import softmax
 import torch
 import json
 import re
+
 
 # === Lista di 100 parole chiave finanza ===
 FINANCE_KEYWORDS = [
@@ -113,7 +114,7 @@ df_raw = spark.readStream \
     .format("kafka") \
     .option("kafka.bootstrap.servers", KAFKA_BROKER) \
     .option("subscribe", SOURCE_TOPIC) \
-    .option("startingOffsets", "latest") \
+    .option("startingOffsets", "earlier") \
     .load()
 
 # === Process Stream ===
@@ -122,7 +123,7 @@ df_parsed = df_raw.selectExpr("CAST(value AS STRING) as json_str") \
     .select("data.*") \
     .withColumn("tickers", extract_tickers_udf(col("text"))) \
     .withColumn("sentiment_score", get_sentiment_udf(col("text"))) \
-    .withColumn("timestamp", col("created_utc")) \
+    .withColumn("timestamp", date_format(from_unixtime(col("created_utc").cast("double")), "yyyy-MM-dd'T'HH:mm:ss'Z'")) \
     .withColumn("value", to_kafka_row_udf(
         col("tickers"), col("sentiment_score"), col("timestamp"))
     )
