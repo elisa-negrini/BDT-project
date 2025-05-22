@@ -32,6 +32,7 @@ seen_timestamps = {alias: set() for alias in series_dict.values()}
 
 # Fissa la data di partenza a oggi, eseguito una sola volta
 today = datetime.today().strftime('%Y-%m-%d')
+#ten_days_ago = (datetime.today() - timedelta(days=10)).strftime('%Y-%m-%d')
 
 # Connessione a Kafka con retry
 def connect_kafka():
@@ -49,28 +50,37 @@ def connect_kafka():
 
 producer = connect_kafka()
 
-# Inizializza seen_timestamps con l'ultima osservazione disponibile per ogni serie
+# Funzione per fetch e invio
 def initialize_seen_timestamps():
     print("📌 Inizializzazione: recupero ultimo valore per ogni serie FRED...")
+
     for series_id, alias in series_dict.items():
         url = f"{BASE_URL}?series_id={series_id}&api_key={API_KEY}&file_type=json&sort_order=desc&limit=1"
         try:
             response = requests.get(url)
             if response.status_code == 200:
                 data = response.json().get("observations", [])
-                if data:
-                    latest_date = data[0]["date"]
-                    seen_timestamps[alias].add(latest_date)
-                    print(f"🔹 {alias} → Ultima data inizializzata: {latest_date}")
-                else:
-                    print(f"⚠️ Nessuna osservazione trovata per {series_id}")
+                for obs in data:
+                    date = obs["date"]
+                    value = obs["value"]
+
+                    if value != ".":
+                        seen_timestamps[alias].add(date)
+                        payload = {
+                            "series_id": series_id,
+                            "alias": alias,
+                            "date": date,
+                            "value": float(value)
+                        }
+                        print(f"📤 Inviato (inizializzazione): {payload}")
+                        producer.send(KAFKA_TOPIC, value=payload)
+                    else:
+                        print(f"⚠️ Valore mancante per {series_id} alla data {date}")
             else:
                 print(f"❌ Errore API iniziale {series_id} - status {response.status_code}")
         except Exception as e:
             print(f"❌ Errore inizializzazione {series_id}: {e}")
 
-
-# Funzione per fetch e invio
 def fetch_and_send():
     for series_id, alias in series_dict.items():
         url = f"{BASE_URL}?series_id={series_id}&api_key={API_KEY}&file_type=json&observation_start={today}"
