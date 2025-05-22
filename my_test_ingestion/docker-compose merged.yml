@@ -205,23 +205,23 @@ services:
   #   command: python consumer_bluesky.py
   #   restart: always
 
-  #kafka consumer macrodata
-  kc_macrodata:
-    build: ./consumer_macrodata
-    depends_on:
-      - kafka
-      - minio
-    environment:
-      KAFKA_SERVER: kafka:9092
-      S3_ENDPOINT: http://minio:9000
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: admin123
-      S3_BUCKET: macro-data
-    volumes:
-      - ./consumer_macrodata:/app
-    working_dir: /app
-    command: python consumer_macrodata.py
-    restart: always
+  # #kafka consumer macrodata
+  # kc_macrodata:
+  #   build: ./consumer_macrodata
+  #   depends_on:
+  #     - kafka
+  #     - minio
+  #   environment:
+  #     KAFKA_SERVER: kafka:9092
+  #     S3_ENDPOINT: http://minio:9000
+  #     S3_ACCESS_KEY: admin
+  #     S3_SECRET_KEY: admin123
+  #     S3_BUCKET: macro-data
+  #   volumes:
+  #     - ./consumer_macrodata:/app
+  #   working_dir: /app
+  #   command: python consumer_macrodata.py
+  #   restart: always
 
 
   # # historical macrodata
@@ -269,23 +269,23 @@ services:
     depends_on:
       - minio
 
-  # Kafka consumer sentiment
-  sentiment_bluesky:
-    build: ./sentiment_bluesky
-    depends_on:
-      - kafka
-      - spark-master
-      - spark-worker
-    volumes:
-      - ./sentiment_bluesky:/app
-    working_dir: /app
-    command: >
-      spark-submit
-      --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
-      sentiment_bluesky.py
-    environment:
-      - PYSPARK_PYTHON=python3
-    restart: always
+  # # Kafka consumer sentiment
+  # sentiment_bluesky:
+  #   build: ./sentiment_bluesky
+  #   depends_on:
+  #     - kafka
+  #     - spark-master
+  #     - spark-worker
+  #   volumes:
+  #     - ./sentiment_bluesky:/app
+  #   working_dir: /app
+  #   command: >
+  #     spark-submit
+  #     --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
+  #     sentiment_bluesky.py
+  #   environment:
+  #     - PYSPARK_PYTHON=python3
+  #   restart: always
 
   # sentiment_reddit:
   #   build: ./sentiment_reddit
@@ -339,17 +339,37 @@ services:
     restart: always
 
 
-  flink_preprocessor:
+  # flink_preprocessor:
+  #   build:
+  #     context: ./preprocessing_stream 
+  #     #dockerfile: Dockerfile
+  #   container_name: flink_preprocessor
+  #   depends_on:
+  #     - kafka
+  #   #environment:
+  #     #- PYFLINK_GATEWAY_DISABLED=true
+  #   networks:
+  #     - flink_net
+
+  # flink-preprocessor:
+  #       build:
+  #         context: ./preprocessing_stream
+  #         dockerfile: Dockerfile
+  #       depends_on:
+  #         - kafka
+  #       environment:
+  #         PYTHONUNBUFFERED: 1
+  #       command: ["flink", "run", "-py", "/opt/preprocess_flink.py"]
+  #       restart: always
+
+  flink:
     build:
-      context: ./preprocessing_stream 
-      #dockerfile: Dockerfile
-    container_name: flink_preprocessor
-    depends_on:
+      context: ./preprocessing_stream
+    container_name: flink
+    depends_on: 
       - kafka
-    #environment:
-      #- PYFLINK_GATEWAY_DISABLED=true
-    networks:
-      - flink_net
+    restart: always
+
 
 
   # predictor_layer:

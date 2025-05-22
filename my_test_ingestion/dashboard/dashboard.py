@@ -17,7 +17,7 @@ TICKERS = [
     "LLY", "JPM", "V", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA",
     "CVX", "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO"
 ]
-selected_ticker = st.selectbox("📊 Seleziona un ticker:", TICKERS)
+selected_ticker = st.selectbox("Select a ticker:", TICKERS)
 
 # Kafka consumer (una sola volta)
 @st.cache_resource
@@ -102,7 +102,7 @@ filtered_predictions = [
 
 # === GRAFICO ===
 if not filtered_prices:
-    st.warning("In attesa di dati recenti da Kafka...")
+    st.warning("Waiting for recent data from Kafka...")
 else:
     df_prices = pd.DataFrame(filtered_prices)
     df_prices["timestamp"] = pd.to_datetime(df_prices["timestamp"])
@@ -114,7 +114,7 @@ else:
         x=df_prices["timestamp"],
         y=df_prices["price"],
         mode="lines+markers",
-        name="Prezzo reale",
+        name="Real price",
         line=dict(color="blue")
     ))
 
@@ -127,14 +127,14 @@ else:
             x=df_preds["timestamp"],
             y=df_preds["predicted_price"],
             mode="markers+lines",
-            name="Prezzo previsto",
+            name="Predicted price",
             line=dict(color="red", dash="dash")
         ))
 
     fig.update_layout(
-        title=f"📈 Prezzo e previsioni: {selected_ticker}",
-        xaxis_title="Orario",
-        yaxis_title="Prezzo ($)",
+        title=f"Price and forecast: {selected_ticker}",
+        xaxis_title="Time",
+        yaxis_title="Price ($)",
         template="plotly_white"
     )
 

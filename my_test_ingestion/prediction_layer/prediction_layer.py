@@ -52,7 +52,7 @@ try:
                 prediction_data = {
                     "ticker": ticker,
                     "target_timestamp": target_timestamp,
-                    "price": price
+                    "predicted_price": price
                 }
 
                 producer.produce('prediction', json.dumps(prediction_data).encode('utf-8'))
