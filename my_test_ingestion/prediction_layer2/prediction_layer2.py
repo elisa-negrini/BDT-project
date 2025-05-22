@@ -51,8 +51,8 @@ try:
                 if predicted_timestamp:
                     prediction_data = {
                         "ticker": ticker,
-                        "target-timestamp": predicted_timestamp,
-                        "price": predicted_price
+                        "target_timestamp": predicted_timestamp,
+                        "predicted_price": predicted_price
                     }
 
                     producer.produce('prediction', json.dumps(prediction_data).encode('utf-8'))
