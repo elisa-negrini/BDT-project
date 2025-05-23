@@ -218,58 +218,58 @@ class Aggregator(KeyedProcessFunction):
 
     def on_timer(self, timestamp, ctx):
         print(f"[TIMER] Fired at {datetime.now(timezone.utc)}", file=sys.stderr)
-        # try:
-        #     now = datetime.now(timezone.utc)
-        #     ts_str = now.isoformat()
-        #     key = ctx.get_current_key()
+        try:
+            now = datetime.now(timezone.utc)
+            ts_str = now.isoformat()
+            key = ctx.get_current_key()
 
-        #     print(f"[INFO] Output to Kafka - ticker: {key} - timestamp: {ts_str}", file=sys.stderr)
+            print(f"[INFO] Output to Kafka - ticker: {key} - timestamp: {ts_str}", file=sys.stderr)
 
-        #     def mean(vals): return float(np.mean(vals)) if vals else None
-        #     def mean_sent(vals): return float(np.mean(vals)) if vals else 0.0
-        #     def std(vals): return float(np.std(vals)) if vals else None
-        #     def total(vals): return float(np.sum(vals)) if vals else 0.0
+            def mean(vals): return float(np.mean(vals)) if vals else None
+            def mean_sent(vals): return float(np.mean(vals)) if vals else 0.0
+            def std(vals): return float(np.std(vals)) if vals else None
+            def total(vals): return float(np.sum(vals)) if vals else 0.0
 
-        #     features = {
-        #         "ticker": key,
-        #         "timestamp": ts_str,
-        #         "price_mean_1min": mean(self.price_state_1min.values()),
-        #         "price_mean_5min": mean(self.price_state_5min.values()),
-        #         "price_std_5min": std(self.price_state_5min.values()),
-        #         "price_mean_30min": mean(self.price_state_30min.values()),
-        #         "price_std_30min": std(self.price_state_30min.values()),
-        #         "size_tot_1min": total(self.size_state_1min.values()),
-        #         "size_tot_5min": total(self.size_state_5min.values()),
-        #         "size_tot_30min": total(self.size_state_30min.values()),
-        #         "sentiment_bluesky_mean_2hours": mean_sent(self.sentiment_bluesky_state_2h.values()),
-        #         "sentiment_bluesky_mean_1day": mean_sent(self.sentiment_bluesky_state_1d.values()),
-        #         # "sentiment_reddit_mean_2hours": mean_sent(self.sentiment_reddit_state_2h.values()),
-        #         # "sentiment_reddit_mean_1day": mean_sent(self.sentiment_reddit_state_1d.values()),
-        #         "sentiment_news_mean_1day": mean_sent(self.sentiment_news_state_1d.values()),
-        #         "sentiment_news_mean_3days": mean_sent(self.sentiment_news_state_3d.values()),
-        #         "sentiment_general_bluesky_mean_2hours": mean_sent(self.sentiment_general_bluesky_state_2h.values()),
-        #         "sentiment_general_bluesky_mean_1day": mean_sent(self.sentiment_general_bluesky_state_1d.values()),
-        #         # "sentiment_general_reddit_mean_2hours": mean_sent(self.sentiment_general_reddit_state_2h.values()),
-        #         # "sentiment_general_reddit_mean_1day": mean_sent(self.sentiment_general_reddit_state_1d.values()),
-        #         "minutes_since_open": (now - now.replace(hour=13, minute=30, second=0, microsecond=0)).total_seconds() // 60,
-        #         "day_of_week": now.weekday(),
-        #         "day_of_month": now.day,
-        #         "week_of_year": now.isocalendar()[1],
-        #         "month_of_year": now.month,
-        #         "market_open_spike_flag": int(dtime(13, 30) <= now.time() < dtime(14, 0)),
-        #         "market_close_spike_flag": int(dtime(19, 55) <= now.time() < dtime(20, 0)),
-        #     }
+            features = {
+                "ticker": key,
+                "timestamp": ts_str,
+                "price_mean_1min": mean(self.price_state_1min.values()),
+                "price_mean_5min": mean(self.price_state_5min.values()),
+                "price_std_5min": std(self.price_state_5min.values()),
+                "price_mean_30min": mean(self.price_state_30min.values()),
+                "price_std_30min": std(self.price_state_30min.values()),
+                "size_tot_1min": total(self.size_state_1min.values()),
+                "size_tot_5min": total(self.size_state_5min.values()),
+                "size_tot_30min": total(self.size_state_30min.values()),
+                "sentiment_bluesky_mean_2hours": mean_sent(self.sentiment_bluesky_state_2h.values()),
+                "sentiment_bluesky_mean_1day": mean_sent(self.sentiment_bluesky_state_1d.values()),
+                # "sentiment_reddit_mean_2hours": mean_sent(self.sentiment_reddit_state_2h.values()),
+                # "sentiment_reddit_mean_1day": mean_sent(self.sentiment_reddit_state_1d.values()),
+                "sentiment_news_mean_1day": mean_sent(self.sentiment_news_state_1d.values()),
+                "sentiment_news_mean_3days": mean_sent(self.sentiment_news_state_3d.values()),
+                "sentiment_general_bluesky_mean_2hours": mean_sent(self.sentiment_general_bluesky_state_2h.values()),
+                "sentiment_general_bluesky_mean_1day": mean_sent(self.sentiment_general_bluesky_state_1d.values()),
+                # "sentiment_general_reddit_mean_2hours": mean_sent(self.sentiment_general_reddit_state_2h.values()),
+                # "sentiment_general_reddit_mean_1day": mean_sent(self.sentiment_general_reddit_state_1d.values()),
+                "minutes_since_open": (now - now.replace(hour=13, minute=30, second=0, microsecond=0)).total_seconds() // 60,
+                "day_of_week": now.weekday(),
+                "day_of_month": now.day,
+                "week_of_year": now.isocalendar()[1],
+                "month_of_year": now.month,
+                "market_open_spike_flag": int(dtime(13, 30) <= now.time() < dtime(14, 0)),
+                "market_close_spike_flag": int(dtime(19, 55) <= now.time() < dtime(20, 0)),
+            }
 
-        #     for k in macro_alias.values():
-        #         features[k] = self.macro_state.get(k) if self.macro_state.contains(k) else None
+            for k in macro_alias.values():
+                features[k] = self.macro_state.get(k) if self.macro_state.contains(k) else None
 
-        #     ctx.output(json.dumps(features))
-        #     next_ts = ctx.timer_service().current_processing_time() + 5000
-        #     ctx.timer_service().register_processing_time_timer(next_ts)
-        #     self.last_timer = next_ts
+            ctx.output(json.dumps(features))
+            next_ts = ctx.timer_service().current_processing_time() + 5000
+            ctx.timer_service().register_processing_time_timer(next_ts)
+            self.last_timer = next_ts
 
-        # except Exception as e:
-        #     print(f"[ERROR] on_timer: {e}", file=sys.stderr)
+        except Exception as e:
+            print(f"[ERROR] on_timer: {e}", file=sys.stderr)
 
 def route_by_ticker(json_str):
     try:
@@ -292,7 +292,7 @@ def main():
     }
 
     consumer = FlinkKafkaConsumer(
-        topics=["stock_trades"], #, "macrodata", "bluesky_sentiment", "news_sentiment"], # "reddit_sentiment",
+        topics=["stock_trades", "macrodata", "bluesky_sentiment", "news_sentiment"], # "reddit_sentiment",
         deserialization_schema=SimpleStringSchema(),
         properties=kafka_props
     )
