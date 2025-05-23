@@ -238,50 +238,87 @@ services:
     restart: always
 
 
-  # # historical macrodata
-  # h_macrodata:
-  #   build:
-  #     context: ./historical_macrodata
-  #   container_name: h_macrodata
-  #   depends_on:
-  #     - spark-master
-  #     - minio
-  #   environment:
-  #     S3_ENDPOINT: http://minio:9000
-  #     S3_ACCESS_KEY: admin
-  #     S3_SECRET_KEY: admin123
-  #     S3_BUCKET: macro-data
-  #   networks:
-  #     - default
 
-  # # historical alpaca
-  # h_alpaca:
-  #   build:
-  #     context: ./historical_alpaca
-  #   container_name: h_alpaca
-  #   depends_on:
-  #     - spark-master
-  #     - minio
-  #   environment:
-  #     MINIO_ENDPOINT: minio:9000
-  #     MINIO_ACCESS_KEY: admin
-  #     MINIO_SECRET_KEY: admin123
-  #     MINIO_BUCKET: historical-data
-  #     ALPACA_API_KEY: PKLJ33WNVLC4SOZQKOB1
-  #     ALPACA_SECRET_KEY: ctJiahjzv11ihTZoNRkmOupIzbnwsYkasFMCJekt
-  #   restart: "no"
+  kp_h_macrodata:
+    build: ./kp_historical_macrodata
+    environment:
+      KAFKA_SERVER: kafka:9092
+    depends_on:
+      - kafka
+
+
+
+
+  kp_h_alpaca:
+    build: ./kp_historical_alpaca
+    environment:
+      KAFKA_SERVER: kafka:9092
+    depends_on:
+      - kafka
+    restart: always
+
+
 
   # historical company
-  h_company:
+  kp_h_company:
     build:
-      context: ./historical_company
-    container_name: h_company
+      context: ./kp_historical_company
+    container_name: kp_h_company
     environment:
-      MINIO_URL: minio:9000
-      MINIO_ACCESS_KEY: admin
-      MINIO_SECRET_KEY: admin123
+      KAFKA_SERVER: kafka:9092
     depends_on:
+      - kafka
+
+
+  # historical macrodata
+  kc_h_alpaca:
+    build:
+      context: ./kc_historical_alpaca
+    container_name: kc_h_alpaca
+    depends_on:
+      - kafka
+      - spark-master
       - minio
+    environment:
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: admin
+      S3_SECRET_KEY: admin123
+      S3_BUCKET: historical-data
+
+  kc_h_company:
+    build:
+      context: ./kc_historical_company
+    container_name: kc_h_company
+    depends_on:
+      - kafka
+      - minio
+    environment:
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: admin
+      S3_SECRET_KEY: admin123
+      
+
+  kc_h_macrodata:
+    build:
+      context: ./kc_historical_macrodata
+    container_name: h_macrodata
+    depends_on:
+      - spark-master
+      - kafka
+      - minio
+    environment:
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: admin
+      S3_SECRET_KEY: admin123
+      S3_BUCKET: macro-data
+      SPARK_SUBMIT_OPTIONS: --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
+
+
+
+
+
+
+
 
   # Kafka consumer sentiment
   sentiment_bluesky:
@@ -407,6 +444,16 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
 
+  clear-minio:
+    build:
+      context: ./clean_minio
+    environment:
+      MINIO_URL: "minio:9000"
+      MINIO_ACCESS_KEY: "admin"
+      MINIO_SECRET_KEY: "admin123"
+    command: ["python", "clean_minio.py"]
+
+
 networks:
   flink_net:
     driver: bridge
@@ -416,6 +463,8 @@ networks:
   
   bdt-net:
     driver: bridge
+
+  
   
 
   # spark-app:
