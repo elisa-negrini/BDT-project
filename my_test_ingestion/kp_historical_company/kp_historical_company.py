@@ -85,19 +85,30 @@
 #!/usr/bin/env python3
 import os
 import json
+import time
 import pandas as pd
 from kafka import KafkaProducer
 
 # === CONFIG ===
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "historical_company")
-PARQUET_FILE = "/app/historical_company/df_company_fundamentals.parquet"
+KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "h_company")
+PARQUET_FILE = "/app/kp_historical_company/df_company_fundamentals.parquet"
 
-# === KAFKA PRODUCER ===
-producer = KafkaProducer(
-    bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-    value_serializer=lambda v: json.dumps(v).encode('utf-8')
-)
+# === CONNESSIONE KAFKA ===
+def connect_kafka():
+    while True:
+        try:
+            producer = KafkaProducer(
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                value_serializer=lambda v: json.dumps(v).encode('utf-8')
+            )
+            print("✅ Connesso a Kafka.")
+            return producer
+        except Exception as e:
+            print(f"⏳ Kafka non disponibile, ritento in 5 secondi... ({e})")
+            time.sleep(5)
+
+producer = connect_kafka()
 
 # === READ PARQUET ===
 df = pd.read_parquet(PARQUET_FILE)

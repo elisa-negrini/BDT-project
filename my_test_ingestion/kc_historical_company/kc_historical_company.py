@@ -71,6 +71,7 @@
 #!/usr/bin/env python3
 import os
 import json
+import time
 import pandas as pd
 import boto3
 from io import BytesIO
@@ -83,11 +84,29 @@ logger = logging.getLogger("KafkaToMinio")
 
 # === CONFIG ===
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "historical_company")
+KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "h_company")
 MINIO_ENDPOINT = os.getenv("S3_ENDPOINT", "http://minio:9000")
 MINIO_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "admin")
 MINIO_SECRET_KEY = os.getenv("S3_SECRET_KEY", "admin123")
 MINIO_BUCKET = os.getenv("S3_BUCKET", "company-fundamentals")
+
+# === FUNZIONE CONSUMER KAFKA ===
+def connect_kafka_consumer():
+    while True:
+        try:
+            consumer = KafkaConsumer(
+                KAFKA_TOPIC,
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                value_deserializer=lambda m: json.loads(m.decode('utf-8')),
+                auto_offset_reset='earliest',
+                enable_auto_commit=True,
+                consumer_timeout_ms=10000
+            )
+            logger.info("✅ Connessione a Kafka riuscita (consumer).")
+            return consumer
+        except Exception as e:
+            logger.warning(f"⏳ Kafka non disponibile (consumer), ritento tra 5 secondi... ({e})")
+            time.sleep(5)
 
 def ensure_bucket_exists(bucket_name, endpoint, access_key, secret_key):
     s3 = boto3.client(
@@ -107,16 +126,8 @@ def ensure_bucket_exists(bucket_name, endpoint, access_key, secret_key):
         logger.error(f"❌ Errore controllo/creazione bucket: {e}")
         raise
 
-# === KAFKA CONSUMER ===
-consumer = KafkaConsumer(
-    KAFKA_TOPIC,
-    bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-    value_deserializer=lambda m: json.loads(m.decode('utf-8')),
-    auto_offset_reset='earliest',
-    enable_auto_commit=True,
-    consumer_timeout_ms=10000
-)
-
+# === AVVIA CONSUMER ===
+consumer = connect_kafka_consumer()
 logger.info("👂 In ascolto su Kafka...")
 
 records = []
@@ -158,5 +169,4 @@ for (symbol, year), group_df in df.groupby(['symbol', 'calendarYear']):
 
 consumer.close()
 logger.info("✅ Dati salvati su MinIO")
-
 

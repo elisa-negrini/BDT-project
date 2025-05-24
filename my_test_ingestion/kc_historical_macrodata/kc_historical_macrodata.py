@@ -8,16 +8,18 @@ import sys
 import json
 import signal
 import logging
+import time
 from datetime import datetime
 from kafka import KafkaConsumer
+from kafka.errors import NoBrokersAvailable
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import to_date, col, year
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType, DateType
+from pyspark.sql.types import StructType, StructField, StringType, DoubleType
 import boto3
 
 # === CONFIG ===
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "macro-data")
+KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "h_macrodata")
 KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID", "fred-minio-group")
 
 MINIO_ENDPOINT = os.getenv("S3_ENDPOINT", "http://minio:9000")
@@ -35,7 +37,7 @@ shutdown_flag = False
 # === Signal Handling ===
 def signal_handler(signum, frame):
     global shutdown_flag
-    logger.info("🛑 Received shutdown signal")
+    logger.info("🚑 Received shutdown signal")
     shutdown_flag = True
 
 signal.signal(signal.SIGINT, signal_handler)
@@ -53,7 +55,7 @@ def ensure_bucket_exists():
         buckets = s3.list_buckets()
         if not any(b['Name'] == MINIO_BUCKET for b in buckets.get('Buckets', [])):
             s3.create_bucket(Bucket=MINIO_BUCKET)
-            logger.info(f"🪣 Bucket '{MINIO_BUCKET}' created")
+            logger.info(f"🫳 Bucket '{MINIO_BUCKET}' created")
         else:
             logger.info(f"✅ Bucket '{MINIO_BUCKET}' already exists")
     except Exception as e:
@@ -71,21 +73,28 @@ def create_spark():
         .config("spark.hadoop.fs.s3a.path.style.access", "true") \
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
         .getOrCreate()
-    
+
     spark.sparkContext.setLogLevel("WARN")
     return spark
 
-# === Kafka Consumer ===
-def create_consumer():
-    return KafkaConsumer(
-        KAFKA_TOPIC,
-        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-        group_id=KAFKA_GROUP_ID,
-        value_deserializer=lambda m: json.loads(m.decode('utf-8')),
-        auto_offset_reset="earliest",
-        enable_auto_commit=True,
-        consumer_timeout_ms=10000
-    )
+# === Kafka Consumer with Retry ===
+def connect_kafka_consumer():
+    while True:
+        try:
+            consumer = KafkaConsumer(
+                KAFKA_TOPIC,
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                group_id=KAFKA_GROUP_ID,
+                value_deserializer=lambda m: json.loads(m.decode('utf-8')),
+                auto_offset_reset="earliest",
+                enable_auto_commit=True,
+                consumer_timeout_ms=10000
+            )
+            logger.info("✅ Connessione a Kafka riuscita.")
+            return consumer
+        except NoBrokersAvailable as e:
+            logger.warning(f"⏳ Kafka non disponibile, ritento in 5 secondi... ({e})")
+            time.sleep(5)
 
 # === Save to MinIO ===
 def save_to_minio(spark, records):
@@ -98,18 +107,20 @@ def save_to_minio(spark, records):
         StructField("value", DoubleType(), True)
     ])
 
-    # Pre-process timestamps
     for rec in records:
-        rec["date"] = datetime.fromisoformat(rec["date"]).date()
+        record_date = datetime.fromisoformat(rec["date"]).date()
+        if record_date.year < 2021:
+            continue
 
-    df = spark.createDataFrame(records, schema=schema) \
-              .withColumn("date", to_date(col("date"))) \
-              .withColumn("year", year("date"))
+        rec["date"] = record_date
+        df = spark.createDataFrame([rec], schema=schema) \
+                  .withColumn("date", to_date(col("date"))) \
+                  .withColumn("year", year(col("date")))
 
-    df.coalesce(10).write \
-        .partitionBy("series", "year") \
-        .mode("append") \
-        .parquet(f"s3a://{MINIO_BUCKET}/fred-data")
+        df.write \
+          .partitionBy("series", "year") \
+          .mode("append") \
+          .parquet(f"s3a://{MINIO_BUCKET}")
 
     logger.info(f"✅ Wrote {len(records)} records to MinIO")
 
@@ -134,7 +145,7 @@ def main():
     try:
         ensure_bucket_exists()
         spark = create_spark()
-        consumer = create_consumer()
+        consumer = connect_kafka_consumer()
     except Exception as e:
         logger.error(f"❌ Initialization failed: {e}")
         sys.exit(1)
@@ -171,7 +182,7 @@ def main():
         logger.info(f"📊 Processed: {processed}, Errors: {errors}")
         consumer.close()
         spark.stop()
-        logger.info("🔚 Shutdown complete")
+        logger.info("🖚 Shutdown complete")
 
 if __name__ == "__main__":
     main()

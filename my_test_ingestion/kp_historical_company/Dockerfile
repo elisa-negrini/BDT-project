@@ -2,11 +2,11 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-COPY df_company_fundamentals.parquet ./historical_company/
+COPY df_company_fundamentals.parquet ./kp_historical_company/
 
-COPY historical_company.py .
+COPY kp_historical_company.py .
 
 RUN pip install pandas pyarrow minio kafka-python
 
-CMD ["python", "historical_company.py"]
+CMD ["python", "kp_historical_company.py"]
 
