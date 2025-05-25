@@ -163,7 +163,7 @@ for (symbol, year), group_df in df.groupby(['symbol', 'calendarYear']):
     buffer = BytesIO()
     group_df.to_parquet(buffer, index=False)
     buffer.seek(0)
-    key = f"{symbol}/{year}/data.parquet"
+    key = f"{symbol}/{year}.parquet"
     s3.upload_fileobj(buffer, MINIO_BUCKET, key)
     logger.info(f"✅ Caricato: {key}")
 

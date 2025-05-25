@@ -329,13 +329,14 @@ services:
 
 # HISTORICAL CONTAINER
 
-# # Historical producer
-#   kp_h_macrodata:
-#     build: ./kp_historical_macrodata
-#     environment:
-#       KAFKA_SERVER: kafka:9092
-#     depends_on:
-#       - kafka
+# Historical producer
+
+  kp_h_macrodata:
+    build: ./kp_historical_macrodata
+    environment:
+      KAFKA_SERVER: kafka:9092
+    depends_on:
+      - kafka
 
   kp_h_alpaca:
     build: ./kp_historical_alpaca
@@ -355,31 +356,31 @@ services:
       - kafka
 
 # historical consumer
-  kc_h_company:
-    build:
-      context: ./kc_historical_company
-    container_name: kc_h_company
-    depends_on:
-      - kafka
-      - minio
-    environment:
-      S3_ENDPOINT: http://minio:9000
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: admin123
+  # kc_h_company:
+  #   build:
+  #     context: ./kc_historical_company
+  #   container_name: kc_h_company
+  #   depends_on:
+  #     - kafka
+  #     - minio
+  #   environment:
+  #     S3_ENDPOINT: http://minio:9000
+  #     S3_ACCESS_KEY: admin
+  #     S3_SECRET_KEY: admin123
       
-  kc_h_alpaca:
-    build:
-      context: ./kc_historical_alpaca
-    container_name: kc_h_alpaca
-    depends_on:
-      - kafka
-      - spark-master
-      - minio
-    environment:
-      S3_ENDPOINT: http://minio:9000
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: admin123
-      S3_BUCKET: historical-data
+  # kc_h_alpaca:
+  #   build:
+  #     context: ./kc_historical_alpaca
+  #   container_name: kc_h_alpaca
+  #   depends_on:
+  #     - kafka
+  #     - spark-master
+  #     - minio
+  #   environment:
+  #     S3_ENDPOINT: http://minio:9000
+  #     S3_ACCESS_KEY: admin
+  #     S3_SECRET_KEY: admin123
+  #     S3_BUCKET: historical-data
 
   # kc_h_macrodata:
   #   build:
@@ -395,6 +396,7 @@ services:
   #     S3_SECRET_KEY: admin123
   #     S3_BUCKET: macro-data
   #     SPARK_SUBMIT_OPTIONS: --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
+
 
   flink_historical:
     build:

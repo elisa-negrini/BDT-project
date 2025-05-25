@@ -1,10 +1,10 @@
-# historical alpaca/Dockerfile
+# historical alpaca / Dockerfile
 
 FROM python:3.9-slim
 USER root
-RUN pip install --no-cache-dir alpaca-py boto3 pandas kafka-python
+RUN pip install --no-cache-dir kafka-python pandas alpaca-py pyarrow requests
 
 COPY . /app
 WORKDIR /app
 
-CMD ["python", "historical_alpaca.py"]
+CMD ["python", "kp_historical_alpaca.py"]

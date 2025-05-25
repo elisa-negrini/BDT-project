@@ -7,7 +7,7 @@ from kafka.errors import NoBrokersAvailable
 
 API_KEY = "119c5415679f73cb0da3b62e9c2a534d"
 BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
-KAFKA_TOPIC = "macro-data"
+KAFKA_TOPIC = "h_macrodata"
 KAFKA_BOOTSTRAP_SERVERS = "kafka:9092"
 
 series_dict = {

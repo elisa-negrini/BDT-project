@@ -1,3 +1,4 @@
+# kc historical alpaca / Dockerfile
 
 FROM bitnami/spark:latest
 

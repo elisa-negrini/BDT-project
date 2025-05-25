@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import signal
+import time
 from datetime import datetime
 from kafka import KafkaConsumer
 from kafka.errors import KafkaError
@@ -18,7 +19,7 @@ import logging
 
 # === CONFIGURAZIONE ===
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "historical_alpaca")
+KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "h_alpaca")
 KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID", "minio-consumer-group")
 
 MINIO_ENDPOINT = os.getenv("S3_ENDPOINT", "http://minio:9000")
@@ -80,25 +81,25 @@ def create_spark_session():
         logger.error(f"❌ Errore creazione sessione Spark: {e}")
         raise
 
-def create_kafka_consumer():
-    try:
-        consumer = KafkaConsumer(
-            KAFKA_TOPIC,
-            bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-            group_id=KAFKA_GROUP_ID,
-            value_deserializer=lambda m: json.loads(m.decode('utf-8')),
-            key_deserializer=lambda m: m.decode('utf-8') if m else None,
-            auto_offset_reset='earliest',
-            enable_auto_commit=True,
-            auto_commit_interval_ms=1000,
-            consumer_timeout_ms=10000
-        )
-        logger.info(f"✅ Consumer Kafka connesso a {KAFKA_BOOTSTRAP_SERVERS}")
-        return consumer
-
-    except Exception as e:
-        logger.error(f"❌ Errore connessione Kafka consumer: {e}")
-        raise
+def connect_kafka_consumer():
+    """Tenta la connessione a Kafka consumer con retry fino a successo"""
+    while True:
+        try:
+            consumer = KafkaConsumer(
+                KAFKA_TOPIC,
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                value_deserializer=lambda m: json.loads(m.decode('utf-8')),
+                key_deserializer=lambda m: m.decode('utf-8') if m else None,
+                auto_offset_reset='earliest',
+                enable_auto_commit=True,
+                group_id=KAFKA_GROUP_ID,
+                consumer_timeout_ms=10000
+            )
+            logger.info("✅ Connessione a Kafka riuscita (consumer).")
+            return consumer
+        except Exception as e:
+            logger.warning(f"⏳ Kafka non disponibile (consumer), ritento tra 5 secondi... ({e})")
+            time.sleep(5)
 
 def save_to_minio(spark, data):
     try:
@@ -130,7 +131,7 @@ def save_to_minio(spark, data):
             .partitionBy("symbol", "year", "month") \
             .option("compression", "snappy") \
             .mode("append") \
-            .parquet(f"s3a://{MINIO_BUCKET}/historical")
+            .parquet(f"s3a://{MINIO_BUCKET}")
 
         logger.info(f"✅ Scrittura completata: {len(data)} record")
         return True
@@ -160,8 +161,7 @@ def main():
     try:
         ensure_bucket_exists(MINIO_BUCKET, MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY)
         spark = create_spark_session()
-        consumer = create_kafka_consumer()
-
+        consumer = connect_kafka_consumer()
     except Exception as e:
         logger.error(f"❌ Errore inizializzazione: {e}")
         sys.exit(1)

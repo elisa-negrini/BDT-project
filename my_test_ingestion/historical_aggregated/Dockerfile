@@ -1,14 +1,16 @@
-# Use official Python image
-FROM python:3.10-slim
+FROM flink:1.17-scala_2.12
 
-# Set working directory
-WORKDIR /app
+RUN apt-get update && apt-get install -y python3 python3-pip
+RUN ln -s /usr/bin/python3 /usr/bin/python
 
-COPY historical_aggregated.py /app/historical_aggregated.py
-COPY requirements.txt /app/requirements.txt
+RUN pip3 install apache-flink==1.17.0 numpy boto3 kafka-python
 
-# Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Copia script Python e template
+COPY historical_aggregated.py /opt/historical_aggregated.py
 
-# Command to run the script
-CMD ["python", "historical_aggregated.py"]
+# Copia i JAR per Kafka
+COPY flink-connector-kafka-1.17.0.jar /opt/flink/lib/
+COPY kafka-clients-3.3.2.jar /opt/flink/lib/
+
+CMD ["python", "/opt/historical_aggregated.py"]
+
