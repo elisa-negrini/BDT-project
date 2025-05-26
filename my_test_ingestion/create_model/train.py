@@ -16,13 +16,20 @@ def main():
         secure=False  # Set to True if using HTTPS
     )
 
-    # Get the latest object (or you can filter by prefix)
-    objects = client.list_objects("aggregated_historical", recursive=True)
-    latest_obj = sorted(objects, key=lambda x: x.last_modified, reverse=True)[0]
-    response = client.get_object("aggregated_historical", latest_obj.object_name)
+    all_dfs = []
 
-    # Load into pandas DataFrame
-    df = pd.read_parquet(BytesIO(response.read()))
+    # Lista tutti gli oggetti nel bucket
+    objects = client.list_objects("aggregated_historical", recursive=True)
+
+    # Filtra solo i file .parquet validi
+    for obj in objects:
+        if obj.object_name.endswith(".parquet"):
+            response = client.get_object("aggregated_historical", obj.object_name)
+            df = pd.read_parquet(BytesIO(response.read()))
+            all_dfs.append(df)
+
+    # Concatena tutti i DataFrame
+    df = pd.concat(all_dfs, ignore_index=True)
 
     # Shift the target variable so that each row at time t-1 has the target y from time t
     # (price_mean_1min column remains unchanged)
@@ -42,7 +49,7 @@ def main():
         weekly_seasonality=True,  # Enable weekly seasonality component
         daily_seasonality=True,   # Enable daily seasonality component
         learning_rate=0.01        # Learning rate for training
-    )
+    ) 
 
     # Add lagged regressors (additional time-dependent input features)
     regressors = [
@@ -53,7 +60,7 @@ def main():
         "sentiment_news_mean_1day", "sentiment_news_mean_3days",
         "sentiment_general_bluesky_mean_2hours", "sentiment_general_bluesky_mean_1day",
         "gdp_real", "cpi", "ffr", "t10y", "t2y", "spread_10y_2y", "unemployment",
-        "eps", "cashflow_freeCashFlow", "profit_margin", "debt_to_equity"
+        "eps", "freeCashFlow", "profit_margin", "debt_to_equity"
     ]
     for reg in regressors:
         model.add_lagged_regressor(reg)
