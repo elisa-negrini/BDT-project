@@ -8,7 +8,7 @@ from minio import Minio
 from io import BytesIO
 
 def main():
-    # Connect to MinIO and download parquet data from 'aggregated_historical' bucket
+    # Connect to MinIO and download parquet data from 'aggregated-data' bucket
     client = Minio(
         endpoint=os.getenv("MINIO_ENDPOINT"),
         access_key=os.getenv("MINIO_ACCESS_KEY"),
@@ -19,12 +19,12 @@ def main():
     all_dfs = []
 
     # Lista tutti gli oggetti nel bucket
-    objects = client.list_objects("aggregated_historical", recursive=True)
+    objects = client.list_objects("aggregated-data", recursive=True)
 
     # Filtra solo i file .parquet validi
     for obj in objects:
         if obj.object_name.endswith(".parquet"):
-            response = client.get_object("aggregated_historical", obj.object_name)
+            response = client.get_object("aggregated-data", obj.object_name)
             df = pd.read_parquet(BytesIO(response.read()))
             all_dfs.append(df)
 

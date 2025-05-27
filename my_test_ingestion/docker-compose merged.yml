@@ -404,9 +404,27 @@ services:
     container_name: flink_historical
     depends_on: 
       - kafka
+      - minio
+    environment:
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: admin
+      MINIO_SECRET_KEY: admin123
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     restart: always
 
-
+  # model_trainer:
+  #     build:
+  #       context: ./create_model
+  #     container_name: model_trainer
+  #     environment:
+  #       MINIO_ENDPOINT: minio:9000
+  #       MINIO_ACCESS_KEY: admin
+  #       MINIO_SECRET_KEY: admin123
+  #     depends_on:
+  #       - minio
+  #     volumes:
+  #       - ./create_model/model:/app/model
+  #     restart: on-failure
 
 
 
