@@ -1,85 +1,50 @@
 #!/usr/bin/env python3
-"""
-Consumer: Riceve dati da Kafka e li salva su MinIO tramite Spark (in batch ottimizzati)
-"""
 
-import json
 import os
-import sys
+import json
+import logging
 import signal
+import sys
 import time
 from datetime import datetime
 from kafka import KafkaConsumer
-from kafka.errors import KafkaError
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, to_date
-from pyspark.sql.types import StructType, StructField, StringType, FloatType, TimestampType
 import boto3
-import logging
+import pandas as pd
+import pyarrow.parquet as pq
+import pyarrow as pa
+from io import BytesIO
 
-# === CONFIGURAZIONE ===
+# === CONFIG ===
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "h_alpaca")
-KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID", "minio-consumer-group")
+KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID", "consumer_alpaca")
 
 MINIO_ENDPOINT = os.getenv("S3_ENDPOINT", "http://minio:9000")
 MINIO_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "admin")
 MINIO_SECRET_KEY = os.getenv("S3_SECRET_KEY", "admin123")
 MINIO_BUCKET = os.getenv("S3_BUCKET", "historical-data")
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# === LOGGING ===
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("simple-consumer")
 
+# === SEGNALE DI STOP ===
 shutdown_flag = False
-
 def signal_handler(signum, frame):
     global shutdown_flag
-    logger.info("🛑 Ricevuto segnale di shutdown")
     shutdown_flag = True
+    logger.info("🛑 Shutdown richiesto...")
 
-def ensure_bucket_exists(bucket_name, endpoint, access_key, secret_key):
-    s3 = boto3.client(
-        's3',
-        endpoint_url=endpoint,
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key
-    )
-    try:
-        buckets = s3.list_buckets()
-        if not any(b['Name'] == bucket_name for b in buckets.get('Buckets', [])):
-            s3.create_bucket(Bucket=bucket_name)
-            logger.info(f"🪣 Bucket '{bucket_name}' creato.")
-        else:
-            logger.info(f"✅ Bucket '{bucket_name}' già esistente.")
-    except Exception as e:
-        logger.error(f"❌ Errore controllo/creazione bucket: {e}")
-        raise
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
-def create_spark_session():
-    try:
-        spark = SparkSession.builder \
-            .appName("KafkaToMinIO") \
-            .master("local[*]") \
-            .config("spark.hadoop.fs.s3a.endpoint", MINIO_ENDPOINT) \
-            .config("spark.hadoop.fs.s3a.access.key", MINIO_ACCESS_KEY) \
-            .config("spark.hadoop.fs.s3a.secret.key", MINIO_SECRET_KEY) \
-            .config("spark.hadoop.fs.s3a.path.style.access", "true") \
-            .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
-            .config("spark.sql.adaptive.enabled", "true") \
-            .config("spark.sql.adaptive.coalescePartitions.enabled", "true") \
-            .getOrCreate()
-
-        spark.sparkContext.setLogLevel("WARN")
-        logger.info("✅ Sessione Spark creata e configurata")
-        return spark
-
-    except Exception as e:
-        logger.error(f"❌ Errore creazione sessione Spark: {e}")
-        raise
+# === S3 CLIENT ===
+s3 = boto3.client(
+    's3',
+    endpoint_url=MINIO_ENDPOINT,
+    aws_access_key_id=MINIO_ACCESS_KEY,
+    aws_secret_access_key=MINIO_SECRET_KEY
+)
 
 def connect_kafka_consumer():
     """Tenta la connessione a Kafka consumer con retry fino a successo"""
@@ -101,130 +66,71 @@ def connect_kafka_consumer():
             logger.warning(f"⏳ Kafka non disponibile (consumer), ritento tra 5 secondi... ({e})")
             time.sleep(5)
 
-def save_to_minio(spark, data):
-    try:
-        if not data:
-            return False
-
-        schema = StructType([
-            StructField("symbol", StringType(), True),
-            StructField("timestamp", TimestampType(), True),
-            StructField("open", FloatType(), True),
-            StructField("high", FloatType(), True),
-            StructField("low", FloatType(), True),
-            StructField("close", FloatType(), True),
-            StructField("volume", FloatType(), True),
-            StructField("trade_count", FloatType(), True),
-            StructField("vwap", FloatType(), True),
-        ])
-
-        for record in data:
-            if isinstance(record.get('timestamp'), str):
-                record['timestamp'] = datetime.fromisoformat(record['timestamp'].replace('Z', '+00:00'))
-
-        df = spark.createDataFrame(data, schema=schema)
-        df = df.withColumn("date", to_date("timestamp"))
-        df = df.withColumn("year", col("date").substr(1, 4))
-        df = df.withColumn("month", col("date").substr(6, 2))
-
-        df.coalesce(10).write \
-            .partitionBy("symbol", "year", "month") \
-            .option("compression", "snappy") \
-            .mode("append") \
-            .parquet(f"s3a://{MINIO_BUCKET}")
-
-        logger.info(f"✅ Scrittura completata: {len(data)} record")
-        return True
-
-    except Exception as e:
-        logger.error(f"❌ Errore salvataggio batch: {e}")
+def save_to_minio(ticker, year, month, date_str, records):
+    if not records:
         return False
 
-def process_message(batch, message):
     try:
-        data = message['data']
-        for record in data:
-            record['symbol'] = message['ticker']
-        batch.extend(data)
+        for r in records:
+            r['ticker'] = ticker
+
+        df = pd.DataFrame(records)
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+
+        table = pa.Table.from_pandas(df)
+        buf = BytesIO()
+        pq.write_table(table, buf, compression='snappy')
+        buf.seek(0)
+
+        key = f"{ticker}/{year}/{month:02d}/{ticker}_{date_str}.parquet"
+        s3.put_object(Bucket=MINIO_BUCKET, Key=key, Body=buf.getvalue())
+        logger.info(f"✅ Salvato su MinIO: {key} ({len(df)} record)")
         return True
+
     except Exception as e:
-        logger.error(f"❌ Errore elaborazione messaggio: {e}")
+        logger.error(f"❌ Errore salvataggio Parquet per {ticker} {date_str}: {e}")
         return False
 
 def main():
-    global shutdown_flag
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    logger.info("🚀 Avvio consumer semplificato Kafka -> MinIO")
 
-    logger.info("🚀 Avvio Consumer Kafka -> MinIO")
-
-    try:
-        ensure_bucket_exists(MINIO_BUCKET, MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY)
-        spark = create_spark_session()
-        consumer = connect_kafka_consumer()
-    except Exception as e:
-        logger.error(f"❌ Errore inizializzazione: {e}")
-        sys.exit(1)
-
-    processed_count = 0
-    error_count = 0
-    batch_data = []
-    BATCH_SIZE = 100000
+    consumer = connect_kafka_consumer()
+    processed = 0
+    errors = 0
 
     try:
-        logger.info(f"👂 In ascolto su topic '{KAFKA_TOPIC}'...")
-
         while not shutdown_flag:
             try:
                 message_pack = consumer.poll(timeout_ms=1000)
-                if not message_pack:
-                    continue
-
-                for topic_partition, messages in message_pack.items():
+                for tp, messages in message_pack.items():
                     for message in messages:
                         if shutdown_flag:
                             break
 
                         try:
-                            success = process_message(batch_data, message.value)
-                            if success:
-                                processed_count += 1
-                            else:
-                                error_count += 1
+                            payload = message.value
+                            ticker = payload['ticker']
+                            year = payload['year']
+                            month = payload['month']
+                            date_str = payload['date']
+                            records = payload['data']
 
-                            if len(batch_data) >= BATCH_SIZE:
-                                save_to_minio(spark, batch_data)
-                                batch_data.clear()
+                            if save_to_minio(ticker, year, month, date_str, records):
+                                processed += 1
+                            else:
+                                errors += 1
 
                         except Exception as e:
                             logger.error(f"❌ Errore elaborazione messaggio: {e}")
-                            error_count += 1
+                            errors += 1
 
-            except KafkaError as e:
-                logger.error(f"❌ Errore Kafka: {e}")
             except Exception as e:
-                logger.error(f"❌ Errore generico: {e}")
+                logger.error(f"❌ Errore nel ciclo di polling: {e}")
+                break
 
-        if batch_data:
-            save_to_minio(spark, batch_data)
-            batch_data.clear()
-
-    except KeyboardInterrupt:
-        logger.info("⏹️  Interruzione da utente")
     finally:
-        logger.info(f"📊 Statistiche: Processati: {processed_count}, Errori: {error_count}")
-
-        try:
-            consumer.close()
-            logger.info("🔚 Consumer Kafka chiuso")
-        except:
-            pass
-
-        try:
-            spark.stop()
-            logger.info("🔚 Sessione Spark chiusa")
-        except:
-            pass
+        consumer.close()
+        logger.info(f"🔚 Consumer terminato. Processati: {processed}, Errori: {errors}")
 
 if __name__ == "__main__":
     main()

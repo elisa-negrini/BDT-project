@@ -1,11 +1,14 @@
 # kc historical alpaca / Dockerfile
 
-FROM bitnami/spark:latest
+FROM python:3.10-slim
 
-USER root
-RUN pip install --no-cache-dir alpaca-py boto3 pandas kafka-python
-
-COPY . /app
 WORKDIR /app
 
-CMD ["spark-submit", "--master", "spark://spark-master:7077", "kc_historical_alpaca.py"]
+
+RUN pip install --no-cache-dir kafka-python boto3 pandas pyarrow
+
+# Copia del codice
+COPY kc_historical_alpaca.py .
+
+# Entry point
+CMD ["python", "kc_historical_alpaca.py"]

@@ -13,8 +13,8 @@ import time
 import pytz
 
 # === CONFIGURAZIONE ===
-ALPACA_API_KEY = "PK4EAQZ046KFOUC5ZE63"
-ALPACA_SECRET_KEY = "OPFfNY0PBbGUdgVpKrFrzWRCM2ay8Ih02lskjAh9"
+ALPACA_API_KEY = "PKUXBRI4VLH9L4DUP66H"
+ALPACA_SECRET_KEY = "CLtb3M5oppe02JhzpOR0NkkVyuqg0EzCHKlNcK1L"
 
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "h_alpaca")
@@ -25,10 +25,10 @@ END_DATE = datetime(2025, 5, 14)
 CHECKPOINT_FILE = "checkpoint.json"
 
 TICKERS = [
-    "AAPL", "MSFT", "NVDA", "AMZN", "META", "BRK.B", "GOOGL", "AVGO", "TSLA", "LLY",
+    "AAPL", "MSFT", "NVDA", "AMZN", "META", "ORCL", "GOOGL", "AVGO", "TSLA", "LLY",
     "JPM", "V", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA",
     "CVX", "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO", "IBM"
-]
+ ]
 
 # === LOGGING ===
 logging.basicConfig(

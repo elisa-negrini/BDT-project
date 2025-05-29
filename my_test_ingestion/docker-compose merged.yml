@@ -72,41 +72,41 @@ services:
 #       - kafka
 #     restart: always
   
-#   # Kafka producer data_finnhubnews
-#   kp_finnhubnews:
-#     build: ./producer_finnhubnews
-#     environment:
-#       KAFKA_SERVER: kafka:9092
-#     depends_on:
-#       - kafka
-#     restart: always
+  # # Kafka producer data_finnhubnews
+  # kp_finnhubnews:
+  #   build: ./producer_finnhubnews
+  #   environment:
+  #     KAFKA_SERVER: kafka:9092
+  #   depends_on:
+  #     - kafka
+  #   restart: always
 
-#   # Kafka producer data_alpaca
-#   kp_alpaca:
-#     build: ./producer_alpaca
-#     environment:
-#       KAFKA_SERVER: kafka:9092
-#     depends_on:
-#       - kafka
-#     restart: always
+  # # Kafka producer data_alpaca
+  # kp_alpaca:
+  #   build: ./producer_alpaca
+  #   environment:
+  #     KAFKA_SERVER: kafka:9092
+  #   depends_on:
+  #     - kafka
+  #   restart: always
 
-#   # Kafka producer bluesky
-#   kp_bluesky:
-#     build: ./producer_bluesky
-#     environment:
-#       KAFKA_SERVER: kafka:9092
-#     depends_on:
-#       - kafka
-#     restart: always
+  # # Kafka producer bluesky
+  # kp_bluesky:
+  #   build: ./producer_bluesky
+  #   environment:
+  #     KAFKA_SERVER: kafka:9092
+  #   depends_on:
+  #     - kafka
+  #   restart: always
     
-#   # Kafka producer macrodata
-#   kp_macrodata:
-#     build: ./producer_macrodata
-#     environment:
-#       KAFKA_SERVER: kafka:9092
-#     depends_on:
-#       - kafka
-#     restart: always
+  # # Kafka producer macrodata
+  # kp_macrodata:
+  #   build: ./producer_macrodata
+  #   environment:
+  #     KAFKA_SERVER: kafka:9092
+  #   depends_on:
+  #     - kafka
+  #   restart: always
 
 # ### CONSUMER STREAM
 
@@ -204,22 +204,22 @@ services:
 
 # ### SENTIMENT ANALYSIS
 
-#   sentiment_bluesky:
-#     build: ./sentiment_bluesky
-#     depends_on:
-#       - kafka
-#       - spark-master
-#       - spark-worker
-#     volumes:
-#       - ./sentiment_bluesky:/app
-#     working_dir: /app
-#     command: >
-#       spark-submit
-#       --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
-#       sentiment_bluesky.py
-#     environment:
-#       - PYSPARK_PYTHON=python3
-#     restart: always
+  # sentiment_bluesky:
+  #   build: ./sentiment_bluesky
+  #   depends_on:
+  #     - kafka
+  #     - spark-master
+  #     # - spark-worker
+  #   volumes:
+  #     - ./sentiment_bluesky:/app
+  #   working_dir: /app
+  #   command: >
+  #     spark-submit
+  #     --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
+  #     sentiment_bluesky.py
+  #   environment:
+  #     - PYSPARK_PYTHON=python3
+  #   restart: always
 
 #   sentiment_reddit:
 #     build: ./sentiment_reddit
@@ -239,48 +239,63 @@ services:
 #     restart: always
 
 
-#   sentiment_news:
-#     build: ./sentiment_news
-#     depends_on:
-#       - kafka
-#       - spark-master
-#       - spark-worker
-#     volumes:
-#       - ./sentiment_news:/app
-#     working_dir: /app
-#     command: >
-#       spark-submit
-#       --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
-#       sentiment_news.py
-#     environment:
-#        - PYSPARK_PYTHON=python3
-#     restart: always
+  # sentiment_news:
+  #   build: ./sentiment_news
+  #   depends_on:
+  #     - kafka
+  #     - spark-master
+  #     # - spark-worker
+  #   volumes:
+  #     - ./sentiment_news:/app
+  #   working_dir: /app
+  #   command: >
+  #     spark-submit
+  #     --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
+  #     sentiment_news.py
+  #   environment:
+  #      - PYSPARK_PYTHON=python3
+  #   restart: always
     
   
-#   sentiment_consumer:
-#     build:
-#       context: ./consumer_sentiment
-#     depends_on:
-#       - kafka
-#       - minio  # <-- Assicurati che ci sia un servizio "minio" definito
-#     environment:
-#       S3_ENDPOINT: http://minio:9000
-#       S3_ACCESS_KEY: admin
-#       S3_SECRET_KEY: admin123
-#       S3_BUCKET: sentiment-data
-#     networks:
-#       - default  # o il nome della rete Docker se ne hai definita una custom
-#     restart: always
+  # sentiment_consumer:
+  #   build:
+  #     context: ./consumer_sentiment
+  #   depends_on:
+  #     - kafka
+  #     - minio 
+  #   environment:
+  #     S3_ENDPOINT: http://minio:9000
+  #     S3_ACCESS_KEY: admin
+  #     S3_SECRET_KEY: admin123
+  #     S3_BUCKET: sentiment-data
+  #   networks:
+  #     - default  
+  #   restart: always
 
 # ### AGGREGATION LAYER
 
-#   flink:
-#     build:
-#       context: ./preprocessing_stream
-#     container_name: flink
-#     depends_on: 
-#       - kafka
-#     restart: always
+  # flink:
+  #   build:
+  #     context: ./preprocessing_stream
+  #   container_name: flink
+  #   depends_on: 
+  #     - kafka
+  #   restart: always
+
+
+  # minio-parquet-tester:
+  #   build:
+  #     context: ./preprocessing_stream2 
+  #     dockerfile: Dockerfile 
+  #   image: minio-parquet-tester-image:latest 
+  #   container_name: minio-parquet-tester
+  #   depends_on:
+  #     - minio
+  #   environment:
+  #     MINIO_URL: minio:9000 
+  #     MINIO_ACCESS_KEY: admin
+  #     MINIO_SECRET_KEY: admin123
+  #     MINIO_SECURE: "False"
 
 # ### PREDICTION LAYER
 
@@ -331,29 +346,29 @@ services:
 
 # Historical producer
 
-  kp_h_macrodata:
-    build: ./kp_historical_macrodata
-    environment:
-      KAFKA_SERVER: kafka:9092
-    depends_on:
-      - kafka
+  # kp_h_macrodata:
+  #   build: ./kp_historical_macrodata
+  #   environment:
+  #     KAFKA_SERVER: kafka:9092
+  #   depends_on:
+  #     - kafka
 
-  kp_h_alpaca:
-    build: ./kp_historical_alpaca
-    environment:
-      KAFKA_SERVER: kafka:9092
-    depends_on:
-      - kafka
-    restart: always
+  # kp_h_alpaca:
+  #   build: ./kp_historical_alpaca
+  #   environment:
+  #     KAFKA_SERVER: kafka:9092
+  #   depends_on:
+  #     - kafka
+  #   restart: always
 
-  kp_h_company:
-    build:
-      context: ./kp_historical_company
-    container_name: kp_h_company
-    environment:
-      KAFKA_SERVER: kafka:9092
-    depends_on:
-      - kafka
+  # kp_h_company:
+  #   build:
+  #     context: ./kp_historical_company
+  #   container_name: kp_h_company
+  #   environment:
+  #     KAFKA_SERVER: kafka:9092
+  #   depends_on:
+  #     - kafka
 
 # historical consumer
   # kc_h_company:
@@ -398,15 +413,34 @@ services:
   #     SPARK_SUBMIT_OPTIONS: --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
 
 
+
   flink_historical:
     build:
       context: ./historical_aggregated
     container_name: flink_historical
     depends_on: 
       - kafka
+      - minio
+    environment:
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: admin
+      MINIO_SECRET_KEY: admin123
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     restart: always
 
-
+  # model_trainer:
+  #     build:
+  #       context: ./create_model
+  #     container_name: model_trainer
+  #     environment:
+  #       MINIO_ENDPOINT: minio:9000
+  #       MINIO_ACCESS_KEY: admin
+  #       MINIO_SECRET_KEY: admin123
+  #     depends_on:
+  #       - minio
+  #     volumes:
+  #       - ./create_model/model:/app/model
+  #     restart: on-failure
 
 
 
