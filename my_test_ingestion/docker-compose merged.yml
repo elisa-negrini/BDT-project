@@ -61,7 +61,21 @@ services:
      - ./data/minio:/data
     command: server /data --console-address ":9001"
 
-# ### PRODUCER STREAM
+  postgre:
+    image: postgres:16-alpine
+    container_name: postgre
+    environment:
+      POSTGRES_DB: aggregated-data
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: always
+
+
+### PRODUCER STREAM
 
 #   # Kafka producer data_reddit
 #   kp_reddit:
@@ -72,7 +86,7 @@ services:
 #       - kafka
 #     restart: always
   
-  # # Kafka producer data_finnhubnews
+  # Kafka producer data_finnhubnews
   # kp_finnhubnews:
   #   build: ./producer_finnhubnews
   #   environment:
@@ -81,7 +95,7 @@ services:
   #     - kafka
   #   restart: always
 
-  # # Kafka producer data_alpaca
+  # Kafka producer data_alpaca
   # kp_alpaca:
   #   build: ./producer_alpaca
   #   environment:
@@ -130,23 +144,23 @@ services:
 #     restart: always
 
 
-#   # Kafka consumer alpaca
-#   kc_alpaca:
-#     build: ./consumer_alpaca
-#     depends_on:
-#       - kafka
-#       - minio
-#     environment:
-#       KAFKA_SERVER: kafka:9092
-#       S3_ENDPOINT: http://minio:9000
-#       S3_ACCESS_KEY: admin
-#       S3_SECRET_KEY: admin123
-#       S3_BUCKET: stock-data  # Usa il nome del bucket che vuoi utilizzare
-#     volumes:
-#       - ./consumer_alpaca:/app
-#     working_dir: /app
-#     command: python consumer_alpaca.py
-#     restart: always
+  # Kafka consumer alpaca
+  # kc_alpaca:
+  #   build: ./consumer_alpaca
+  #   depends_on:
+  #     - kafka
+  #     - minio
+  #   environment:
+  #     KAFKA_SERVER: kafka:9092
+  #     S3_ENDPOINT: http://minio:9000
+  #     S3_ACCESS_KEY: admin
+  #     S3_SECRET_KEY: admin123
+  #     S3_BUCKET: stock-data
+  #   volumes:
+  #     - ./consumer_alpaca:/app
+  #   working_dir: /app
+  #   command: python consumer_alpaca.py
+  #   restart: always
 
 #   # Kafka consumer reddit
 #   kc_reddit:
@@ -202,14 +216,14 @@ services:
 #     command: python consumer_macrodata.py
 #     restart: always
 
-# ### SENTIMENT ANALYSIS
+### SENTIMENT ANALYSIS
 
   # sentiment_bluesky:
   #   build: ./sentiment_bluesky
   #   depends_on:
   #     - kafka
   #     - spark-master
-  #     # - spark-worker
+  #   #  - spark-worker
   #   volumes:
   #     - ./sentiment_bluesky:/app
   #   working_dir: /app
@@ -244,7 +258,7 @@ services:
   #   depends_on:
   #     - kafka
   #     - spark-master
-  #     # - spark-worker
+  #   #  - spark-worker
   #   volumes:
   #     - ./sentiment_news:/app
   #   working_dir: /app
@@ -262,14 +276,14 @@ services:
   #     context: ./consumer_sentiment
   #   depends_on:
   #     - kafka
-  #     - minio 
+  #     - minio  # <-- Assicurati che ci sia un servizio "minio" definito
   #   environment:
   #     S3_ENDPOINT: http://minio:9000
   #     S3_ACCESS_KEY: admin
   #     S3_SECRET_KEY: admin123
   #     S3_BUCKET: sentiment-data
   #   networks:
-  #     - default  
+  #     - default  # o il nome della rete Docker se ne hai definita una custom
   #   restart: always
 
 # ### AGGREGATION LAYER
@@ -281,21 +295,6 @@ services:
   #   depends_on: 
   #     - kafka
   #   restart: always
-
-
-  # minio-parquet-tester:
-  #   build:
-  #     context: ./preprocessing_stream2 
-  #     dockerfile: Dockerfile 
-  #   image: minio-parquet-tester-image:latest 
-  #   container_name: minio-parquet-tester
-  #   depends_on:
-  #     - minio
-  #   environment:
-  #     MINIO_URL: minio:9000 
-  #     MINIO_ACCESS_KEY: admin
-  #     MINIO_SECRET_KEY: admin123
-  #     MINIO_SECURE: "False"
 
 # ### PREDICTION LAYER
 
@@ -346,29 +345,29 @@ services:
 
 # Historical producer
 
-  # kp_h_macrodata:
-  #   build: ./kp_historical_macrodata
-  #   environment:
-  #     KAFKA_SERVER: kafka:9092
-  #   depends_on:
-  #     - kafka
+  kp_h_macrodata:
+    build: ./kp_historical_macrodata
+    environment:
+      KAFKA_SERVER: kafka:9092
+    depends_on:
+      - kafka
 
-  # kp_h_alpaca:
-  #   build: ./kp_historical_alpaca
-  #   environment:
-  #     KAFKA_SERVER: kafka:9092
-  #   depends_on:
-  #     - kafka
-  #   restart: always
+  kp_h_alpaca:
+    build: ./kp_historical_alpaca
+    environment:
+      KAFKA_SERVER: kafka:9092
+    depends_on:
+      - kafka
+    restart: always
 
-  # kp_h_company:
-  #   build:
-  #     context: ./kp_historical_company
-  #   container_name: kp_h_company
-  #   environment:
-  #     KAFKA_SERVER: kafka:9092
-  #   depends_on:
-  #     - kafka
+  kp_h_company:
+    build:
+      context: ./kp_historical_company
+    container_name: kp_h_company
+    environment:
+      KAFKA_SERVER: kafka:9092
+    depends_on:
+      - kafka
 
 # historical consumer
   # kc_h_company:
@@ -412,35 +411,23 @@ services:
   #     S3_BUCKET: macro-data
   #     SPARK_SUBMIT_OPTIONS: --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
 
-
-
-  flink_historical:
+flink_historical:
     build:
       context: ./historical_aggregated
     container_name: flink_historical
-    depends_on: 
+    depends_on:
       - kafka
-      - minio
-    environment:
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: admin
-      MINIO_SECRET_KEY: admin123
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      - postgre
     restart: always
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - POSTGRES_HOST=postgre
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=aggregated-data
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin123
 
-  # model_trainer:
-  #     build:
-  #       context: ./create_model
-  #     container_name: model_trainer
-  #     environment:
-  #       MINIO_ENDPOINT: minio:9000
-  #       MINIO_ACCESS_KEY: admin
-  #       MINIO_SECRET_KEY: admin123
-  #     depends_on:
-  #       - minio
-  #     volumes:
-  #       - ./create_model/model:/app/model
-  #     restart: on-failure
+
 
 
 
