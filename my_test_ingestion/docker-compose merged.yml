@@ -23,17 +23,17 @@ services:
     #   - ./create-topics.sh:/tmp/create-topics.sh
     # command: ["bash", "/tmp/create-topics.sh"]
 
-  spark-master:
-    image: bitnami/spark:latest
-    environment:
-      - SPARK_MODE=master
-      - SPARK_RPC_AUTHENTICATION_ENABLED=no
-      - SPARK_RPC_ENCRYPTION_ENABLED=no
-      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
-      - SPARK_SSL_ENABLED=no
-    ports:
-      - "7077:7077"
-      - "8080:8080"  # Spark master web UI
+  # spark-master:
+  #   image: bitnami/spark:latest
+  #   environment:
+  #     - SPARK_MODE=master
+  #     - SPARK_RPC_AUTHENTICATION_ENABLED=no
+  #     - SPARK_RPC_ENCRYPTION_ENABLED=no
+  #     - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+  #     - SPARK_SSL_ENABLED=no
+  #   ports:
+  #     - "7077:7077"
+  #     - "8080:8080"  # Spark master web UI
 
   # spark-worker:
   #   image: bitnami/spark:latest
@@ -411,24 +411,21 @@ services:
   #     S3_BUCKET: macro-data
   #     SPARK_SUBMIT_OPTIONS: --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
 
-flink_historical:
-    build:
-      context: ./historical_aggregated
-    container_name: flink_historical
-    depends_on:
-      - kafka
-      - postgre
-    restart: always
-    environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - POSTGRES_HOST=postgre
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=aggregated-data
-      - POSTGRES_USER=admin
-      - POSTGRES_PASSWORD=admin123
-
-
-
+  flink_historical:
+      build:
+        context: ./historical_aggregated
+      container_name: flink_historical
+      depends_on:
+        - kafka
+        - postgre
+      restart: always
+      environment:
+        - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+        - POSTGRES_HOST=postgre
+        - POSTGRES_PORT=5432
+        - POSTGRES_DB=aggregated-data
+        - POSTGRES_USER=admin
+        - POSTGRES_PASSWORD=admin123
 
 
 networks:
@@ -439,3 +436,6 @@ networks:
     driver: bridge
 
 
+volumes:
+  pgdata:
+    driver: local 

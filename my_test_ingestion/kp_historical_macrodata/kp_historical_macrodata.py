@@ -47,7 +47,7 @@ def fetch_and_send():
                 df = pd.DataFrame(observations)
                 df = df[df["value"] != "."]
                 df["date"] = pd.to_datetime(df["date"])
-                df = df[df["date"].dt.year >= 2021]
+                df = df[df["date"].dt.year >= 2020]
                 df["value"] = df["value"].astype(float)
 
                 for _, row in df.iterrows():
@@ -68,3 +68,5 @@ if __name__ == "__main__":
     fetch_and_send()
     producer.flush()
     producer.close()
+
+

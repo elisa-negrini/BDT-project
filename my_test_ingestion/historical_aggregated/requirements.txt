@@ -1,4 +1,4 @@
-pyflink==1.17.1
+apache-flink==1.17.2
 numpy
 pandas
 psycopg2-binary

@@ -1,49 +1,35 @@
-# Use a base image with Python and Java installed (Flink requires Java)
-# Eclipse Temurin provides a good base for Flink applications
-FROM eclipse-temurin:11-jre-focal
+# Usa un'immagine Flink di base
+FROM flink:1.17-scala_2.12
 
-# Set environment variables for Flink and Python
-ENV FLINK_HOME=/opt/flink
-ENV PATH=$PATH:$FLINK_HOME/bin
-ENV PYTHON_HOME=/opt/venv
-ENV PATH=$PYTHON_HOME/bin:$PATH
-ENV PYFLINK_PYTHON_ARCHIVE=/opt/pyflink.zip
-ENV PIP_NO_CACHE_DIR=off
-ENV PYTHONUNBUFFERED=1
+# Installa Python, pip e le dipendenze di build per psycopg2
+# psycopg2 richiede header di sviluppo per PostgreSQL
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    libpq-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install necessary Python packages and Flink Python API
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        python3 python3-pip python3-venv \
-        openjdk-11-jdk \
-        build-essential gcc && \
-    rm -rf /var/lib/apt/lists/*
+# Crea un link simbolico per python
+RUN ln -s /usr/bin/python3 /usr/bin/python
 
-# Create a Python virtual environment
-RUN python3 -m venv $PYTHON_HOME
-RUN $PYTHON_HOME/bin/pip install --upgrade pip
+# Installa le librerie Python
+# Aggiunto psycopg2-binary
+RUN pip3 install \
+    apache-flink==1.17.0 \
+    numpy \
+    pandas \
+    python-dateutil \
+    pytz \
+    sqlalchemy \
+    psycopg2-binary
 
-# Install PyFlink and other dependencies
-# Use a specific PyFlink version compatible with your Flink setup
-# For local testing, Flink 1.17 is a common choice.
-# This assumes you have Flink 1.17.x configured in your docker-compose if running as a service.
-RUN $PYTHON_HOME/bin/pip install apache-flink==1.17.1
+# Copia lo script Python
+COPY historical_aggregated.py /opt/historical_aggregated.py
 
-# Install other Python libraries required by your script
-# CHANGE THIS LINE: Reference requirements.txt directly from the build context
-COPY requirements.txt /tmp/requirements.txt
-RUN $PYTHON_HOME/bin/pip install -r /tmp/requirements.txt
+# Copia i JAR per Kafka (essenziali per il connettore Kafka di Flink)
+COPY flink-connector-kafka-1.17.0.jar /opt/flink/lib/
+COPY kafka-clients-3.3.2.jar /opt/flink/lib/
 
-# Package the virtual environment for Flink's PyFlinkJobDescriptor
-RUN cd $PYTHON_HOME && zip -r $PYFLINK_PYTHON_ARCHIVE .
-
-# Copy your Flink application script
-# CHANGE THIS LINE: Reference your script directly from the build context
-COPY historical_aggregated.py /opt/flink_job/historical_aggregated.py
-
-# Entrypoint to run the Flink job
-# We're directly using the Flink Python executable which manages the Flink mini-cluster in standalone mode
-# When you deploy to a Flink cluster, you'd change this to target the cluster.
-CMD ["/opt/flink/bin/flink", "run", \
-     "-py", "/opt/flink_job/historical_aggregated.py", \
-     "-pyfs", "/opt/pyflink.zip"]
+# Imposta il comando di default per eseguire lo script Flink
+CMD ["python", "/opt/historical_aggregated.py"]
