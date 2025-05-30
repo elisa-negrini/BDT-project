@@ -345,29 +345,29 @@ services:
 
 # Historical producer
 
-  kp_h_macrodata:
-    build: ./kp_historical_macrodata
-    environment:
-      KAFKA_SERVER: kafka:9092
-    depends_on:
-      - kafka
+  # kp_h_macrodata:
+  #   build: ./kp_historical_macrodata
+  #   environment:
+  #     KAFKA_SERVER: kafka:9092
+  #   depends_on:
+  #     - kafka
 
-  kp_h_alpaca:
-    build: ./kp_historical_alpaca
-    environment:
-      KAFKA_SERVER: kafka:9092
-    depends_on:
-      - kafka
-    restart: always
+  # kp_h_alpaca:
+  #   build: ./kp_historical_alpaca
+  #   environment:
+  #     KAFKA_SERVER: kafka:9092
+  #   depends_on:
+  #     - kafka
+  #   restart: always
 
-  kp_h_company:
-    build:
-      context: ./kp_historical_company
-    container_name: kp_h_company
-    environment:
-      KAFKA_SERVER: kafka:9092
-    depends_on:
-      - kafka
+  # kp_h_company:
+  #   build:
+  #     context: ./kp_historical_company
+  #   container_name: kp_h_company
+  #   environment:
+  #     KAFKA_SERVER: kafka:9092
+  #   depends_on:
+  #     - kafka
 
 # historical consumer
   # kc_h_company:
@@ -411,21 +411,21 @@ services:
   #     S3_BUCKET: macro-data
   #     SPARK_SUBMIT_OPTIONS: --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
 
-  flink_historical:
-      build:
-        context: ./historical_aggregated
-      container_name: flink_historical
-      depends_on:
-        - kafka
-        - postgre
-      restart: always
-      environment:
-        - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-        - POSTGRES_HOST=postgre
-        - POSTGRES_PORT=5432
-        - POSTGRES_DB=aggregated-data
-        - POSTGRES_USER=admin
-        - POSTGRES_PASSWORD=admin123
+  # flink_historical:
+  #     build:
+  #       context: ./historical_aggregated
+  #     container_name: flink_historical
+  #     depends_on:
+  #       - kafka
+  #       - postgre
+  #     restart: always
+  #     environment:
+  #       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+  #       - POSTGRES_HOST=postgre
+  #       - POSTGRES_PORT=5432
+  #       - POSTGRES_DB=aggregated-data
+  #       - POSTGRES_USER=admin
+  #       - POSTGRES_PASSWORD=admin123
 
 
 networks:

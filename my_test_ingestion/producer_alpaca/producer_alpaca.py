@@ -12,8 +12,8 @@ import json
 nest_asyncio.apply()
 
 # Alpaca API config
-API_KEY = "PKSMY2I731A19D9JZO8G"
-API_SECRET = "lefj50N6lJndVbMYf4ONBibctHM86FuPmUDB9dTI"
+API_KEY = "PKWTO08TY1J3RJ4MHWHK"
+API_SECRET = "bNufl6Fcq7OwlxLjtAtk7z5SAGPcKQ5yqb7oH1as"
 
 # Kafka config
 KAFKA_BROKER = 'kafka:9092'
