@@ -781,7 +781,8 @@ class FullDayAggregator(KeyedProcessFunction):
             raise RuntimeError(f"Failed to connect to PostgreSQL: {e}")
 
     def _create_table_if_not_exists(self):
-        table_name = "daily_stock_aggregations"
+        table_name = "aggregated_data"
+
         create_table_query = sql.SQL("""
             CREATE TABLE IF NOT EXISTS {table_name} (
                 ticker VARCHAR(10) NOT NULL,
@@ -808,10 +809,9 @@ class FullDayAggregator(KeyedProcessFunction):
                 market_open_spike_flag INTEGER,
                 market_close_spike_flag INTEGER,
                 eps DOUBLE PRECISION,
-                freeCashFlow DOUBLE PRECISION,
+                free_cash_flow DOUBLE PRECISION,
                 profit_margin DOUBLE PRECISION,
                 debt_to_equity DOUBLE PRECISION,
-                -- Macroeconomic data columns
                 gdp_real DOUBLE PRECISION,
                 cpi DOUBLE PRECISION,
                 ffr DOUBLE PRECISION,
@@ -968,7 +968,7 @@ class FullDayAggregator(KeyedProcessFunction):
                 "market_open_spike_flag": market_open_flag,
                 "market_close_spike_flag": market_close_flag,
                 "eps": fundamentals.get("eps"),
-                "freeCashFlow": fundamentals.get("freeCashFlow"),
+                "free_cash_flow": fundamentals.get("freeCashFlow"),
                 "profit_margin": profit_margin,
                 "debt_to_equity": debt_to_equity
             }
@@ -990,7 +990,7 @@ class FullDayAggregator(KeyedProcessFunction):
             self._insert_data_to_postgresql(batch_results)
 
     def _insert_data_to_postgresql(self, data):
-        table_name = "daily_stock_aggregations"
+        table_name = "aggregated_data"
         columns = [
             "ticker", "timestamp", "price_mean_1min", "price_mean_5min", "price_std_5min",
             "price_mean_30min", "price_std_30min", "size_tot_1min", "size_tot_5min",
@@ -999,7 +999,7 @@ class FullDayAggregator(KeyedProcessFunction):
             "sentiment_general_bluesky_mean_2hours", "sentiment_general_bluesky_mean_1day",
             "minutes_since_open", "day_of_week", "day_of_month", "week_of_year",
             "month_of_year", "market_open_spike_flag", "market_close_spike_flag",
-            "eps", "freeCashFlow", "profit_margin", "debt_to_equity",
+            "eps", "free_cash_flow", "profit_margin", "debt_to_equity",
             "gdp_real", "cpi", "ffr", "t10y", "t2y", "spread_10y_2y", "unemployment",
             "y1"
         ]
@@ -1031,7 +1031,7 @@ class FullDayAggregator(KeyedProcessFunction):
             "market_open_spike_flag = EXCLUDED.market_open_spike_flag, "
             "market_close_spike_flag = EXCLUDED.market_close_spike_flag, "
             "eps = EXCLUDED.eps, "
-            "freeCashFlow = EXCLUDED.freeCashFlow, "
+            "free_cash_flow = EXCLUDED.free_cash_flow, "
             "profit_margin = EXCLUDED.profit_margin, "
             "debt_to_equity = EXCLUDED.debt_to_equity, "
             "gdp_real = EXCLUDED.gdp_real, "
@@ -1064,7 +1064,7 @@ class FullDayAggregator(KeyedProcessFunction):
             self.conn.commit()
             print(f"[INFO] Inserted {len(data)} records into {table_name}.", file=sys.stdout)
         except Exception as e:
-            #print(f"[ERROR] An error occurred during PostgreSQL insertion: {e}", file=sys.stderr)
+            print(f"[ERROR] An error occurred during PostgreSQL insertion: {e}", file=sys.stderr)
             self.conn.rollback()
 
 
@@ -1085,7 +1085,7 @@ def main():
     db_password = "admin123"
     db_host = os.getenv("POSTGRES_HOST", "localhost")
     db_port = os.getenv("POSTGRES_PORT", "5432")
-    table_name = "daily_stock_aggregations"
+    table_name = "aggregated_data"
 
     try:
         conn_drop = psycopg2.connect(
