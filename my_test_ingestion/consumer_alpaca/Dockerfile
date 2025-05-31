@@ -8,7 +8,8 @@ RUN pip3 install --no-cache-dir \
     kafka-python \
     pandas \
     pyarrow \
-    s3fs 
+    s3fs \
+    pytz
 
 COPY consumer_alpaca.py /app/consumer_alpaca.py
 
