@@ -290,16 +290,51 @@ COMPANY_TICKER_MAP = {
 finbert_tokenizer = None
 finbert_session = None
 
+# def load_finbert_model():
+#     """
+#     Loads the FinBERT tokenizer and ONNX session.
+#     This function will be called once per worker/process.
+#     """
+#     global finbert_tokenizer, finbert_session
+#     if finbert_tokenizer is None:
+#         try:
+#             # Paths are relative to the working_dir /app
+#             tokenizer_path = "/app/model/tokenizer"
+#             if not os.path.isdir(tokenizer_path):
+#                 sys.stderr.write(f"ERROR: Tokenizer directory not found at {tokenizer_path}\n")
+#                 raise FileNotFoundError(f"Tokenizer directory not found: {tokenizer_path}")
+#             finbert_tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+#             sys.stderr.write(f"INFO: FinBERT tokenizer loaded from {tokenizer_path}\n")
+#         except Exception as e:
+#             sys.stderr.write(f"CRITICAL ERROR: Failed to load FinBERT tokenizer: {e}\n")
+#             raise
+
+#     if finbert_session is None:
+#         try:
+#             # Path for the ONNX model file
+#             model_path = "/app/model/model.onnx"
+#             if not os.path.exists(model_path):
+#                 sys.stderr.write(f"ERROR: ONNX model file not found at {model_path}\n")
+#                 raise FileNotFoundError(f"ONNX model file not found: {model_path}")
+#             finbert_session = ort.InferenceSession(model_path)
+#             sys.stderr.write(f"INFO: FinBERT ONNX session loaded from {model_path}\n")
+#         except Exception as e:
+#             sys.stderr.write(f"CRITICAL ERROR: Failed to load FinBERT ONNX session: {e}\n")
+#             raise
+
+
 def load_finbert_model():
     """
     Loads the FinBERT tokenizer and ONNX session.
-    This function will be called once per worker/process.
     """
     global finbert_tokenizer, finbert_session
+    
+    # Prende il percorso base del modello dalla variabile d'ambiente, o usa /model come default
+    base_model_dir = os.environ.get("FINBERT_MODEL_BASE_PATH", "/model")
+
     if finbert_tokenizer is None:
         try:
-            # Paths are relative to the working_dir /app
-            tokenizer_path = "/app/model/tokenizer"
+            tokenizer_path = os.path.join(base_model_dir, "tokenizer")
             if not os.path.isdir(tokenizer_path):
                 sys.stderr.write(f"ERROR: Tokenizer directory not found at {tokenizer_path}\n")
                 raise FileNotFoundError(f"Tokenizer directory not found: {tokenizer_path}")
@@ -311,8 +346,7 @@ def load_finbert_model():
 
     if finbert_session is None:
         try:
-            # Path for the ONNX model file
-            model_path = "/app/model/model.onnx"
+            model_path = os.path.join(base_model_dir, "model.onnx")
             if not os.path.exists(model_path):
                 sys.stderr.write(f"ERROR: ONNX model file not found at {model_path}\n")
                 raise FileNotFoundError(f"ONNX model file not found: {model_path}")
@@ -321,6 +355,12 @@ def load_finbert_model():
         except Exception as e:
             sys.stderr.write(f"CRITICAL ERROR: Failed to load FinBERT ONNX session: {e}\n")
             raise
+
+
+
+
+
+
 
 def extract_tickers(text):
     tickers = set()

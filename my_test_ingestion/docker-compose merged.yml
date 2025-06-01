@@ -77,23 +77,23 @@ services:
 
 ### PRODUCER STREAM
 
-#   # Kafka producer data_reddit
-#   kp_reddit:
-#     build: ./producer_reddit
-#     environment:
-#       KAFKA_SERVER: kafka:9092
-#     depends_on:
-#       - kafka
-#     restart: always
+  # Kafka producer data_reddit
+  kp_reddit:
+    build: ./producer_reddit
+    environment:
+      KAFKA_SERVER: kafka:9092
+    depends_on:
+      - kafka
+    restart: always
   
-  # Kafka producer data_finnhubnews
-  # kp_finnhubnews:
-  #   build: ./producer_finnhubnews
-  #   environment:
-  #     KAFKA_SERVER: kafka:9092
-  #   depends_on:
-  #     - kafka
-  #   restart: always
+  #Kafka producer data_finnhubnews
+  kp_finnhubnews:
+    build: ./producer_finnhubnews
+    environment:
+      KAFKA_SERVER: kafka:9092
+    depends_on:
+      - kafka
+    restart: always
 
   # Kafka producer data_alpaca
   # kp_alpaca:
@@ -125,23 +125,23 @@ services:
 # ### CONSUMER STREAM
 
 
-#   # Kafka consumer finnhubnews
-#   kc_finnhubnews:
-#     build: ./consumer_finnhubnews
-#     environment:
-#       KAFKA_SERVER: kafka:9092
-#       S3_ENDPOINT: http://minio:9000
-#       S3_ACCESS_KEY: admin
-#       S3_SECRET_KEY: admin123
-#       S3_BUCKET: finnhub-data
-#     depends_on:
-#       - kafka
-#       - minio
-#     volumes:
-#       - ./consumer_finnhubnews:/app
-#     working_dir: /app
-#     command: python consumer_finnhubnews.py
-#     restart: always
+  # Kafka consumer finnhubnews
+  kc_finnhubnews:
+    build: ./consumer_finnhubnews
+    environment:
+      KAFKA_SERVER: kafka:9092
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: admin
+      S3_SECRET_KEY: admin123
+      S3_BUCKET: finnhub-data
+    depends_on:
+      - kafka
+      - minio
+    volumes:
+      - ./consumer_finnhubnews:/app
+    working_dir: /app
+    command: python consumer_finnhubnews.py
+    restart: always
 
 
   # Kafka consumer alpaca
@@ -162,23 +162,23 @@ services:
   #   command: python consumer_alpaca.py
   #   restart: always
 
-#   # Kafka consumer reddit
-#   kc_reddit:
-#     build: ./consumer_reddit 
-#     environment:
-#       KAFKA_SERVER: kafka:9092
-#       S3_ENDPOINT: http://minio:9000
-#       S3_ACCESS_KEY: admin
-#       S3_SECRET_KEY: admin123
-#       S3_BUCKET: reddit-data
-#     depends_on:
-#       - kafka
-#       - minio
-#     volumes:
-#       - ./consumer_reddit:/app
-#     working_dir: /app
-#     command: python consumer_reddit.py
-#     restart: always
+  # Kafka consumer reddit
+  kc_reddit:
+    build: ./consumer_reddit 
+    environment:
+      KAFKA_SERVER: kafka:9092
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: admin
+      S3_SECRET_KEY: admin123
+      S3_BUCKET: reddit-data
+    depends_on:
+      - kafka
+      - minio
+    volumes:
+      - ./consumer_reddit:/app
+    working_dir: /app
+    command: python consumer_reddit.py
+    restart: always
 
   #kafka consumer bluesky
   kc_bluesky:
@@ -237,17 +237,13 @@ services:
 
   sentiment_bluesky:
     build:
-      context: ./sentiment_bluesky # Il contesto di build è la cartella del Dockerfile
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./sentiment_bluesky/Dockerfile
     volumes:
-      # Rimuovi il mount della vecchia cartella jar_flink:
-      # - ./jar_flink:/opt/flink/lib
-
       # Mount per il tuo codice Python.
       - ./sentiment_bluesky:/app
-
       # Mount per la cartella del modello (tokenizer e .onnx).
-      - ./sentiment_bluesky/model:/app/model
+      - ./quantized_finbert:/model
     working_dir: /app
     depends_on:
       - kafka
@@ -259,8 +255,9 @@ services:
       # (/opt/flink/lib e /opt/flink/opt) nella classpath.
       # Il connettore Kafka verrà copiato in /opt/flink/lib dal Dockerfile.
       - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
+      - FINBERT_MODEL_BASE_PATH=/model 
     mem_limit: 4g # Consider increasing this if you raise parallelism
-    cpus: 1 
+    cpus: 2 
     
 
 
@@ -282,6 +279,35 @@ services:
 #     restart: always
 
 
+
+  sentiment_reddit:
+    build:
+      context: .
+      dockerfile: ./sentiment_reddit/Dockerfile
+    volumes:
+      # Mount per il tuo codice Python.
+      - ./sentiment_reddit:/app
+      # Mount per la cartella del modello (tokenizer e .onnx).
+      - ./quantized_finbert:/model
+    working_dir: /app
+    depends_on:
+      - kafka
+    container_name: sentiment_reddit
+    restart: always
+    environment:
+      # *** QUESTA È LA MODIFICA CHIAVE ***
+      # Dice a PyFlink di includere i JAR dalle directory standard di Flink
+      # (/opt/flink/lib e /opt/flink/opt) nella classpath.
+      # Il connettore Kafka verrà copiato in /opt/flink/lib dal Dockerfile.
+      - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
+      - FINBERT_MODEL_BASE_PATH=/model 
+    mem_limit: 4g # Consider increasing this if you raise parallelism
+    cpus: 2
+
+
+
+
+
   # sentiment_news:
   #   build: ./sentiment_news
   #   depends_on:
@@ -299,6 +325,36 @@ services:
   #      - PYSPARK_PYTHON=python3
   #   restart: always
     
+
+  sentiment_news:
+    build:
+      context: .
+      dockerfile: ./sentiment_news/Dockerfile
+    volumes:
+      # Mount per il tuo codice Python.
+      - ./sentiment_news:/app
+      # Mount per la cartella del modello (tokenizer e .onnx).
+      - ./quantized_finbert:/model
+    working_dir: /app
+    depends_on:
+      - kafka
+    container_name: sentiment_news
+    restart: always
+    environment:
+      # *** QUESTA È LA MODIFICA CHIAVE ***
+      # Dice a PyFlink di includere i JAR dalle directory standard di Flink
+      # (/opt/flink/lib e /opt/flink/opt) nella classpath.
+      # Il connettore Kafka verrà copiato in /opt/flink/lib dal Dockerfile.
+      - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
+      - FINBERT_MODEL_BASE_PATH=/model 
+    mem_limit: 4g # Consider increasing this if you raise parallelism
+    cpus: 2 
+
+
+
+
+
+
   
   sentiment_consumer:
     build:
