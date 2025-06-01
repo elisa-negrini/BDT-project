@@ -381,6 +381,21 @@ services:
   #     - kafka
   #   restart: always
 
+  # aggregated_storage:
+  #     build: ./consumer_aggregated
+  #     container_name: aggregated_storage
+  #     depends_on:
+  #       - kafka 
+  #       - postgre
+  #     command: python consumer_aggregated.py
+  #     restart: always
+  #     environment: # <-- Aggiungi questa sezione
+  #       - POSTGRES_HOST=postgre
+  #       - POSTGRES_DB=aggregated-data
+  #       - POSTGRES_USER=admin
+  #       - POSTGRES_PASSWORD=admin123
+  #       - POSTGRES_PORT=5432
+
 # ### PREDICTION LAYER
 
 #   predictor_layer:
