@@ -23,29 +23,29 @@ services:
     #   - ./create-topics.sh:/tmp/create-topics.sh
     # command: ["bash", "/tmp/create-topics.sh"]
 
-  spark-master:
-    image: bitnami/spark:latest
-    environment:
-      - SPARK_MODE=master
-      - SPARK_RPC_AUTHENTICATION_ENABLED=no
-      - SPARK_RPC_ENCRYPTION_ENABLED=no
-      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
-      - SPARK_SSL_ENABLED=no
-    ports:
-      - "7077:7077"
-      - "8080:8080"  # Spark master web UI
+  # spark-master:
+  #   image: bitnami/spark:latest
+  #   environment:
+  #     - SPARK_MODE=master
+  #     - SPARK_RPC_AUTHENTICATION_ENABLED=no
+  #     - SPARK_RPC_ENCRYPTION_ENABLED=no
+  #     - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+  #     - SPARK_SSL_ENABLED=no
+  #   ports:
+  #     - "7077:7077"
+  #     - "8080:8080"  # Spark master web UI
 
-  spark-worker:
-    image: bitnami/spark:latest
-    depends_on:
-      - spark-master
-    environment:
-      - SPARK_MODE=worker
-      - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_WORKER_MEMORY=1G
-      - SPARK_WORKER_CORES=1
-    ports:
-      - "8081:8081"  # Spark worker web UI
+  # spark-worker:
+  #   image: bitnami/spark:latest
+  #   depends_on:
+  #     - spark-master
+  #   environment:
+  #     - SPARK_MODE=worker
+  #     - SPARK_MASTER_URL=spark://spark-master:7077
+  #     - SPARK_WORKER_MEMORY=1G
+  #     - SPARK_WORKER_CORES=1
+  #   ports:
+  #     - "8081:8081"  # Spark worker web UI
 
 
   minio:
@@ -77,14 +77,14 @@ services:
 
 ### PRODUCER STREAM
 
-  # Kafka producer data_reddit
-  kp_reddit:
-    build: ./producer_reddit
-    environment:
-      KAFKA_SERVER: kafka:9092
-    depends_on:
-      - kafka
-    restart: always
+  # # Kafka producer data_reddit
+  # kp_reddit:
+  #   build: ./producer_reddit
+  #   environment:
+  #     KAFKA_SERVER: kafka:9092
+  #   depends_on:
+  #     - kafka
+  #   restart: always
   
   #Kafka producer data_finnhubnews
   kp_finnhubnews:
@@ -95,14 +95,14 @@ services:
       - kafka
     restart: always
 
-  # Kafka producer data_alpaca
-  # kp_alpaca:
-  #   build: ./producer_alpaca
-  #   environment:
-  #     KAFKA_SERVER: kafka:9092
-  #   depends_on:
-  #     - kafka
-  #   restart: always
+  #Kafka producer data_alpaca
+  kp_alpaca:
+    build: ./producer_alpaca
+    environment:
+      KAFKA_SERVER: kafka:9092
+    depends_on:
+      - kafka
+    restart: always
 
   # Kafka producer bluesky
   kp_bluesky:
@@ -126,22 +126,22 @@ services:
 
 
   # Kafka consumer finnhubnews
-  kc_finnhubnews:
-    build: ./consumer_finnhubnews
-    environment:
-      KAFKA_SERVER: kafka:9092
-      S3_ENDPOINT: http://minio:9000
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: admin123
-      S3_BUCKET: finnhub-data
-    depends_on:
-      - kafka
-      - minio
-    volumes:
-      - ./consumer_finnhubnews:/app
-    working_dir: /app
-    command: python consumer_finnhubnews.py
-    restart: always
+  # kc_finnhubnews:
+  #   build: ./consumer_finnhubnews
+  #   environment:
+  #     KAFKA_SERVER: kafka:9092
+  #     S3_ENDPOINT: http://minio:9000
+  #     S3_ACCESS_KEY: admin
+  #     S3_SECRET_KEY: admin123
+  #     S3_BUCKET: finnhub-data
+  #   depends_on:
+  #     - kafka
+  #     - minio
+  #   volumes:
+  #     - ./consumer_finnhubnews:/app
+  #   working_dir: /app
+  #   command: python consumer_finnhubnews.py
+  #   restart: always
 
 
   # Kafka consumer alpaca
@@ -162,41 +162,41 @@ services:
   #   command: python consumer_alpaca.py
   #   restart: always
 
-  # Kafka consumer reddit
-  kc_reddit:
-    build: ./consumer_reddit 
-    environment:
-      KAFKA_SERVER: kafka:9092
-      S3_ENDPOINT: http://minio:9000
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: admin123
-      S3_BUCKET: reddit-data
-    depends_on:
-      - kafka
-      - minio
-    volumes:
-      - ./consumer_reddit:/app
-    working_dir: /app
-    command: python consumer_reddit.py
-    restart: always
+  # # Kafka consumer reddit
+  # kc_reddit:
+  #   build: ./consumer_reddit 
+  #   environment:
+  #     KAFKA_SERVER: kafka:9092
+  #     S3_ENDPOINT: http://minio:9000
+  #     S3_ACCESS_KEY: admin
+  #     S3_SECRET_KEY: admin123
+  #     S3_BUCKET: reddit-data
+  #   depends_on:
+  #     - kafka
+  #     - minio
+  #   volumes:
+  #     - ./consumer_reddit:/app
+  #   working_dir: /app
+  #   command: python consumer_reddit.py
+  #   restart: always
 
-  #kafka consumer bluesky
-  kc_bluesky:
-    build: ./consumer_bluesky
-    depends_on:
-      - kafka
-      - minio
-    environment:
-      KAFKA_SERVER: kafka:9092
-      S3_ENDPOINT: http://minio:9000
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: admin123
-      S3_BUCKET: bluesky-data
-    volumes:
-      - ./consumer_bluesky:/app
-    working_dir: /app
-    command: python consumer_bluesky.py
-    restart: always
+  # #kafka consumer bluesky
+  # kc_bluesky:
+  #   build: ./consumer_bluesky
+  #   depends_on:
+  #     - kafka
+  #     - minio
+  #   environment:
+  #     KAFKA_SERVER: kafka:9092
+  #     S3_ENDPOINT: http://minio:9000
+  #     S3_ACCESS_KEY: admin
+  #     S3_SECRET_KEY: admin123
+  #     S3_BUCKET: bluesky-data
+  #   volumes:
+  #     - ./consumer_bluesky:/app
+  #   working_dir: /app
+  #   command: python consumer_bluesky.py
+  #   restart: always
 
 #   #kafka consumer macrodata
 #   kc_macrodata:
@@ -373,13 +373,13 @@ services:
 
 # ### AGGREGATION LAYER
 
-  # flink:
-  #   build:
-  #     context: ./preprocessing_stream
-  #   container_name: flink
-  #   depends_on: 
-  #     - kafka
-  #   restart: always
+  flink:
+    build:
+      context: ./preprocessing_stream
+    container_name: flink
+    depends_on: 
+      - kafka
+    restart: always
 
   # aggregated_storage:
   #     build: ./consumer_aggregated
@@ -460,27 +460,27 @@ services:
   #     - kafka
   #   restart: always
 
-  # kp_h_company:
-  #   build:
-  #     context: ./kp_historical_company
-  #   container_name: kp_h_company
-  #   environment:
-  #     KAFKA_SERVER: kafka:9092
-  #   depends_on:
-  #     - kafka
+  kp_h_company:
+    build:
+      context: ./kp_historical_company
+    container_name: kp_h_company
+    environment:
+      KAFKA_SERVER: kafka:9092
+    depends_on:
+      - kafka
 
 # historical consumer
-  # kc_h_company:
-  #   build:
-  #     context: ./kc_historical_company
-  #   container_name: kc_h_company
-  #   depends_on:
-  #     - kafka
-  #     - minio
-  #   environment:
-  #     S3_ENDPOINT: http://minio:9000
-  #     S3_ACCESS_KEY: admin
-  #     S3_SECRET_KEY: admin123
+  kc_h_company:
+    build:
+      context: ./kc_historical_company
+    container_name: kc_h_company
+    depends_on:
+      - kafka
+      - minio
+    environment:
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: admin
+      S3_SECRET_KEY: admin123
       
   # kc_h_alpaca:
   #   build:
