@@ -1,1 +1,2 @@
 my_test_ingestion/sentiment_bluesky/model/model.onnx filter=lfs diff=lfs merge=lfs -text
+my_test_ingestion/quantized_finbert/model.onnx filter=lfs diff=lfs merge=lfs -text
