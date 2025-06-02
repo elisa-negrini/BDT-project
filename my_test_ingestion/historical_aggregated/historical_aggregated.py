@@ -709,7 +709,6 @@
 
 
 
-
 from pyflink.datastream import StreamExecutionEnvironment
 from pyflink.common.serialization import SimpleStringSchema
 from pyflink.datastream.connectors import FlinkKafkaConsumer
@@ -719,11 +718,28 @@ from datetime import datetime, timedelta, time as dtime
 from zoneinfo import ZoneInfo
 import json
 import numpy as np
-import pandas as pd
+import pandas as pd # Although not strictly used in current logic, kept for potential future use
 import os
 import sys
 import psycopg2
 from psycopg2 import sql
+import threading
+import time
+
+# --- Global Configurations (Read from Environment Variables if possible) ---
+# It's good practice to define these at the top level
+# so main() and FullDayAggregator can consistently access them if needed.
+# For consistency, using UPPERCASE for env var names.
+
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+KAFKA_TOPICS = ["h_alpaca", "h_macrodata", "h_company"] # Consistent list of topics
+
+DB_NAME = os.getenv("DB_NAME", "aggregated-data")
+DB_USER = os.getenv("DB_USER", "admin")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "admin123")
+DB_HOST = os.getenv("DB_HOST", "postgre") # IMPORTANT: Default to 'postgre' for Docker network
+DB_PORT = os.getenv("DB_PORT", "5432")
+DB_TABLE_NAME = "aggregated_data" # This can remain hardcoded as it's a table name, not a credential
 
 TOP_30_TICKERS = [
     "AAPL", "MSFT", "NVDA", "AMZN", "META", "ORCL", "GOOGL", "AVGO", "TSLA", "IBM",
@@ -731,16 +747,23 @@ TOP_30_TICKERS = [
     "CVX", "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO"
 ]
 
+# --- Global Data Stores (Shared across process_element calls, but ensure Flink's design handles state correctly) ---
+# For a production Flink job, these global variables might not be ideal for large-scale state management
+# within a KeyedProcessFunction. Flink's managed state (ValueState, ListState) is preferred.
+# However, for smaller datasets or pre-loading, this can work.
 macro_data_by_series = {}
 fundamentals_by_symbol_year = {}
 pending_stock_batches = []
 ready_flags = {"macro_ready": False, "fundamentals_ready": False}
 
+# --- Helper Functions (Independent of Flink's RuntimeContext) ---
 def get_macro_values_for_date(date_obj):
+    """Retrieves the latest available macro data for a given date."""
     result = {}
     for series, entries in macro_data_by_series.items():
         selected_value = None
-        for entry_date, value in sorted(entries):
+        # Entries are assumed to be sorted by date
+        for entry_date, value in entries:
             if entry_date <= date_obj:
                 selected_value = value
             else:
@@ -750,21 +773,30 @@ def get_macro_values_for_date(date_obj):
     return result
 
 def get_fundamentals(symbol, year):
+    """Retrieves fundamental data for a given symbol and year."""
     return fundamentals_by_symbol_year.get((symbol, year), {})
 
+# --- Flink KeyedProcessFunction for Aggregation ---
 class FullDayAggregator(KeyedProcessFunction):
     def open(self, runtime_context: RuntimeContext):
-        self.db_name = "aggregated-data"
-        self.db_user = "admin"
-        self.db_password = "admin123"
-        self.db_host = os.getenv("POSTGRES_HOST", "localhost")
-        self.db_port = os.getenv("POSTGRES_PORT", "5432")
+        """
+        Initializes the database connection. Called once per parallel instance of the function.
+        """
+        # Read from the global variables (which are set by os.getenv in main or script start)
+        # These are accessible because they are defined at the module level.
+        self.db_name = DB_NAME
+        self.db_user = DB_USER
+        self.db_password = DB_PASSWORD
+        self.db_host = DB_HOST
+        self.db_port = DB_PORT
+        self.table_name = DB_TABLE_NAME # Use the global table name
 
         self.conn = None
         self.cursor = None
         self._connect_to_db()
 
     def _connect_to_db(self):
+        """Establishes a connection to the PostgreSQL database."""
         try:
             self.conn = psycopg2.connect(
                 dbname=self.db_name,
@@ -778,11 +810,12 @@ class FullDayAggregator(KeyedProcessFunction):
             self._create_table_if_not_exists()
         except Exception as e:
             print(f"[ERROR] Could not connect to PostgreSQL: {e}", file=sys.stderr)
+            # Re-raise the exception to fail the Flink task if DB connection fails
             raise RuntimeError(f"Failed to connect to PostgreSQL: {e}")
 
     def _create_table_if_not_exists(self):
-        table_name = "aggregated_data"
-
+        """Creates the aggregated_data table if it doesn't already exist."""
+        # Note: The table definition is quite large, kept as is.
         create_table_query = sql.SQL("""
             CREATE TABLE IF NOT EXISTS {table_name} (
                 ticker VARCHAR(10) NOT NULL,
@@ -819,46 +852,59 @@ class FullDayAggregator(KeyedProcessFunction):
                 t2y DOUBLE PRECISION,
                 spread_10y_2y DOUBLE PRECISION,
                 unemployment DOUBLE PRECISION,
-                y1 DOUBLE PRECISION, -- y5 rimosso
+                y1 DOUBLE PRECISION,
                 PRIMARY KEY (ticker, timestamp)
             );
-        """).format(table_name=sql.Identifier(table_name))
+        """).format(table_name=sql.Identifier(self.table_name))
         try:
             self.cursor.execute(create_table_query)
             self.conn.commit()
-            print(f"[INFO] Table '{table_name}' checked/created successfully.")
+            print(f"[INFO] Table '{self.table_name}' checked/created successfully.")
         except Exception as e:
-            print(f"[ERROR] Could not create table {table_name}: {e}", file=sys.stderr)
+            print(f"[ERROR] Could not create table {self.table_name}: {e}", file=sys.stderr)
             self.conn.rollback()
-            raise
-
+            raise # Re-raise to indicate a critical setup failure
 
     def close(self):
+        """Closes the database connection. Called when the Flink task is closing."""
         if self.cursor:
             self.cursor.close()
         if self.conn:
             self.conn.close()
         print("[INFO] PostgreSQL connection closed.")
 
-    def process_element(self, value, ctx):
+    def process_element(self, value: str, ctx):
+        """
+        Processes each incoming element from the Kafka stream.
+        Handles macro, fundamental, and stock data.
+        """
         try:
             message = json.loads(value)
 
+            # --- Process Macro Data ---
             if "series" in message and "value" in message and "date" in message:
                 try:
                     series = message["series"]
                     date = datetime.fromisoformat(message["date"]).date()
                     val = float(message["value"])
+                    # Ensure thread safety for global dictionaries if multiple tasks write
+                    # For Flink, if macro/fundamental data comes from separate topics,
+                    # this structure implies shared global state which might be problematic
+                    # if parallelism > 1. Consider Flink's BroadcastState for this.
+                    # For now, assuming single parallelism or that these are pre-populated.
                     macro_data_by_series.setdefault(series, []).append((date, val))
-                    macro_data_by_series[series].sort()
+                    macro_data_by_series[series].sort() # Keep sorted for get_macro_values_for_date
+
                     required_macro_series = ["gdp_real", "cpi", "ffr", "t10y", "t2y", "spread_10y_2y", "unemployment"]
-                    if all(s in macro_data_by_series for s in required_macro_series) and \
-                       all(macro_data_by_series[s] for s in required_macro_series):
+                    if all(s in macro_data_by_series and macro_data_by_series[s] for s in required_macro_series):
                         ready_flags["macro_ready"] = True
+                        print("[INFO] Macro data ready.") # Add a log here
+
                 except Exception as e:
                     print(f"[ERROR] Error processing macro data: {e} - Message: {message}", file=sys.stderr)
                 return
 
+            # --- Process Fundamental Data ---
             if "symbol" in message and "calendarYear" in message:
                 try:
                     symbol = message["symbol"]
@@ -872,30 +918,43 @@ class FullDayAggregator(KeyedProcessFunction):
                         "balance_totalStockholdersEquity": message.get("balance_totalStockholdersEquity")
                     }
                     ready_flags["fundamentals_ready"] = True
+                    print("[INFO] Fundamental data ready.") # Add a log here
                 except Exception as e:
                     print(f"[ERROR] Error processing fundamental data: {e} - Message: {message}", file=sys.stderr)
                 return
 
+            # --- Process Buffered Stock Batches if Ready ---
+            # This logic assumes that macro/fundamentals might arrive before stock data
+            # and that stock data needs to be buffered until all prerequisites are met.
             if ready_flags["macro_ready"] and ready_flags["fundamentals_ready"] and pending_stock_batches:
                 print(f"[INFO] Processing {len(pending_stock_batches)} buffered stock batches.", file=sys.stdout)
-                for buffered_value in list(pending_stock_batches):
+                for buffered_value in list(pending_stock_batches): # Iterate over a copy to allow modification
                     self._process_stock_message(json.loads(buffered_value))
-                pending_stock_batches.clear()
+                pending_stock_batches.clear() # Clear after processing
 
+            # --- Buffer Stock Data if not Ready ---
             if not (ready_flags["macro_ready"] and ready_flags["fundamentals_ready"]):
                 if "ticker" in message and "data" in message:
                     pending_stock_batches.append(value)
-                return
-            
+                    # print(f"[DEBUG] Buffered stock data for {message.get('ticker')}. Buffering count: {len(pending_stock_batches)}")
+                return # Don't process stock data if prerequisites aren't met yet
+
+            # --- Process Live Stock Data (if all ready and not buffered) ---
             if "ticker" in message and "data" in message:
                 self._process_stock_message(message)
 
+        except json.JSONDecodeError:
+            print(f"[ERROR] JSON decoding failed for message: {value[:200]}...", file=sys.stderr)
         except Exception as e:
-            print(f"[ERROR] Global error in process_element: {e} - Original Value: {value}", file=sys.stderr)
+            print(f"[ERROR] Global error in process_element: {e} - Original Value: {value[:200]}...", file=sys.stderr)
 
     def _process_stock_message(self, message):
+        """
+        Processes a single stock data message, calculates features, and inserts into PostgreSQL.
+        """
         ticker = message.get("ticker")
         if ticker not in TOP_30_TICKERS:
+            # print(f"[DEBUG] Skipping ticker {ticker} as it's not in TOP_30_TICKERS.") # Uncomment for more verbose logs
             return
 
         rows = message.get("data", [])
@@ -913,6 +972,9 @@ class FullDayAggregator(KeyedProcessFunction):
                 print(f"[ERROR] Error parsing stock entry for {ticker}: {e} - Entry: {entry}", file=sys.stderr)
                 continue
 
+        if not parsed:
+            return # No valid entries to process
+
         parsed.sort(key=lambda x: x["timestamp"])
         batch_results = []
 
@@ -920,6 +982,7 @@ class FullDayAggregator(KeyedProcessFunction):
             row = parsed[i]
             now = row["timestamp"]
 
+            # Define helper functions for windowing
             def window_vals(field, minutes):
                 ts_limit = now - timedelta(minutes=minutes)
                 return [p[field] for p in parsed if ts_limit <= p["timestamp"] <= now]
@@ -928,9 +991,12 @@ class FullDayAggregator(KeyedProcessFunction):
             def std(values): return float(np.std(values)) if values else None
             def total(values): return float(np.sum(values)) if values else 0.0
 
+            # Get Macro and Fundamental Data
             macro_values = get_macro_values_for_date(now.date())
+            # For fundamentals, using previous year as typical for annual reports
             fundamentals = get_fundamentals(row["symbol"], now.year - 1)
 
+            # Calculate Derived Fundamentals
             profit_margin = None
             if fundamentals.get("revenue") not in [None, 0]:
                 profit_margin = fundamentals["netIncome"] / fundamentals["revenue"]
@@ -939,9 +1005,14 @@ class FullDayAggregator(KeyedProcessFunction):
             if fundamentals.get("balance_totalStockholdersEquity") not in [None, 0]:
                 debt_to_equity = fundamentals["balance_totalDebt"] / fundamentals["balance_totalStockholdersEquity"]
 
+            # Time-based Features (using New York time for market hours)
             local_time = now.astimezone(ZoneInfo("America/New_York"))
             market_open_flag = int(dtime(9, 30) <= local_time.time() <= dtime(9, 34))
             market_close_flag = int(dtime(15, 56) <= local_time.time() <= dtime(16, 0))
+
+            minutes_since_open = (local_time - local_time.replace(hour=9, minute=30, second=0, microsecond=0)).total_seconds() // 60
+            if minutes_since_open < 0: # If before market open
+                minutes_since_open = 0
 
             result = {
                 "ticker": row["symbol"],
@@ -954,13 +1025,14 @@ class FullDayAggregator(KeyedProcessFunction):
                 "size_tot_1min": total(window_vals("volume", 1)),
                 "size_tot_5min": total(window_vals("volume", 5)),
                 "size_tot_30min": total(window_vals("volume", 30)),
+                # Sentiment values are hardcoded to 0.0, indicating they might come from other sources later
                 "sentiment_bluesky_mean_2hours": 0.0,
                 "sentiment_bluesky_mean_1day": 0.0,
                 "sentiment_news_mean_1day": 0.0,
                 "sentiment_news_mean_3days": 0.0,
                 "sentiment_general_bluesky_mean_2hours": 0.0,
                 "sentiment_general_bluesky_mean_1day": 0.0,
-                "minutes_since_open": (local_time - local_time.replace(hour=9, minute=30, second=0, microsecond=0)).total_seconds() // 60,
+                "minutes_since_open": minutes_since_open,
                 "day_of_week": now.weekday(),
                 "day_of_month": now.day,
                 "week_of_year": now.isocalendar()[1],
@@ -970,27 +1042,25 @@ class FullDayAggregator(KeyedProcessFunction):
                 "eps": fundamentals.get("eps"),
                 "free_cash_flow": fundamentals.get("freeCashFlow"),
                 "profit_margin": profit_margin,
-                "debt_to_equity": debt_to_equity
+                "debt_to_equity": debt_to_equity,
+                # Macro data from the fetched values
+                "gdp_real": macro_values.get("gdp_real", None),
+                "cpi": macro_values.get("cpi", None),
+                "ffr": macro_values.get("ffr", None),
+                "t10y": macro_values.get("t10y", None),
+                "t2y": macro_values.get("t2y", None),
+                "spread_10y_2y": macro_values.get("spread_10y_2y", None),
+                "unemployment": macro_values.get("unemployment", None),
+                "y1": row["close"] # Assuming 'y1' is the target variable, here the closing price
             }
-
-            result["gdp_real"] = macro_values.get("gdp_real", None)
-            result["cpi"] = macro_values.get("cpi", None)
-            result["ffr"] = macro_values.get("ffr", None)
-            result["t10y"] = macro_values.get("t10y", None)
-            result["t2y"] = macro_values.get("t2y", None)
-            result["spread_10y_2y"] = macro_values.get("spread_10y_2y", None)
-            result["unemployment"] = macro_values.get("unemployment", None)
-
-            result["y1"] = row["close"]
-            
-
             batch_results.append(result)
 
         if batch_results:
             self._insert_data_to_postgresql(batch_results)
 
     def _insert_data_to_postgresql(self, data):
-        table_name = "aggregated_data"
+        """Inserts a batch of aggregated data into the PostgreSQL table."""
+        # Use self.table_name from the instance
         columns = [
             "ticker", "timestamp", "price_mean_1min", "price_mean_5min", "price_std_5min",
             "price_mean_30min", "price_std_30min", "size_tot_1min", "size_tot_5min",
@@ -1006,6 +1076,7 @@ class FullDayAggregator(KeyedProcessFunction):
         
         values_placeholder = sql.SQL(', ').join(sql.Placeholder() * len(columns))
         
+        # Use self.table_name here
         insert_query = sql.SQL(
             "INSERT INTO {table_name} ({columns}) VALUES ({values_placeholder}) "
             "ON CONFLICT (ticker, timestamp) DO UPDATE SET "
@@ -1043,7 +1114,7 @@ class FullDayAggregator(KeyedProcessFunction):
             "unemployment = EXCLUDED.unemployment, "
             "y1 = EXCLUDED.y1"
         ).format(
-            table_name=sql.Identifier(table_name),
+            table_name=sql.Identifier(self.table_name), # Use self.table_name
             columns=sql.SQL(', ').join(map(sql.Identifier, columns)),
             values_placeholder=values_placeholder
         )
@@ -1052,86 +1123,113 @@ class FullDayAggregator(KeyedProcessFunction):
             records_to_insert = []
             for record in data:
                 record_copy = record.copy()
-                record_copy["timestamp"] = datetime.fromisoformat(record_copy["timestamp"])
+                # Ensure timestamp is a datetime object for psycopg2, not an ISO string
+                if isinstance(record_copy["timestamp"], str):
+                    record_copy["timestamp"] = datetime.fromisoformat(record_copy["timestamp"])
                 
                 row_values = [record_copy.get(col) for col in columns]
                 records_to_insert.append(row_values)
 
             if records_to_insert:
-                print(f"[INFO] First row of batch for insertion ({len(records_to_insert)} rows): {records_to_insert[0]}", file=sys.stdout)
-
-            self.cursor.executemany(insert_query, records_to_insert)
-            self.conn.commit()
-            print(f"[INFO] Inserted {len(data)} records into {table_name}.", file=sys.stdout)
+                print(f"[INFO] First row of batch for insertion ({len(records_to_insert)} rows): {records_to_insert[0][0]}, {records_to_insert[0][1]}...", file=sys.stdout)
+                self.cursor.executemany(insert_query, records_to_insert)
+                self.conn.commit()
+                print(f"[INFO] Inserted {len(data)} records into {self.table_name}.", file=sys.stdout)
+            else:
+                print("[INFO] No records to insert into PostgreSQL for this batch.")
         except Exception as e:
             print(f"[ERROR] An error occurred during PostgreSQL insertion: {e}", file=sys.stderr)
             self.conn.rollback()
+            # If the connection breaks, attempt to reconnect
+            try:
+                print("[INFO] Attempting to reconnect to PostgreSQL...", file=sys.stderr)
+                self._connect_to_db()
+                print("[INFO] Reconnected to PostgreSQL successfully.", file=sys.stderr)
+            except Exception as reconnect_e:
+                print(f"[CRITICAL ERROR] Failed to reconnect to PostgreSQL: {reconnect_e}", file=sys.stderr)
+                raise # Re-raise if reconnect fails, to fail the Flink task
 
-
-def extract_key(json_str):
+# --- Key Extractor for Flink's key_by operation ---
+def extract_key(json_str: str) -> str:
+    """
+    Extracts a key (ticker, symbol, or series) from the incoming JSON string for Flink's key_by.
+    """
     try:
         data = json.loads(json_str)
+        # Prioritize ticker for stock data, then symbol for fundamentals, then series for macro
         return data.get("ticker") or data.get("symbol") or data.get("series") or "unknown"
     except json.JSONDecodeError:
-        print(f"[ERROR] JSON decoding failed for: {json_str[:100]}...", file=sys.stderr)
-        return "unknown"
+        print(f"[ERROR] JSON decoding failed for key extraction: {json_str[:100]}...", file=sys.stderr)
+        return "unknown_json_error"
     except Exception as e:
         print(f"[ERROR] Unexpected error in extract_key: {e} - String: {json_str[:100]}...", file=sys.stderr)
-        return "unknown"
+        return "unknown_general_error"
 
+# --- Main Flink Job Execution ---
 def main():
-    db_name = "aggregated-data"
-    db_user = "admin"
-    db_password = "admin123"
-    db_host = os.getenv("POSTGRES_HOST", "localhost")
-    db_port = os.getenv("POSTGRES_PORT", "5432")
-    table_name = "aggregated_data"
+    """
+    Sets up and executes the Flink streaming job.
+    """
+    # Use global variables defined at the top of the script
+    # These are already loaded from os.getenv()
+    global KAFKA_BOOTSTRAP_SERVERS, KAFKA_TOPICS, DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_TABLE_NAME
 
-    try:
-        conn_drop = psycopg2.connect(
-            dbname=db_name,
-            user=db_user,
-            password=db_password,
-            host=db_host,
-            port=db_port
-        )
-        cursor_drop = conn_drop.cursor()
-        drop_table_query = sql.SQL("DROP TABLE IF EXISTS {table_name} CASCADE;").format(
-            table_name=sql.Identifier(table_name)
-        )
-        cursor_drop.execute(drop_table_query)
-        conn_drop.commit()
-        print(f"[INFO] Table '{table_name}' dropped successfully (if it existed) for a fresh start.", file=sys.stdout)
-    except Exception as e:
-        print(f"[ERROR] Could not drop table '{table_name}' at startup: {e}", file=sys.stderr)
-    finally:
-        if cursor_drop:
-            cursor_drop.close()
-        if conn_drop:
-            conn_drop.close()
+    # --- Initial Table Drop (for fresh starts/development) ---
+    # This part runs on the client where the Flink job is submitted, not within the Flink task manager.
+    # It directly uses the environment variables available to the script.
+    # try:
+    #     conn_drop = psycopg2.connect(
+    #         dbname=DB_NAME,
+    #         user=DB_USER,
+    #         password=DB_PASSWORD,
+    #         host=DB_HOST,
+    #         port=DB_PORT
+    #     )
+    #     cursor_drop = conn_drop.cursor()
+    #     drop_table_query = sql.SQL("DROP TABLE IF EXISTS {table_name} CASCADE;").format(
+    #         table_name=sql.Identifier(DB_TABLE_NAME)
+    #     )
+    #     cursor_drop.execute(drop_table_query)
+    #     conn_drop.commit()
+    #     print(f"[INFO] Table '{DB_TABLE_NAME}' dropped successfully (if it existed) for a fresh start.", file=sys.stdout)
+    # except Exception as e:
+    #     print(f"[ERROR] Could not drop table '{DB_TABLE_NAME}' at startup: {e}", file=sys.stderr)
+        # This error is not critical for the Flink job itself to run,
+        # but it indicates a potential issue with the DB connection during setup.
+    # finally:
+    #     if 'cursor_drop' in locals() and cursor_drop:
+    #         cursor_drop.close()
+    #     if 'conn_drop' in locals() and conn_drop:
+    #         conn_drop.close()
 
+    # --- Flink Environment Setup ---
     env = StreamExecutionEnvironment.get_execution_environment()
-    env.set_parallelism(1)
+    env.set_parallelism(1) # Keep parallelism at 1 if using global dictionaries for macro/fundamentals
 
+    # --- Kafka Consumer Setup ---
     consumer = FlinkKafkaConsumer(
-        topics=["h_alpaca", "h_macrodata", "h_company"],
+        topics=KAFKA_TOPICS, # Use the global KAFKA_TOPICS list
         deserialization_schema=SimpleStringSchema(),
         properties={
-            "bootstrap.servers": os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"),
+            "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS, # Use the global KAFKA_BOOTSTRAP_SERVERS
             "group.id": "flink_batch_group",
-            "auto.offset.reset": "earliest"
+            "auto.offset.reset": "earliest" # Start reading from the beginning of topics
         }
     )
 
+    # --- Stream Processing Pipeline ---
     stream = env.add_source(consumer, type_info=Types.STRING())
+    # Key by extracted key to ensure related data (e.g., same ticker) goes to the same Flink task
     keyed = stream.key_by(extract_key, key_type=Types.STRING())
-    processed = keyed.process(FullDayAggregator(), output_type=Types.ROW([]))
+    # Apply the custom KeyedProcessFunction for aggregation and DB insertion
+    processed = keyed.process(FullDayAggregator(), output_type=Types.ROW([])) # Output type can be void if no downstream needed
 
+    # --- Execute the Flink Job ---
+    print("[INFO] Starting Flink job: Historical Aggregation to PostgreSQL with Macro Data")
     env.execute("Historical Aggregation to PostgreSQL with Macro Data")
 
 if __name__ == "__main__":
     main()
-
 
 
 

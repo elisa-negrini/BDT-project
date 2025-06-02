@@ -11,10 +11,11 @@ import pandas as pd
 import logging
 import time
 import pytz
+from threading import Timer
 
 # === CONFIGURAZIONE ===
-ALPACA_API_KEY = "PKWTO08TY1J3RJ4MHWHK"
-ALPACA_SECRET_KEY = "bNufl6Fcq7OwlxLjtAtk7z5SAGPcKQ5yqb7oH1as"
+API_KEY_ALPACA = os.getenv("API_KEY_ALPACA", "PKSWWUCWEHB7XUXCFQWO")
+API_SECRET_ALPACA = os.getenv("API_SECRET_ALPACA", "wG7Qaan4bQqbmYQN7PaaraPzAhYtU29JLXqlnoCo")
 
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "h_alpaca")
@@ -84,7 +85,7 @@ def save_checkpoint(cp):
 def download_ticker_data(ticker):
     logger.info(f"⬇️  Scarico dati per {ticker}...")
 
-    client = StockHistoricalDataClient(ALPACA_API_KEY, ALPACA_SECRET_KEY)
+    client = StockHistoricalDataClient(API_KEY_ALPACA, API_SECRET_ALPACA)
     req = StockBarsRequest(
         symbol_or_symbols=ticker,
         timeframe=TimeFrame.Minute,
@@ -143,14 +144,31 @@ def send_data_to_kafka(producer, ticker, df, checkpoint):
             logger.info(f"📤 Inviato {ticker} per {date_str} ({len(group_df)} record)")
             checkpoint.setdefault(ticker, []).append(date_str)
             save_checkpoint(checkpoint)
+            reset_timer()
 
         except KafkaError as e:
             logger.error(f"❌ KafkaError {ticker} {date_str}: {e}")
         except Exception as e:
             logger.error(f"❌ Errore generico {ticker} {date_str}: {e}")
 
+
+inactivity_timer = None
+
+def timeout_exit():
+    logger.warning("⏰ Nessun dato processato negli ultimi 300 secondi. Chiudo il producer.")
+    save_checkpoint(checkpoint)  # opzionale: salvataggio prima dell'uscita
+    os._exit(0)
+
+def reset_timer():
+    global inactivity_timer
+    if inactivity_timer:
+        inactivity_timer.cancel()
+    inactivity_timer = Timer(300, timeout_exit)  # 5 minuti di inattività
+    inactivity_timer.start()
+
 # === Main ===
 def main():
+    global checkpoint
     logger.info("🚀 Avvio Producer Alpaca -> Kafka")
     producer = connect_kafka()
     checkpoint = load_checkpoint()
@@ -174,6 +192,7 @@ def main():
                 if df is not None:
                     send_data_to_kafka(producer, ticker, df, checkpoint)
                     processed_count += 1
+                    reset_timer() 
                 else:
                     error_count += 1
 

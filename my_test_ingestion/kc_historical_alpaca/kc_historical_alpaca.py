@@ -98,10 +98,16 @@ def main():
     processed = 0
     errors = 0
 
+    max_inactivity_seconds = 60  # 🔚 Dopo 60 secondi senza messaggi, chiudo
+    last_message_time = time.time()
+
     try:
         while not shutdown_flag:
             try:
                 message_pack = consumer.poll(timeout_ms=1000)
+                if message_pack:
+                    last_message_time = time.time()  # 🔄 resetta il timer all'arrivo di messaggi
+
                 for tp, messages in message_pack.items():
                     for message in messages:
                         if shutdown_flag:
@@ -123,6 +129,11 @@ def main():
                         except Exception as e:
                             logger.error(f"❌ Errore elaborazione messaggio: {e}")
                             errors += 1
+                            
+                # 🔚 Se è passato troppo tempo senza nuovi messaggi
+                if time.time() - last_message_time > max_inactivity_seconds:
+                    logger.info(f"⏳ Nessun messaggio da {max_inactivity_seconds} secondi. Esco.")
+                    break
 
             except Exception as e:
                 logger.error(f"❌ Errore nel ciclo di polling: {e}")
