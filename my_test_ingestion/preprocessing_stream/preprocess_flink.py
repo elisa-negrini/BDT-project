@@ -1,3 +1,1681 @@
+
+### CORRETTO MA SENZA DATI FAKE, NON COMPLETAMENTE PARALLELIZZABILE
+
+# import os
+# import sys
+# import json
+# import numpy as np
+# from datetime import datetime, timezone, timedelta
+# from dateutil.parser import isoparse
+# import pytz
+# import pandas as pd
+# import io
+
+# from pyflink.datastream import StreamExecutionEnvironment
+# from pyflink.common.serialization import SimpleStringSchema
+# from pyflink.datastream.connectors import FlinkKafkaConsumer, FlinkKafkaProducer
+# from pyflink.datastream.functions import KeyedProcessFunction, RuntimeContext
+# from pyflink.common.typeinfo import Types
+# from pyflink.datastream.state import MapStateDescriptor, ValueStateDescriptor
+# from minio import Minio
+# from minio.error import S3Error
+
+# TOP_30_TICKERS = [
+#     "AAPL", "MSFT", "NVDA", "AMZN", "META", "ORCL", "GOOGL", "AVGO", "TSLA", "IBM",
+#     "LLY", "JPM", "V", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA",
+#     "CVX", "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO"
+# ]
+
+# macro_alias = {
+#     "GDPC1": "gdp_real",
+#     "CPIAUCSL": "cpi",
+#     "FEDFUNDS": "ffr",
+#     "DGS10": "t10y",
+#     "DGS2": "t2y",
+#     "T10Y2Y": "spread_10y_2y",
+#     "UNRATE": "unemployment"
+# }
+
+# GENERAL_SENTIMENT_KEY = "general_sentiment_key"
+
+# # Global dictionaries for shared state (read-only after load)
+# macro_data_dict = {}
+# general_sentiment_dict = {
+#     "sentiment_bluesky_mean_general_2hours": 0.0,
+#     "sentiment_bluesky_mean_general_1d": 0.0
+# }
+# fundamentals_data = {}
+
+# NY_TZ = pytz.timezone('America/New_York')
+
+# MINIO_URL = "minio:9000"
+# MINIO_ACCESS_KEY = "admin"
+# MINIO_SECRET_KEY = "admin123"
+# MINIO_SECURE = False
+
+# def load_fundamental_data():
+#     print("🚀 [INIT] Loading fundamental data from MinIO...", file=sys.stderr)
+#     try:
+#         minio_client = Minio(
+#             MINIO_URL,
+#             access_key=MINIO_ACCESS_KEY,
+#             secret_key=MINIO_SECRET_KEY,
+#             secure=MINIO_SECURE
+#         )
+        
+#         bucket_name = "company-fundamentals"
+        
+#         if not minio_client.bucket_exists(bucket_name):
+#             print(f"[ERROR] MinIO bucket '{bucket_name}' does not exist. No fundamental data loaded.", file=sys.stderr)
+#             return
+
+#         for ticker in TOP_30_TICKERS:
+#             object_name = f"{ticker}/2024.parquet"
+#             response = None
+#             try:
+#                 response = minio_client.get_object(bucket_name, object_name)
+                
+#                 parquet_bytes = io.BytesIO(response.read())
+#                 parquet_bytes.seek(0)
+#                 df = pd.read_parquet(parquet_bytes)
+                
+#                 if not df.empty:
+#                     row = df.iloc[0]
+#                     # Ensure all values are converted to standard Python types (float, int)
+#                     eps = float(row.get("eps")) if "eps" in row and pd.notna(row.get("eps")) else None
+#                     fcf = float(row.get("cashflow_freeCashFlow")) if "cashflow_freeCashFlow" in row and pd.notna(row.get("cashflow_freeCashFlow")) else None
+#                     revenue = float(row.get("revenue")) if "revenue" in row and pd.notna(row.get("revenue")) else None
+#                     net_income = float(row.get("netIncome")) if "netIncome" in row and pd.notna(row.get("netIncome")) else None
+#                     debt = float(row.get("balance_totalDebt")) if "balance_totalDebt" in row and pd.notna(row.get("balance_totalDebt")) else None
+#                     equity = float(row.get("balance_totalStockholdersEquity")) if "balance_totalStockholdersEquity" in row and pd.notna(row.get("balance_totalStockholdersEquity")) else None
+
+#                     profit_margin = net_income / revenue if revenue is not None and revenue != 0 else None
+#                     debt_to_equity = debt / equity if equity is not None and equity != 0 else None
+
+#                     fundamentals_data[ticker] = {
+#                         "eps": eps,
+#                         "freeCashFlow": fcf,
+#                         "profit_margin": profit_margin,
+#                         "debt_to_equity": debt_to_equity
+#                     }
+#                     print(f"✅ [FUNDAMENTALS] Loaded data for {ticker}: {fundamentals_data[ticker]}", file=sys.stderr)
+#                 else:
+#                     print(f"[WARN] Parquet file for {ticker}/{object_name} is empty.", file=sys.stderr)
+
+#             except S3Error as e:
+#                 print(f"[ERROR] MinIO S3 Error for {ticker} ({object_name}): {e}", file=sys.stderr)
+#             except Exception as e:
+#                 print(f"[ERROR] Could not load fundamental data for {ticker} from MinIO ({object_name}): {e}", file=sys.stderr)
+#             finally:
+#                 if response:
+#                     response.close()
+#                     response.release_conn()
+#         print("✅ [INIT] Fundamental data loading complete.", file=sys.stderr)
+
+#     except Exception as e:
+#         print(f"[CRITICAL] Failed to initialize Minio client or load any fundamental data: {e}", file=sys.stderr)
+
+# class SlidingAggregator(KeyedProcessFunction):
+#     def open(self, runtime_context: RuntimeContext):
+#         def descriptor(name):
+#             return MapStateDescriptor(name, Types.STRING(), Types.FLOAT())
+
+#         self.price_1m = runtime_context.get_map_state(descriptor("price_1m"))
+#         self.price_5m = runtime_context.get_map_state(descriptor("price_5m"))
+#         self.price_30m = runtime_context.get_map_state(descriptor("price_30m"))
+
+#         self.size_1m = runtime_context.get_map_state(descriptor("size_1m"))
+#         self.size_5m = runtime_context.get_map_state(descriptor("size_5m"))
+#         self.size_30m = runtime_context.get_map_state(descriptor("size_30m"))
+
+#         self.sentiment_bluesky_2h = runtime_context.get_map_state(descriptor("sentiment_bluesky_2h"))
+#         self.sentiment_bluesky_1d = runtime_context.get_map_state(descriptor("sentiment_bluesky_1d"))
+#         self.sentiment_news_1d = runtime_context.get_map_state(descriptor("sentiment_news_1d"))
+#         self.sentiment_news_3d = runtime_context.get_map_state(descriptor("sentiment_news_3d"))
+
+#         self.sentiment_bluesky_general_2h = runtime_context.get_map_state(descriptor("sentiment_bluesky_general_2h"))
+#         self.sentiment_bluesky_general_1d = runtime_context.get_map_state(descriptor("sentiment_bluesky_general_1d"))
+
+#         self.last_timer_state = runtime_context.get_state(
+#             ValueStateDescriptor("last_timer", Types.LONG()))
+
+#     def _cleanup_old_entries(self, state, window_minutes):
+#         """Removes entries from state that are older than the specified window_minutes."""
+#         threshold = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
+#         keys_to_remove = []
+#         for k in list(state.keys()):
+#             try:
+#                 dt_obj = isoparse(k)
+#                 if dt_obj.tzinfo is None:
+#                     dt_obj = dt_obj.replace(tzinfo=timezone.utc)
+                
+#                 if dt_obj < threshold:
+#                     keys_to_remove.append(k)
+#             except ValueError:
+#                 print(f"[WARN] Invalid timestamp format '{k}' in state for cleanup. Removing.", file=sys.stderr)
+#                 keys_to_remove.append(k)
+#             except Exception as e:
+#                 print(f"[ERROR] Unexpected error during cleanup for key '{k}': {e}. Removing.", file=sys.stderr)
+#                 keys_to_remove.append(k)
+        
+#         for k_remove in keys_to_remove:
+#             state.remove(k_remove)
+
+#     def process_element(self, value, ctx):
+#         """Processes each incoming element (JSON string) from Kafka."""
+#         try:
+#             data = json.loads(value)
+#             current_key = ctx.get_current_key()
+
+#             # --- Handle Macro Data ---
+#             if current_key == "macro_data_key":
+#                 alias_key = data.get("alias")
+#                 if alias_key:
+#                     # Convert to float to ensure JSON serializability later
+#                     macro_data_dict[alias_key] = float(data["value"])
+#                     print(f"📥 [MACRO] {alias_key}: {macro_data_dict[alias_key]}", file=sys.stderr)
+#                 return []
+
+#             # --- Handle Sentiment Data (specific tickers or GENERAL) ---
+#             elif "social" in data and "sentiment_score" in data:
+#                 social_source = data.get("social")
+#                 sentiment_score = float(data.get("sentiment_score"))
+#                 ts_str = data.get("timestamp")
+                
+#                 if not ts_str:
+#                     print(f"[ERROR] Missing timestamp in sentiment data: {data}", file=sys.stderr)
+#                     return []
+
+#                 if current_key == GENERAL_SENTIMENT_KEY:
+#                     if social_source == "bluesky":
+#                         self.sentiment_bluesky_general_2h.put(ts_str, sentiment_score)
+#                         self.sentiment_bluesky_general_1d.put(ts_str, sentiment_score)
+#                         print(f"📥 [SENTIMENT-GENERAL] Bluesky - {ts_str}: {sentiment_score}", file=sys.stderr)
+#                     else:
+#                         print(f"[WARN] General sentiment received for non-Bluesky source: {social_source}", file=sys.stderr)
+#                     return []
+                
+#                 elif current_key in TOP_30_TICKERS:
+#                     if social_source == "bluesky":
+#                         self.sentiment_bluesky_2h.put(ts_str, sentiment_score)
+#                         self.sentiment_bluesky_1d.put(ts_str, sentiment_score)
+#                     elif social_source == "news":
+#                         self.sentiment_news_1d.put(ts_str, sentiment_score)
+#                         self.sentiment_news_3d.put(ts_str, sentiment_score)
+#                     else:
+#                         print(f"[WARN] Unknown social source for ticker {current_key}: {social_source}", file=sys.stderr)
+#                         return []
+#                     print(f"📥 [SENTIMENT] {current_key} - {social_source} - {ts_str}: {sentiment_score}", file=sys.stderr)
+#                 return []
+
+#             # --- Handle Stock Trade Data ---
+#             elif "price" in data and "size" in data:
+#                 ticker = data.get("ticker")
+#                 if ticker not in TOP_30_TICKERS:
+#                     return []
+                
+#                 ts_str = data.get("timestamp")
+#                 if not ts_str:
+#                     print(f"[ERROR] Missing timestamp in trade data: {data}", file=sys.stderr)
+#                     return []
+
+#                 event_time_utc = isoparse(ts_str).replace(tzinfo=timezone.utc)
+#                 event_time_ny = event_time_utc.astimezone(NY_TZ)
+
+#                 market_open_data_reception = event_time_ny.replace(hour=9, minute=30, second=0, microsecond=0)
+#                 market_close_data_reception = event_time_ny.replace(hour=16, minute=0, second=0, microsecond=0)
+
+#                 if not (market_open_data_reception <= event_time_ny < market_close_data_reception):
+#                     print(f"[DEBUG] Skipping trade data for {ticker} outside market reception hours ({event_time_ny.strftime('%H:%M')} NYT).", file=sys.stderr)
+#                     return []
+
+#                 price = float(data.get("price"))
+#                 size = float(data.get("size"))
+
+#                 for state in [self.price_1m, self.price_5m, self.price_30m]:
+#                     state.put(ts_str, price)
+#                 for state in [self.size_1m, self.size_5m, self.size_30m]:
+#                     state.put(ts_str, size)
+#                 return []
+
+#             else:
+#                 print(f"[WARN] Unrecognized data format: {value}", file=sys.stderr)
+#                 return []
+
+#         except json.JSONDecodeError:
+#             print(f"[ERROR] Failed to decode JSON: {value}", file=sys.stderr)
+#             return []
+#         except Exception as e:
+#             print(f"[ERROR] process_element: {e} for value: {value}", file=sys.stderr)
+#             return []
+#         finally:
+#             last_timer = self.last_timer_state.value()
+#             if last_timer is None or ctx.timer_service().current_processing_time() >= last_timer:
+#                 next_ts = ctx.timer_service().current_processing_time() + 5000
+#                 ctx.timer_service().register_processing_time_timer(next_ts)
+#                 self.last_timer_state.update(next_ts)
+
+
+#     def on_timer(self, timestamp, ctx):
+#         """Called when a registered timer fires."""
+#         try:
+#             now_utc = datetime.now(timezone.utc)
+#             ts_str = now_utc.isoformat()
+#             ticker = ctx.get_current_key()
+
+#             def mean(vals):
+#                 vals = list(vals)
+#                 return float(np.mean(vals)) if vals else 0.0
+
+#             def std(vals):
+#                 vals = list(vals)
+#                 return float(np.std(vals)) if vals and len(vals) > 1 else 0.0
+
+#             def total(vals):
+#                 vals = list(vals)
+#                 return float(np.sum(vals)) if vals else 0.0
+
+#             # --- Handle GENERAL Sentiment Key ---
+#             if ticker == GENERAL_SENTIMENT_KEY:
+#                 self._cleanup_old_entries(self.sentiment_bluesky_general_2h, 2 * 60)
+#                 self._cleanup_old_entries(self.sentiment_bluesky_general_1d, 24 * 60)
+
+#                 general_sentiment_dict["sentiment_bluesky_mean_general_2hours"] = mean(self.sentiment_bluesky_general_2h.values())
+#                 general_sentiment_dict["sentiment_bluesky_mean_general_1d"] = mean(self.sentiment_bluesky_general_1d.values())
+                
+#                 print(f"🔄 [GENERAL SENTIMENT AGG] Updated general_sentiment_dict: {general_sentiment_dict}", file=sys.stderr)
+#                 return []
+
+#             # --- Handle Macro Data Key ---
+#             if ticker == "macro_data_key":
+#                 return []
+
+#             # --- Handle Specific Ticker Data (TOP_30_TICKERS) ---
+#             if ticker not in TOP_30_TICKERS:
+#                 print(f"[WARN] on_timer fired for unexpected key: {ticker}", file=sys.stderr)
+#                 return []
+
+#             now_ny = now_utc.astimezone(NY_TZ)
+
+#             market_open_prediction = now_ny.replace(hour=9, minute=31, second=0, microsecond=0)
+#             market_close_prediction = now_ny.replace(hour=15, minute=59, second=0, microsecond=0)
+
+#             if not (market_open_prediction <= now_ny <= market_close_prediction):
+#                 print(f"[DEBUG] Skipping prediction for {ticker} outside market prediction hours ({now_ny.strftime('%H:%M')} NYT).", file=sys.stderr)
+#                 return []
+
+#             self._cleanup_old_entries(self.price_1m, 1)
+#             self._cleanup_old_entries(self.price_5m, 5)
+#             self._cleanup_old_entries(self.price_30m, 30)
+#             self._cleanup_old_entries(self.size_1m, 1)
+#             self._cleanup_old_entries(self.size_5m, 5)
+#             self._cleanup_old_entries(self.size_30m, 30)
+#             self._cleanup_old_entries(self.sentiment_bluesky_2h, 2 * 60)
+#             self._cleanup_old_entries(self.sentiment_bluesky_1d, 24 * 60)
+#             self._cleanup_old_entries(self.sentiment_news_1d, 24 * 60)
+#             self._cleanup_old_entries(self.sentiment_news_3d, 3 * 24 * 60)
+
+#             market_open_time = now_ny.replace(hour=9, minute=30, second=0, microsecond=0)
+#             market_close_time = now_ny.replace(hour=16, minute=0, second=0, microsecond=0)
+
+#             market_open_spike_flag = 0
+#             market_close_spike_flag = 0
+
+#             if market_open_time <= now_ny < (market_open_time + timedelta(minutes=5)):
+#                 market_open_spike_flag = 1
+            
+#             if (market_close_time - timedelta(minutes=5)) <= now_ny < market_close_time:
+#                 market_close_spike_flag = 1
+
+#             ticker_fundamentals = fundamentals_data.get(ticker, {})
+
+#             features = {
+#                 "ticker": ticker,
+#                 "timestamp": ts_str,
+#                 "price_mean_1min": mean(self.price_1m.values()),
+#                 "price_mean_5min": mean(self.price_5m.values()),
+#                 "price_std_5min": std(self.price_5m.values()),
+#                 "price_mean_30min": mean(self.price_30m.values()),
+#                 "price_std_30min": std(self.price_30m.values()),
+#                 "size_tot_1min": total(self.size_1m.values()),
+#                 "size_tot_5min": total(self.size_5m.values()),
+#                 "size_tot_30min": total(self.size_30m.values()),
+#                 #SENTIMENT
+#                 "sentiment_bluesky_mean_2h": mean(self.sentiment_bluesky_2h.values()),
+#                 "sentiment_bluesky_mean_1d": mean(self.sentiment_bluesky_1d.values()),
+#                 "sentiment_news_mean_1d": mean(self.sentiment_news_1d.values()),
+#                 "sentiment_news_mean_3d": mean(self.sentiment_news_3d.values()),
+#                 "sentiment_bluesky_mean_general_2hours": general_sentiment_dict["sentiment_bluesky_mean_general_2hours"],
+#                 "sentiment_bluesky_mean_general_1d": general_sentiment_dict["sentiment_bluesky_mean_general_1d"],
+#                 # NEW TIME-BASED FEATURES - Ensure these are Python native int/float
+#                 "minutes_since_open": int((now_ny - market_open_time).total_seconds() // 60) if now_ny >= market_open_time else -1,
+#                 "day_of_week": int(now_ny.weekday()),
+#                 "day_of_month": int(now_ny.day),
+#                 "week_of_year": int(now_ny.isocalendar()[1]),
+#                 "month_of_year": int(now_ny.month),
+#                 "market_open_spike_flag": int(market_open_spike_flag),
+#                 "market_close_spike_flag": int(market_close_spike_flag),
+#                 # Fundamental data - ensure these are Python native floats
+#                 "eps": float(ticker_fundamentals["eps"]) if ticker_fundamentals.get("eps") is not None else None,
+#                 "freeCashFlow": float(ticker_fundamentals["freeCashFlow"]) if ticker_fundamentals.get("freeCashFlow") is not None else None,
+#                 "profit_margin": float(ticker_fundamentals["profit_margin"]) if ticker_fundamentals.get("profit_margin") is not None else None,
+#                 "debt_to_equity": float(ticker_fundamentals["debt_to_equity"]) if ticker_fundamentals.get("debt_to_equity") is not None else None
+#             }
+
+#             for macro_key_alias, macro_value in macro_data_dict.items():
+#                 # Ensure macro values are converted to float
+#                 features[macro_key_alias] = float(macro_value)
+
+#             result = json.dumps(features)
+#             print(f"📤 [PREDICTION] {ts_str} - {ticker} => {result}", file=sys.stderr)
+
+#             return [result]
+#         except Exception as e:
+#             print(f"[ERROR] on_timer for ticker {ticker}: {e}", file=sys.stderr)
+#             return [json.dumps({"ticker": ctx.get_current_key(), "timestamp": datetime.now(timezone.utc).isoformat(), "error": str(e)})]
+
+# # --- Helper for splitting sentiment data ---
+# def expand_sentiment_data(json_str):
+#     """
+#     Expands a single sentiment JSON string into multiple if it contains a list of tickers,
+#     otherwise passes through other data types.
+#     Handles 'GENERAL' ticker by passing it through.
+#     """
+#     try:
+#         data = json.loads(json_str)
+        
+#         if "social" in data and "sentiment_score" in data and isinstance(data.get("ticker"), list):
+#             expanded_records = []
+#             original_ticker_list = data["ticker"]
+            
+#             if "GENERAL" in original_ticker_list:
+#                 new_record = data.copy()
+#                 new_record["ticker"] = "GENERAL"
+#                 expanded_records.append(json.dumps(new_record))
+#                 print(f"[WARN] Sentiment data with 'GENERAL' ticker detected and handled.", file=sys.stderr)
+            
+#             for ticker_item in original_ticker_list:
+#                 if ticker_item != "GENERAL" and ticker_item in TOP_30_TICKERS:
+#                     new_record = data.copy()
+#                     new_record["ticker"] = ticker_item
+#                     expanded_records.append(json.dumps(new_record))
+            
+#             if not expanded_records:
+#                 print(f"[WARN] Sentiment data with no tracked or 'GENERAL' tickers: {json_str}", file=sys.stderr)
+#                 return []
+#             return expanded_records
+        
+#         return [json_str]
+#     except json.JSONDecodeError:
+#         print(f"[ERROR] Failed to decode JSON in expand_sentiment_data: {json_str}", file=sys.stderr)
+#         return []
+#     except Exception as e:
+#         print(f"[ERROR] expand_sentiment_data: {e} for {json_str}", file=sys.stderr)
+#         return []
+
+# def route_by_ticker(json_str):
+#     """Determines the key for incoming JSON data."""
+#     try:
+#         data = json.loads(json_str)
+#         if "alias" in data:
+#             return "macro_data_key"
+#         elif "ticker" in data:
+#             if data["ticker"] == "GENERAL":
+#                 return GENERAL_SENTIMENT_KEY
+#             elif data["ticker"] in TOP_30_TICKERS:
+#                 return data["ticker"]
+#             else:
+#                 print(f"[WARN] Ticker '{data['ticker']}' not in TOP_30_TICKERS. Discarding.", file=sys.stderr)
+#                 return "discard_key"
+#         else:
+#             print(f"[WARN] Data with no 'alias' or 'ticker' field: {json_str}", file=sys.stderr)
+#             return "unknown_data_key"
+#     except json.JSONDecodeError:
+#         print(f"[WARN] Failed to decode JSON for key_by: {json_str}", file=sys.stderr)
+#         return "invalid_json_key"
+#     except Exception as e:
+#         print(f"[ERROR] route_by_ticker: {e} for {json_str}", file=sys.stderr)
+#         return "error_key"
+
+
+# def main():
+#     load_fundamental_data()
+
+#     env = StreamExecutionEnvironment.get_execution_environment()
+#     env.set_parallelism(1)
+
+#     consumer_props = {
+#         'bootstrap.servers': 'kafka:9092',
+#         'group.id': 'flink_stock_group',
+#         'auto.offset.reset': 'earliest'
+#     }
+
+#     consumer = FlinkKafkaConsumer(
+#         topics=["stock_trades", "macrodata", "news_sentiment", "bluesky_sentiment"],
+#         deserialization_schema=SimpleStringSchema(),
+#         properties=consumer_props
+#     )
+
+#     producer = FlinkKafkaProducer(
+#         topic='aggregated-data',
+#         serialization_schema=SimpleStringSchema(),
+#         producer_config={'bootstrap.servers': 'kafka:9092'}
+#     )
+
+#     stream = env.add_source(consumer, type_info=Types.STRING())
+    
+#     expanded_stream = stream.flat_map(expand_sentiment_data, output_type=Types.STRING())
+
+#     keyed = expanded_stream.key_by(route_by_ticker, key_type=Types.STRING())
+    
+#     processed = keyed.process(SlidingAggregator(), output_type=Types.STRING())
+    
+#     processed.add_sink(producer)
+
+#     env.execute("Full Aggregation with Sliding Windows, Macrodata, Sentiment, Time, and Fundamental Features")
+
+# if __name__ == "__main__":
+#     main()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ### CON DATI FAKE, NON COMPLETAMENTE PARALLELIZZABILE, NON RESETTA ALLE 9.30
+
+
+
+
+# import os
+# import sys
+# import json
+# import numpy as np
+# from datetime import datetime, timezone, timedelta
+# from dateutil.parser import isoparse
+# import pytz
+# import pandas as pd
+# import io
+
+# from pyflink.datastream import StreamExecutionEnvironment
+# from pyflink.common.serialization import SimpleStringSchema
+# from pyflink.datastream.connectors import FlinkKafkaConsumer, FlinkKafkaProducer
+# from pyflink.datastream.functions import KeyedProcessFunction, RuntimeContext
+# from pyflink.common.typeinfo import Types
+# from pyflink.datastream.state import MapStateDescriptor, ValueStateDescriptor
+# from minio import Minio
+# from minio.error import S3Error
+
+# TOP_30_TICKERS = [
+#     "AAPL", "MSFT", "NVDA", "AMZN", "META", "ORCL", "GOOGL", "AVGO", "TSLA", "IBM",
+#     "LLY", "JPM", "V", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA",
+#     "CVX", "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO"
+# ]
+
+# macro_alias = {
+#     "GDPC1": "gdp_real",
+#     "CPIAUCSL": "cpi",
+#     "FEDFUNDS": "ffr",
+#     "DGS10": "t10y",
+#     "DGS2": "t2y",
+#     "T10Y2Y": "spread_10y_2y",
+#     "UNRATE": "unemployment"
+# }
+
+# GENERAL_SENTIMENT_KEY = "general_sentiment_key"
+
+# # Global dictionaries for shared state (read-only after load)
+# # NOTA BENE: Come discusso, l'uso di global dicts come general_sentiment_dict e macro_data_dict
+# # in un ambiente parallelizzato (env.set_parallelism > 1) non è thread-safe e non garantirà
+# # la coerenza dei dati tra le istanze del TaskManager.
+# # Per un job correttamente parallelizzabile, questi dovrebbero essere gestiti tramite
+# # Broadcast State (per general_sentiment_dict e macro_data_dict) o facendo sì che
+# # questi dati siano disponibili a tutte le istanze in modo consistente (es. via MinIO al boot).
+# macro_data_dict = {}
+# general_sentiment_dict = {
+#     "sentiment_bluesky_mean_general_2hours": 0.0,
+#     "sentiment_bluesky_mean_general_1d": 0.0
+# }
+# fundamentals_data = {}
+
+# NY_TZ = pytz.timezone('America/New_York')
+
+# MINIO_URL = "minio:9000"
+# MINIO_ACCESS_KEY = "admin"
+# MINIO_SECRET_KEY = "admin123"
+# MINIO_SECURE = False
+
+# def load_fundamental_data():
+#     print("🚀 [INIT] Loading fundamental data from MinIO...", file=sys.stderr)
+#     try:
+#         minio_client = Minio(
+#             MINIO_URL,
+#             access_key=MINIO_ACCESS_KEY,
+#             secret_key=MINIO_SECRET_KEY,
+#             secure=MINIO_SECURE
+#         )
+        
+#         bucket_name = "company-fundamentals"
+        
+#         if not minio_client.bucket_exists(bucket_name):
+#             print(f"[ERROR] MinIO bucket '{bucket_name}' does not exist. No fundamental data loaded.", file=sys.stderr)
+#             return
+
+#         for ticker in TOP_30_TICKERS:
+#             object_name = f"{ticker}/2024.parquet"
+#             response = None
+#             try:
+#                 response = minio_client.get_object(bucket_name, object_name)
+                
+#                 parquet_bytes = io.BytesIO(response.read())
+#                 parquet_bytes.seek(0)
+#                 df = pd.read_parquet(parquet_bytes)
+                
+#                 if not df.empty:
+#                     row = df.iloc[0]
+#                     # Ensure all values are converted to standard Python types (float, int)
+#                     eps = float(row.get("eps")) if "eps" in row and pd.notna(row.get("eps")) else None
+#                     fcf = float(row.get("cashflow_freeCashFlow")) if "cashflow_freeCashFlow" in row and pd.notna(row.get("cashflow_freeCashFlow")) else None
+#                     revenue = float(row.get("revenue")) if "revenue" in row and pd.notna(row.get("revenue")) else None
+#                     net_income = float(row.get("netIncome")) if "netIncome" in row and pd.notna(row.get("netIncome")) else None
+#                     debt = float(row.get("balance_totalDebt")) if "balance_totalDebt" in row and pd.notna(row.get("balance_totalDebt")) else None
+#                     equity = float(row.get("balance_totalStockholdersEquity")) if "balance_totalStockholdersEquity" in row and pd.notna(row.get("balance_totalStockholdersEquity")) else None
+
+#                     profit_margin = net_income / revenue if revenue is not None and revenue != 0 else None
+#                     debt_to_equity = debt / equity if equity is not None and equity != 0 else None
+
+#                     fundamentals_data[ticker] = {
+#                         "eps": eps,
+#                         "freeCashFlow": fcf,
+#                         "profit_margin": profit_margin,
+#                         "debt_to_equity": debt_to_equity
+#                     }
+#                     print(f"✅ [FUNDAMENTALS] Loaded data for {ticker}: {fundamentals_data[ticker]}", file=sys.stderr)
+#                 else:
+#                     print(f"[WARN] Parquet file for {ticker}/{object_name} is empty.", file=sys.stderr)
+
+#             except S3Error as e:
+#                 print(f"[ERROR] MinIO S3 Error for {ticker} ({object_name}): {e}", file=sys.stderr)
+#             except Exception as e:
+#                 print(f"[ERROR] Could not load fundamental data for {ticker} from MinIO ({object_name}): {e}", file=sys.stderr)
+#             finally:
+#                 if response:
+#                     response.close()
+#                     response.release_conn()
+#         print("✅ [INIT] Fundamental data loading complete.", file=sys.stderr)
+
+#     except Exception as e:
+#         print(f"[CRITICAL] Failed to initialize Minio client or load any fundamental data: {e}", file=sys.stderr)
+
+# class SlidingAggregator(KeyedProcessFunction):
+#     def open(self, runtime_context: RuntimeContext):
+#         def descriptor(name):
+#             return MapStateDescriptor(name, Types.STRING(), Types.FLOAT())
+
+#         self.price_1m = runtime_context.get_map_state(descriptor("price_1m"))
+#         self.price_5m = runtime_context.get_map_state(descriptor("price_5m"))
+#         self.price_30m = runtime_context.get_map_state(descriptor("price_30m"))
+
+#         self.size_1m = runtime_context.get_map_state(descriptor("size_1m"))
+#         self.size_5m = runtime_context.get_map_state(descriptor("size_5m"))
+#         self.size_30m = runtime_context.get_map_state(descriptor("size_30m"))
+
+#         self.sentiment_bluesky_2h = runtime_context.get_map_state(descriptor("sentiment_bluesky_2h"))
+#         self.sentiment_bluesky_1d = runtime_context.get_map_state(descriptor("sentiment_bluesky_1d"))
+#         self.sentiment_news_1d = runtime_context.get_map_state(descriptor("sentiment_news_1d"))
+#         self.sentiment_news_3d = runtime_context.get_map_state(descriptor("sentiment_news_3d"))
+
+#         self.sentiment_bluesky_general_2h = runtime_context.get_map_state(descriptor("sentiment_bluesky_general_2h"))
+#         self.sentiment_bluesky_general_1d = runtime_context.get_map_state(descriptor("sentiment_bluesky_general_1d"))
+
+#         self.last_timer_state = runtime_context.get_state(
+#             ValueStateDescriptor("last_timer", Types.LONG()))
+
+#     def _cleanup_old_entries(self, state, window_minutes):
+#         """Removes entries from state that are older than the specified window_minutes."""
+#         threshold = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
+#         keys_to_remove = []
+#         for k in list(state.keys()):
+#             try:
+#                 dt_obj = isoparse(k)
+#                 if dt_obj.tzinfo is None:
+#                     dt_obj = dt_obj.replace(tzinfo=timezone.utc)
+                
+#                 if dt_obj < threshold:
+#                     keys_to_remove.append(k)
+#             except ValueError:
+#                 print(f"[WARN] Invalid timestamp format '{k}' in state for cleanup. Removing.", file=sys.stderr)
+#                 keys_to_remove.append(k)
+#             except Exception as e:
+#                 print(f"[ERROR] Unexpected error during cleanup for key '{k}': {e}. Removing.", file=sys.stderr)
+#                 keys_to_remove.append(k)
+        
+#         for k_remove in keys_to_remove:
+#             state.remove(k_remove)
+
+#     def process_element(self, value, ctx):
+#         """Processes each incoming element (JSON string) from Kafka."""
+#         try:
+#             data = json.loads(value)
+#             current_key = ctx.get_current_key()
+
+#             # --- Handle Macro Data ---
+#             if current_key == "macro_data_key":
+#                 alias_key = data.get("alias")
+#                 if alias_key:
+#                     # Convert to float to ensure JSON serializability later
+#                     # NOTA: Qui stai aggiornando un dizionario GLOBALE. Se il parallelism > 1,
+#                     # ogni istanza del TaskManager avrà la sua copia di macro_data_dict,
+#                     # e l'aggiornamento non sarà visibile alle altre istanze.
+#                     # Questo è un problema di parallelizzazione.
+#                     macro_data_dict[alias_key] = float(data["value"])
+#                     print(f"📥 [MACRO] {alias_key}: {macro_data_dict[alias_key]}", file=sys.stderr)
+#                 return []
+
+#             # --- Handle Sentiment Data (specific tickers or GENERAL) ---
+#             elif "social" in data and "sentiment_score" in data:
+#                 social_source = data.get("social")
+#                 sentiment_score = float(data.get("sentiment_score"))
+#                 ts_str = data.get("timestamp")
+                
+#                 if not ts_str:
+#                     print(f"[ERROR] Missing timestamp in sentiment data: {data}", file=sys.stderr)
+#                     return []
+
+#                 if current_key == GENERAL_SENTIMENT_KEY:
+#                     if social_source == "bluesky":
+#                         self.sentiment_bluesky_general_2h.put(ts_str, sentiment_score)
+#                         self.sentiment_bluesky_general_1d.put(ts_str, sentiment_score)
+#                         print(f"📥 [SENTIMENT-GENERAL] Bluesky - {ts_str}: {sentiment_score}", file=sys.stderr)
+#                     else:
+#                         print(f"[WARN] General sentiment received for non-Bluesky source: {social_source}", file=sys.stderr)
+#                     return []
+                
+#                 elif current_key in TOP_30_TICKERS:
+#                     if social_source == "bluesky":
+#                         self.sentiment_bluesky_2h.put(ts_str, sentiment_score)
+#                         self.sentiment_bluesky_1d.put(ts_str, sentiment_score)
+#                     elif social_source == "news":
+#                         self.sentiment_news_1d.put(ts_str, sentiment_score)
+#                         self.sentiment_news_3d.put(ts_str, sentiment_score)
+#                     else:
+#                         print(f"[WARN] Unknown social source for ticker {current_key}: {social_source}", file=sys.stderr)
+#                         return []
+#                     print(f"📥 [SENTIMENT] {current_key} - {social_source} - {ts_str}: {sentiment_score}", file=sys.stderr)
+#                 return []
+
+#             # --- Handle Stock Trade Data ---
+#             elif "price" in data and "size" in data:
+#                 ticker = data.get("ticker")
+#                 if ticker not in TOP_30_TICKERS:
+#                     return []
+                
+#                 ts_str = data.get("timestamp")
+#                 if not ts_str:
+#                     print(f"[ERROR] Missing timestamp in trade data: {data}", file=sys.stderr)
+#                     return []
+
+#                 # --- Rimosso il blocco orario per la ricezione dei trade data ---
+#                 # event_time_utc = isoparse(ts_str).replace(tzinfo=timezone.utc)
+#                 # event_time_ny = event_time_utc.astimezone(NY_TZ)
+#                 # market_open_data_reception = event_time_ny.replace(hour=9, minute=30, second=0, microsecond=0)
+#                 # market_close_data_reception = event_time_ny.replace(hour=16, minute=0, second=0, microsecond=0)
+#                 # if not (market_open_data_reception <= event_time_ny < market_close_data_reception):
+#                 #     print(f"[DEBUG] Skipping trade data for {ticker} outside market reception hours ({event_time_ny.strftime('%H:%M')} NYT).", file=sys.stderr)
+#                 #     return []
+
+#                 price = float(data.get("price"))
+#                 size = float(data.get("size"))
+
+#                 for state in [self.price_1m, self.price_5m, self.price_30m]:
+#                     state.put(ts_str, price)
+#                 for state in [self.size_1m, self.size_5m, self.size_30m]:
+#                     state.put(ts_str, size)
+#                 return []
+
+#             else:
+#                 print(f"[WARN] Unrecognized data format: {value}", file=sys.stderr)
+#                 return []
+
+#         except json.JSONDecodeError:
+#             print(f"[ERROR] Failed to decode JSON: {value}", file=sys.stderr)
+#             return []
+#         except Exception as e:
+#             print(f"[ERROR] process_element: {e} for value: {value}", file=sys.stderr)
+#             return []
+#         finally:
+#             # La logica del timer rimane ogni 5 secondi, indipendentemente dall'orario.
+#             last_timer = self.last_timer_state.value()
+#             if last_timer is None or ctx.timer_service().current_processing_time() >= last_timer:
+#                 next_ts = ctx.timer_service().current_processing_time() + 5000
+#                 ctx.timer_service().register_processing_time_timer(next_ts)
+#                 self.last_timer_state.update(next_ts)
+
+
+#     def on_timer(self, timestamp, ctx):
+#         """Called when a registered timer fires."""
+#         try:
+#             now_utc = datetime.now(timezone.utc)
+#             ts_str = now_utc.isoformat()
+#             ticker = ctx.get_current_key()
+
+#             def mean(vals):
+#                 vals = list(vals)
+#                 return float(np.mean(vals)) if vals else 0.0
+
+#             def std(vals):
+#                 vals = list(vals)
+#                 return float(np.std(vals)) if vals and len(vals) > 1 else 0.0
+
+#             def total(vals):
+#                 vals = list(vals)
+#                 return float(np.sum(vals)) if vals else 0.0
+
+#             # --- Handle GENERAL Sentiment Key ---
+#             if ticker == GENERAL_SENTIMENT_KEY:
+#                 self._cleanup_old_entries(self.sentiment_bluesky_general_2h, 2 * 60)
+#                 self._cleanup_old_entries(self.sentiment_bluesky_general_1d, 24 * 60)
+
+#                 # NOTA: Anche qui stai aggiornando un dizionario GLOBALE.
+#                 # Questo aggiornamento sarà visibile solo all'istanza del TaskManager
+#                 # che processa la chiave GENERAL_SENTIMENT_KEY. Altre istanze
+#                 # avranno un valore non aggiornato di general_sentiment_dict.
+#                 general_sentiment_dict["sentiment_bluesky_mean_general_2hours"] = mean(self.sentiment_bluesky_general_2h.values())
+#                 general_sentiment_dict["sentiment_bluesky_mean_general_1d"] = mean(self.sentiment_bluesky_general_1d.values())
+                
+#                 print(f"🔄 [GENERAL SENTIMENT AGG] Updated general_sentiment_dict: {general_sentiment_dict}", file=sys.stderr)
+#                 return []
+
+#             # --- Handle Macro Data Key ---
+#             if ticker == "macro_data_key":
+#                 # Macro data is updated in process_element, nothing specific to do on timer here
+#                 return []
+
+#             # --- Handle Specific Ticker Data (TOP_30_TICKERS) ---
+#             if ticker not in TOP_30_TICKERS:
+#                 print(f"[WARN] on_timer fired for unexpected key: {ticker}", file=sys.stderr)
+#                 return []
+
+#             now_ny = now_utc.astimezone(NY_TZ)
+
+#             # --- Rimosso il blocco orario per la generazione delle predizioni ---
+#             # market_open_prediction = now_ny.replace(hour=9, minute=31, second=0, microsecond=0)
+#             # market_close_prediction = now_ny.replace(hour=15, minute=59, second=0, microsecond=0)
+#             # if not (market_open_prediction <= now_ny <= market_close_prediction):
+#             #     print(f"[DEBUG] Skipping prediction for {ticker} outside market prediction hours ({now_ny.strftime('%H:%M')} NYT).", file=sys.stderr)
+#             #     return []
+
+#             self._cleanup_old_entries(self.price_1m, 1)
+#             self._cleanup_old_entries(self.price_5m, 5)
+#             self._cleanup_old_entries(self.price_30m, 30)
+#             self._cleanup_old_entries(self.size_1m, 1)
+#             self._cleanup_old_entries(self.size_5m, 5)
+#             self._cleanup_old_entries(self.size_30m, 30)
+#             self._cleanup_old_entries(self.sentiment_bluesky_2h, 2 * 60)
+#             self._cleanup_old_entries(self.sentiment_bluesky_1d, 24 * 60)
+#             self._cleanup_old_entries(self.sentiment_news_1d, 24 * 60)
+#             self._cleanup_old_entries(self.sentiment_news_3d, 3 * 24 * 60)
+
+#             market_open_time = now_ny.replace(hour=9, minute=30, second=0, microsecond=0)
+#             market_close_time = now_ny.replace(hour=16, minute=0, second=0, microsecond=0)
+
+#             market_open_spike_flag = 0
+#             market_close_spike_flag = 0
+
+#             # Questi flag continuano ad essere calcolati in base agli orari di mercato NYSE,
+#             # anche se la predizione non è bloccata.
+#             if market_open_time <= now_ny < (market_open_time + timedelta(minutes=5)):
+#                 market_open_spike_flag = 1
+            
+#             if (market_close_time - timedelta(minutes=5)) <= now_ny < market_close_time:
+#                 market_close_spike_flag = 1
+
+#             # NOTA: Anche qui, fundamentals_data è un dizionario GLOBALE.
+#             # Se fosse stato aggiornato dopo il caricamento iniziale e il job fosse parallelizzato,
+#             # diverse istanze potrebbero avere dati non consistenti.
+#             ticker_fundamentals = fundamentals_data.get(ticker, {})
+
+#             features = {
+#                 "ticker": ticker,
+#                 "timestamp": ts_str,
+#                 "price_mean_1min": mean(self.price_1m.values()),
+#                 "price_mean_5min": mean(self.price_5m.values()),
+#                 "price_std_5min": std(self.price_5m.values()),
+#                 "price_mean_30min": mean(self.price_30m.values()),
+#                 "price_std_30min": std(self.price_30m.values()),
+#                 "size_tot_1min": total(self.size_1m.values()),
+#                 "size_tot_5min": total(self.size_5m.values()),
+#                 "size_tot_30min": total(self.size_30m.values()),
+#                 #SENTIMENT
+#                 "sentiment_bluesky_mean_2h": mean(self.sentiment_bluesky_2h.values()),
+#                 "sentiment_bluesky_mean_1d": mean(self.sentiment_bluesky_1d.values()),
+#                 "sentiment_news_mean_1d": mean(self.sentiment_news_1d.values()),
+#                 "sentiment_news_mean_3d": mean(self.sentiment_news_3d.values()),
+#                 # NOTA: Questi valori sono letti dal dizionario globale 'general_sentiment_dict'.
+#                 # In un setup parallelizzato, questa copia potrebbe essere obsoleta
+#                 # se l'aggiornamento avviene su un'altra istanza di TaskManager.
+#                 "sentiment_bluesky_mean_general_2hours": general_sentiment_dict["sentiment_bluesky_mean_general_2hours"],
+#                 "sentiment_bluesky_mean_general_1d": general_sentiment_dict["sentiment_bluesky_mean_general_1d"],
+#                 # NEW TIME-BASED FEATURES - Ensure these are Python native int/float
+#                 "minutes_since_open": int((now_ny - market_open_time).total_seconds() // 60) if now_ny >= market_open_time else -1,
+#                 "day_of_week": int(now_ny.weekday()),
+#                 "day_of_month": int(now_ny.day),
+#                 "week_of_year": int(now_ny.isocalendar()[1]),
+#                 "month_of_year": int(now_ny.month),
+#                 "market_open_spike_flag": int(market_open_spike_flag),
+#                 "market_close_spike_flag": int(market_close_spike_flag),
+#                 # Fundamental data - ensure these are Python native floats
+#                 "eps": float(ticker_fundamentals["eps"]) if ticker_fundamentals.get("eps") is not None else None,
+#                 "freeCashFlow": float(ticker_fundamentals["freeCashFlow"]) if ticker_fundamentals.get("freeCashFlow") is not None else None,
+#                 "profit_margin": float(ticker_fundamentals["profit_margin"]) if ticker_fundamentals.get("profit_margin") is not None else None,
+#                 "debt_to_equity": float(ticker_fundamentals["debt_to_equity"]) if ticker_fundamentals.get("debt_to_equity") is not None else None
+#             }
+
+#             # NOTA: Anche qui, macro_data_dict è un dizionario GLOBALE.
+#             # Se fosse stato aggiornato dopo il caricamento iniziale e il job fosse parallelizzato,
+#             # diverse istanze potrebbero avere dati non consistenti.
+#             for macro_key_alias, macro_value in macro_data_dict.items():
+#                 # Ensure macro values are converted to float
+#                 features[macro_key_alias] = float(macro_value)
+
+#             result = json.dumps(features)
+#             print(f"📤 [PREDICTION] {ts_str} - {ticker} => {result}", file=sys.stderr)
+
+#             return [result]
+#         except Exception as e:
+#             print(f"[ERROR] on_timer for ticker {ticker}: {e}", file=sys.stderr)
+#             return [json.dumps({"ticker": ctx.get_current_key(), "timestamp": datetime.now(timezone.utc).isoformat(), "error": str(e)})]
+
+# # --- Helper for splitting sentiment data ---
+# def expand_sentiment_data(json_str):
+#     """
+#     Expands a single sentiment JSON string into multiple if it contains a list of tickers,
+#     otherwise passes through other data types.
+#     Handles 'GENERAL' ticker by passing it through.
+#     """
+#     try:
+#         data = json.loads(json_str)
+        
+#         if "social" in data and "sentiment_score" in data and isinstance(data.get("ticker"), list):
+#             expanded_records = []
+#             original_ticker_list = data["ticker"]
+            
+#             if "GENERAL" in original_ticker_list:
+#                 new_record = data.copy()
+#                 new_record["ticker"] = "GENERAL"
+#                 expanded_records.append(json.dumps(new_record))
+#                 print(f"[WARN] Sentiment data with 'GENERAL' ticker detected and handled.", file=sys.stderr)
+            
+#             for ticker_item in original_ticker_list:
+#                 if ticker_item != "GENERAL" and ticker_item in TOP_30_TICKERS:
+#                     new_record = data.copy()
+#                     new_record["ticker"] = ticker_item
+#                     expanded_records.append(json.dumps(new_record))
+            
+#             if not expanded_records:
+#                 print(f"[WARN] Sentiment data with no tracked or 'GENERAL' tickers: {json_str}", file=sys.stderr)
+#                 return []
+#             return expanded_records
+        
+#         return [json_str]
+#     except json.JSONDecodeError:
+#         print(f"[ERROR] Failed to decode JSON in expand_sentiment_data: {json_str}", file=sys.stderr)
+#         return []
+#     except Exception as e:
+#         print(f"[ERROR] expand_sentiment_data: {e} for {json_str}", file=sys.stderr)
+#         return []
+
+# def route_by_ticker(json_str):
+#     """Determines the key for incoming JSON data."""
+#     try:
+#         data = json.loads(json_str)
+#         if "alias" in data:
+#             return "macro_data_key"
+#         elif "ticker" in data:
+#             if data["ticker"] == "GENERAL":
+#                 return GENERAL_SENTIMENT_KEY
+#             elif data["ticker"] in TOP_30_TICKERS:
+#                 return data["ticker"]
+#             else:
+#                 print(f"[WARN] Ticker '{data['ticker']}' not in TOP_30_TICKERS. Discarding.", file=sys.stderr)
+#                 return "discard_key"
+#         else:
+#             print(f"[WARN] Data with no 'alias' or 'ticker' field: {json_str}", file=sys.stderr)
+#             return "unknown_data_key"
+#     except json.JSONDecodeError:
+#         print(f"[WARN] Failed to decode JSON for key_by: {json_str}", file=sys.stderr)
+#         return "invalid_json_key"
+#     except Exception as e:
+#         print(f"[ERROR] route_by_ticker: {e} for {json_str}", file=sys.stderr)
+#         return "error_key"
+
+
+# def main():
+#     load_fundamental_data()
+
+#     env = StreamExecutionEnvironment.get_execution_environment()
+#     env.set_parallelism(1) # Lasciamo il parallelism a 1 per ora, per evitare i problemi discussi
+#                             # con i global dicts e la coerenza dei dati.
+
+#     consumer_props = {
+#         'bootstrap.servers': 'kafka:9092',
+#         'group.id': 'flink_stock_group',
+#         'auto.offset.reset': 'earliest'
+#     }
+
+#     consumer = FlinkKafkaConsumer(
+#         topics=["stock_trades", "macrodata", "news_sentiment", "bluesky_sentiment"],
+#         deserialization_schema=SimpleStringSchema(),
+#         properties=consumer_props
+#     )
+
+#     producer = FlinkKafkaProducer(
+#         topic='aggregated-data',
+#         serialization_schema=SimpleStringSchema(),
+#         producer_config={'bootstrap.servers': 'kafka:9092'}
+#     )
+
+#     stream = env.add_source(consumer, type_info=Types.STRING())
+    
+#     expanded_stream = stream.flat_map(expand_sentiment_data, output_type=Types.STRING())
+
+#     keyed = expanded_stream.key_by(route_by_ticker, key_type=Types.STRING())
+    
+#     processed = keyed.process(SlidingAggregator(), output_type=Types.STRING())
+    
+#     processed.add_sink(producer)
+
+#     env.execute("Full Aggregation with Sliding Windows, Macrodata, Sentiment, Time, and Fundamental Features (No Time Filtering)")
+
+# if __name__ == "__main__":
+#     main()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# import os
+# import sys
+# import json
+# import numpy as np
+# from datetime import datetime, timezone, timedelta
+# from dateutil.parser import isoparse
+# import pytz
+# import pandas as pd
+# import io
+
+# from pyflink.datastream import StreamExecutionEnvironment
+# from pyflink.common.serialization import SimpleStringSchema
+# from pyflink.datastream.connectors import FlinkKafkaConsumer, FlinkKafkaProducer
+# from pyflink.datastream.functions import KeyedProcessFunction, RuntimeContext
+# from pyflink.common.typeinfo import Types
+# from pyflink.datastream.state import MapStateDescriptor, ValueStateDescriptor
+# from minio import Minio
+# from minio.error import S3Error
+
+# TOP_30_TICKERS = [
+#     "AAPL", "MSFT", "NVDA", "AMZN", "META", "ORCL", "GOOGL", "AVGO", "TSLA", "IBM",
+#     "LLY", "JPM", "V", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA",
+#     "CVX", "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO"
+# ]
+
+# macro_alias = {
+#     "GDPC1": "gdp_real",
+#     "CPIAUCSL": "cpi",
+#     "FEDFUNDS": "ffr",
+#     "DGS10": "t10y",
+#     "DGS2": "t2y",
+#     "T10Y2Y": "spread_10y_2y",
+#     "UNRATE": "unemployment"
+# }
+
+# GENERAL_SENTIMENT_KEY = "general_sentiment_key"
+
+# # Global dictionaries for shared state (read-only after load)
+# # NOTA BENE: Come discusso, l'uso di global dicts come general_sentiment_dict e macro_data_dict
+# # in un ambiente parallelizzato (env.set_parallelism > 1) non è thread-safe e non garantirà
+# # la coerenza dei dati tra le istanze del TaskManager.
+# # Per un job correttamente parallelizzabile, questi dovrebbero essere gestiti tramite
+# # Broadcast State (per general_sentiment_dict e macro_data_dict) o facendo sì che
+# # questi dati siano disponibili a tutte le istanze in modo consistente (es. via MinIO al boot).
+# macro_data_dict = {}
+# general_sentiment_dict = {
+#     "sentiment_bluesky_mean_general_2hours": 0.0,
+#     "sentiment_bluesky_mean_general_1d": 0.0
+# }
+# fundamentals_data = {}
+
+# NY_TZ = pytz.timezone('America/New_York')
+
+# MINIO_URL = "minio:9000"
+# MINIO_ACCESS_KEY = "admin"
+# MINIO_SECRET_KEY = "admin123"
+# MINIO_SECURE = False
+
+# def load_fundamental_data():
+#     print("🚀 [INIT] Loading fundamental data from MinIO...", file=sys.stderr)
+#     try:
+#         minio_client = Minio(
+#             MINIO_URL,
+#             access_key=MINIO_ACCESS_KEY,
+#             secret_key=MINIO_SECRET_KEY,
+#             secure=MINIO_SECURE
+#         )
+        
+#         bucket_name = "company-fundamentals"
+        
+#         if not minio_client.bucket_exists(bucket_name):
+#             print(f"[ERROR] MinIO bucket '{bucket_name}' does not exist. No fundamental data loaded.", file=sys.stderr)
+#             return
+
+#         for ticker in TOP_30_TICKERS:
+#             object_name = f"{ticker}/2024.parquet"
+#             response = None
+#             try:
+#                 response = minio_client.get_object(bucket_name, object_name)
+                
+#                 parquet_bytes = io.BytesIO(response.read())
+#                 parquet_bytes.seek(0)
+#                 df = pd.read_parquet(parquet_bytes)
+                
+#                 if not df.empty:
+#                     row = df.iloc[0]
+#                     # Ensure all values are converted to standard Python types (float, int)
+#                     eps = float(row.get("eps")) if "eps" in row and pd.notna(row.get("eps")) else None
+#                     fcf = float(row.get("cashflow_freeCashFlow")) if "cashflow_freeCashFlow" in row and pd.notna(row.get("cashflow_freeCashFlow")) else None
+#                     revenue = float(row.get("revenue")) if "revenue" in row and pd.notna(row.get("revenue")) else None
+#                     net_income = float(row.get("netIncome")) if "netIncome" in row and pd.notna(row.get("netIncome")) else None
+#                     debt = float(row.get("balance_totalDebt")) if "balance_totalDebt" in row and pd.notna(row.get("balance_totalDebt")) else None
+#                     equity = float(row.get("balance_totalStockholdersEquity")) if "balance_totalStockholdersEquity" in row and pd.notna(row.get("balance_totalStockholdersEquity")) else None
+
+#                     profit_margin = net_income / revenue if revenue is not None and revenue != 0 else None
+#                     debt_to_equity = debt / equity if equity is not None and equity != 0 else None
+
+#                     fundamentals_data[ticker] = {
+#                         "eps": eps,
+#                         "freeCashFlow": fcf,
+#                         "profit_margin": profit_margin,
+#                         "debt_to_equity": debt_to_equity
+#                     }
+#                     print(f"✅ [FUNDAMENTALS] Loaded data for {ticker}: {fundamentals_data[ticker]}", file=sys.stderr)
+#                 else:
+#                     print(f"[WARN] Parquet file for {ticker}/{object_name} is empty.", file=sys.stderr)
+
+#             except S3Error as e:
+#                 print(f"[ERROR] MinIO S3 Error for {ticker} ({object_name}): {e}", file=sys.stderr)
+#             except Exception as e:
+#                 print(f"[ERROR] Could not load fundamental data for {ticker} from MinIO ({object_name}): {e}", file=sys.stderr)
+#             finally:
+#                 if response:
+#                     response.close()
+#                     response.release_conn()
+#         print("✅ [INIT] Fundamental data loading complete.", file=sys.stderr)
+
+#     except Exception as e:
+#         print(f"[CRITICAL] Failed to initialize Minio client or load any fundamental data: {e}", file=sys.stderr)
+
+# class SlidingAggregator(KeyedProcessFunction):
+#     def open(self, runtime_context: RuntimeContext):
+#         def descriptor(name):
+#             return MapStateDescriptor(name, Types.STRING(), Types.FLOAT())
+
+#         self.price_1m = runtime_context.get_map_state(descriptor("price_1m"))
+#         self.price_5m = runtime_context.get_map_state(descriptor("price_5m"))
+#         self.price_30m = runtime_context.get_map_state(descriptor("price_30m"))
+
+#         self.size_1m = runtime_context.get_map_state(descriptor("size_1m"))
+#         self.size_5m = runtime_context.get_map_state(descriptor("size_5m"))
+#         self.size_30m = runtime_context.get_map_state(descriptor("size_30m"))
+
+#         self.sentiment_bluesky_2h = runtime_context.get_map_state(descriptor("sentiment_bluesky_2h"))
+#         self.sentiment_bluesky_1d = runtime_context.get_map_state(descriptor("sentiment_bluesky_1d"))
+#         self.sentiment_news_1d = runtime_context.get_map_state(descriptor("sentiment_news_1d"))
+#         self.sentiment_news_3d = runtime_context.get_map_state(descriptor("sentiment_news_3d"))
+
+#         self.sentiment_bluesky_general_2h = runtime_context.get_map_state(descriptor("sentiment_bluesky_general_2h"))
+#         self.sentiment_bluesky_general_1d = runtime_context.get_map_state(descriptor("sentiment_bluesky_general_1d"))
+
+#         self.last_timer_state = runtime_context.get_state(
+#             ValueStateDescriptor("last_timer", Types.LONG()))
+#         # Stato per tenere traccia dell'ultima data di apertura del mercato per la pulizia
+#         self.last_market_open_cleanup_date = runtime_context.get_state(
+#             ValueStateDescriptor("last_market_open_cleanup_date", Types.STRING()))
+
+
+#     def _cleanup_old_entries(self, state, window_minutes):
+#         """Removes entries from state that are older than the specified window_minutes."""
+#         threshold = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
+#         keys_to_remove = []
+#         for k in list(state.keys()):
+#             try:
+#                 dt_obj = isoparse(k)
+#                 if dt_obj.tzinfo is None:
+#                     dt_obj = dt_obj.replace(tzinfo=timezone.utc)
+                
+#                 if dt_obj < threshold:
+#                     keys_to_remove.append(k)
+#             except ValueError:
+#                 print(f"[WARN] Invalid timestamp format '{k}' in state for cleanup. Removing.", file=sys.stderr)
+#                 keys_to_remove.append(k)
+#             except Exception as e:
+#                 print(f"[ERROR] Unexpected error during cleanup for key '{k}': {e}. Removing.", file=sys.stderr)
+#                 keys_to_remove.append(k)
+        
+#         for k_remove in keys_to_remove:
+#             state.remove(k_remove)
+
+#     def _clear_stock_states(self, ctx):
+#         """Clears all price and size states."""
+#         self.price_1m.clear()
+#         self.price_5m.clear()
+#         self.price_30m.clear()
+#         self.size_1m.clear()
+#         self.size_5m.clear()
+#         self.size_30m.clear()
+#         print(f"🧹 [CLEANUP] Stock price and size states cleared for {ctx.get_current_key()}.", file=sys.stderr)
+
+
+
+#     def process_element(self, value, ctx):
+#         """Processes each incoming element (JSON string) from Kafka."""
+#         try:
+#             data = json.loads(value)
+#             current_key = ctx.get_current_key()
+
+#             # --- Handle Macro Data ---
+#             if current_key == "macro_data_key":
+#                 alias_key = data.get("alias")
+#                 if alias_key:
+#                     macro_data_dict[alias_key] = float(data["value"])
+#                     print(f"📥 [MACRO] {alias_key}: {macro_data_dict[alias_key]}", file=sys.stderr)
+#                 return []
+
+#             # --- Handle Sentiment Data (specific tickers or GENERAL) ---
+#             elif "social" in data and "sentiment_score" in data:
+#                 social_source = data.get("social")
+#                 sentiment_score = float(data.get("sentiment_score"))
+#                 ts_str = data.get("timestamp")
+                
+#                 if not ts_str:
+#                     print(f"[ERROR] Missing timestamp in sentiment data: {data}", file=sys.stderr)
+#                     return []
+
+#                 if current_key == GENERAL_SENTIMENT_KEY:
+#                     if social_source == "bluesky":
+#                         self.sentiment_bluesky_general_2h.put(ts_str, sentiment_score)
+#                         self.sentiment_bluesky_general_1d.put(ts_str, sentiment_score)
+#                         print(f"📥 [SENTIMENT-GENERAL] Bluesky - {ts_str}: {sentiment_score}", file=sys.stderr)
+#                     else:
+#                         print(f"[WARN] General sentiment received for non-Bluesky source: {social_source}", file=sys.stderr)
+#                     return []
+                
+#                 elif current_key in TOP_30_TICKERS:
+#                     if social_source == "bluesky":
+#                         self.sentiment_bluesky_2h.put(ts_str, sentiment_score)
+#                         self.sentiment_bluesky_1d.put(ts_str, sentiment_score)
+#                     elif social_source == "news":
+#                         self.sentiment_news_1d.put(ts_str, sentiment_score)
+#                         self.sentiment_news_3d.put(ts_str, sentiment_score)
+#                     else:
+#                         print(f"[WARN] Unknown social source for ticker {current_key}: {social_source}", file=sys.stderr)
+#                         return []
+#                     print(f"📥 [SENTIMENT] {current_key} - {social_source} - {ts_str}: {sentiment_score}", file=sys.stderr)
+#                 return []
+
+#             # --- Handle Stock Trade Data ---
+#             elif "price" in data and "size" in data:
+#                 ticker = data.get("ticker")
+#                 if ticker not in TOP_30_TICKERS:
+#                     return []
+                
+#                 ts_str = data.get("timestamp")
+#                 if not ts_str:
+#                     print(f"[ERROR] Missing timestamp in trade data: {data}", file=sys.stderr)
+#                     return []
+
+#                 price = float(data.get("price"))
+#                 size = float(data.get("size"))
+
+#                 for state in [self.price_1m, self.price_5m, self.price_30m]:
+#                     state.put(ts_str, price)
+#                 for state in [self.size_1m, self.size_5m, self.size_30m]:
+#                     state.put(ts_str, size)
+#                 return []
+
+#             else:
+#                 print(f"[WARN] Unrecognized data format: {value}", file=sys.stderr)
+#                 return []
+
+#         except json.JSONDecodeError:
+#             print(f"[ERROR] Failed to decode JSON: {value}", file=sys.stderr)
+#             return []
+#         except Exception as e:
+#             print(f"[ERROR] process_element: {e} for value: {value}", file=sys.stderr)
+#             return []
+#         finally:
+#             # Registra il timer per le predizioni ogni 5 secondi
+#             last_timer = self.last_timer_state.value()
+#             if last_timer is None or ctx.timer_service().current_processing_time() >= last_timer:
+#                 next_ts = ctx.timer_service().current_processing_time() + 5000
+#                 ctx.timer_service().register_processing_time_timer(next_ts)
+#                 self.last_timer_state.update(next_ts)
+
+#             # Registra il timer per la pulizia all'apertura del mercato (9:30 AM NYT)
+#             # Solo per le chiavi di ticker reali
+#             current_key = ctx.get_current_key()
+#             if current_key in TOP_30_TICKERS:
+#                 now_ny = datetime.now(timezone.utc).astimezone(NY_TZ)
+#                 market_open_today_ny = now_ny.replace(hour=9, minute=30, second=0, microsecond=0, tzinfo=NY_TZ)
+                
+#                 last_cleanup_date_str = self.last_market_open_cleanup_date.value()
+#                 last_cleanup_date = isoparse(last_cleanup_date_str).astimezone(NY_TZ).date() if last_cleanup_date_str else None
+
+#                 # Se siamo prima delle 9:30, il target è oggi alle 9:30.
+#                 # Se siamo dopo le 9:30, il target è domani alle 9:30.
+#                 timer_target_ny = market_open_today_ny
+#                 if now_ny >= market_open_today_ny:
+#                     timer_target_ny = (market_open_today_ny + timedelta(days=1))
+
+#                 # Converti in millisecondi UTC per Flink
+#                 timer_target_utc_ms = int(timer_target_ny.astimezone(timezone.utc).timestamp() * 1000)
+
+#                 # Condizione per registrare il timer e stampare il log UNA SOLA VOLTA
+#                 # Registra solo se:
+#                 # 1. Non è mai stato registrato prima per questa chiave (last_cleanup_date è None)
+#                 # 2. Oppure l'ultima pulizia registrata è di un giorno precedente a quello attuale (siamo in un nuovo giorno)
+#                 # 3. E il timer che stiamo per registrare è per un orario futuro (non è già passato)
+#                 if (last_cleanup_date is None or last_cleanup_date < now_ny.date()) and timer_target_ny > now_ny:
+#                     ctx.timer_service().register_processing_time_timer(timer_target_utc_ms)
+                    
+
+#                 # Gestione del caso di riavvio del job dopo le 9:30 (pulizia immediata se non già fatta oggi)
+#                 if now_ny >= market_open_today_ny and (last_cleanup_date is None or last_cleanup_date < now_ny.date()):
+#                     print(f"⚠️ [CLEANUP] Performing immediate cleanup for {current_key} (job restart/late start).", file=sys.stderr)
+#                     self._clear_stock_states(ctx)
+#                     self.last_market_open_cleanup_date.update(now_ny.date().isoformat())
+
+
+#     def on_timer(self, timestamp, ctx):
+#         """Called when a registered timer fires."""
+#         try:
+#             now_utc = datetime.now(timezone.utc)
+#             ts_str = now_utc.isoformat()
+#             ticker = ctx.get_current_key()
+
+#             # Determina se il timer è un timer di pulizia (alle 9:30 AM NYT)
+#             now_ny = now_utc.astimezone(NY_TZ)
+#             market_open_today_ny = now_ny.replace(hour=9, minute=30, second=0, microsecond=0, tzinfo=NY_TZ)
+
+#             # Controlla se il timer che è scattato è quello di pulizia dello stato
+#             # La tolleranza di 5 secondi è per compensare possibili derive temporali.
+#             if ticker in TOP_30_TICKERS and abs((now_ny - market_open_today_ny).total_seconds()) < 5: # e solo se la data è giusta
+#                 last_cleanup_date_str = self.last_market_open_cleanup_date.value()
+#                 last_cleanup_date = isoparse(last_cleanup_date_str).astimezone(NY_TZ).date() if last_cleanup_date_str else None
+
+#                 # Se non è ancora stato pulito per oggi
+#                 if last_cleanup_date is None or last_cleanup_date < now_ny.date():
+#                     print(f"✅ [CLEANUP] Market open cleanup triggered for {ticker} at {now_ny.strftime('%H:%M:%S NYT')}.", file=sys.stderr)
+#                     self._clear_stock_states(ctx)
+#                     self.last_market_open_cleanup_date.update(now_ny.date().isoformat())
+#                     # Non fare la prediction subito dopo la pulizia, ma lascia che il timer dei 5s si occupi di questo.
+#                     # Questo on_timer potrebbe essere stato registrato per la pulizia,
+#                     # e non necessariamente per la logica di prediction.
+#                     # Registra il timer per la pulizia del giorno successivo
+#                     market_open_next_day_ny = (market_open_today_ny + timedelta(days=1))
+#                     timer_target_next_day_utc_ms = int(market_open_next_day_ny.astimezone(timezone.utc).timestamp() * 1000)
+#                     ctx.timer_service().register_processing_time_timer(timer_target_next_day_utc_ms)
+#                     print(f"⏰ [TIMER] Next cleanup timer for {ticker} set for {market_open_next_day_ny.strftime('%Y-%m-%d %H:%M:%S NYT')}", file=sys.stderr)
+#                     return [] # Non produrre output per un evento di solo cleanup.
+
+
+#             def mean(vals):
+#                 vals = list(vals)
+#                 return float(np.mean(vals)) if vals else 0.0
+
+#             def std(vals):
+#                 vals = list(vals)
+#                 return float(np.std(vals)) if vals and len(vals) > 1 else 0.0
+
+#             def total(vals):
+#                 vals = list(vals)
+#                 return float(np.sum(vals)) if vals else 0.0
+
+#             # --- Handle GENERAL Sentiment Key ---
+#             if ticker == GENERAL_SENTIMENT_KEY:
+#                 self._cleanup_old_entries(self.sentiment_bluesky_general_2h, 2 * 60)
+#                 self._cleanup_old_entries(self.sentiment_bluesky_general_1d, 24 * 60)
+
+#                 general_sentiment_dict["sentiment_bluesky_mean_general_2hours"] = mean(self.sentiment_bluesky_general_2h.values())
+#                 general_sentiment_dict["sentiment_bluesky_mean_general_1d"] = mean(self.sentiment_bluesky_general_1d.values())
+                
+#                 print(f"🔄 [GENERAL SENTIMENT AGG] Updated general_sentiment_dict: {general_sentiment_dict}", file=sys.stderr)
+#                 return []
+
+#             # --- Handle Macro Data Key ---
+#             if ticker == "macro_data_key":
+#                 return []
+
+#             # --- Handle Specific Ticker Data (TOP_30_TICKERS) ---
+#             if ticker not in TOP_30_TICKERS:
+#                 print(f"[WARN] on_timer fired for unexpected key: {ticker}", file=sys.stderr)
+#                 return []
+
+#             # Pulizia delle finestre mobili (sempre attiva)
+#             self._cleanup_old_entries(self.price_1m, 1)
+#             self._cleanup_old_entries(self.price_5m, 5)
+#             self._cleanup_old_entries(self.price_30m, 30)
+#             self._cleanup_old_entries(self.size_1m, 1)
+#             self._cleanup_old_entries(self.size_5m, 5)
+#             self._cleanup_old_entries(self.size_30m, 30)
+#             self._cleanup_old_entries(self.sentiment_bluesky_2h, 2 * 60)
+#             self._cleanup_old_entries(self.sentiment_bluesky_1d, 24 * 60)
+#             self._cleanup_old_entries(self.sentiment_news_1d, 24 * 60)
+#             self._cleanup_old_entries(self.sentiment_news_3d, 3 * 24 * 60)
+
+#             # Calcolo dei flag di apertura/chiusura mercato (indipendente dalla generazione della prediction)
+#             market_open_time = now_ny.replace(hour=9, minute=30, second=0, microsecond=0, tzinfo=NY_TZ)
+#             market_close_time = now_ny.replace(hour=16, minute=0, second=0, microsecond=0, tzinfo=NY_TZ)
+
+#             market_open_spike_flag = 0
+#             market_close_spike_flag = 0
+
+#             if market_open_time <= now_ny < (market_open_time + timedelta(minutes=5)):
+#                 market_open_spike_flag = 1
+            
+#             if (market_close_time - timedelta(minutes=5)) <= now_ny < market_close_time:
+#                 market_close_spike_flag = 1
+
+#             ticker_fundamentals = fundamentals_data.get(ticker, {})
+
+#             # Gestione di "minutes_since_open" per valori dinamici
+#             # Se siamo fuori dall'orario di mercato NYSE, calcola le "minuti dalla chiusura"
+#             # O un valore che cresce durante la notte.
+#             minutes_since_open = -1 # Valore di default
+#             if now_ny >= market_open_time and now_ny < market_close_time:
+#                 minutes_since_open = int((now_ny - market_open_time).total_seconds() // 60)
+#             else:
+#                 # Se siamo prima dell'apertura (es. notte), calcola i minuti dall'apertura della giornata precedente
+#                 # altrimenti, i minuti dalla chiusura
+#                 if now_ny < market_open_time: # Dalla mezzanotte fino all'apertura
+#                     # Minuti trascorsi dalla mezzanotte, considerando l'apertura come punto di riferimento "zero"
+#                     minutes_until_open = int((market_open_time - now_ny).total_seconds() // 60)
+#                     minutes_since_open = -(minutes_until_open) # Valore negativo per indicare "prima dell'apertura"
+#                 else: # Dopo la chiusura
+#                     minutes_since_open = int((now_ny - market_close_time).total_seconds() // 60) + (16*60 - 9*60 - 30) # Minuti dalla chiusura + durata mercato
+
+
+#             features = {
+#                 "ticker": ticker,
+#                 "timestamp": ts_str,
+#                 "price_mean_1min": mean(self.price_1m.values()),
+#                 "price_mean_5min": mean(self.price_5m.values()),
+#                 "price_std_5min": std(self.price_5m.values()),
+#                 "price_mean_30min": mean(self.price_30m.values()),
+#                 "price_std_30min": std(self.price_30m.values()),
+#                 "size_tot_1min": total(self.size_1m.values()),
+#                 "size_tot_5min": total(self.size_5m.values()),
+#                 "size_tot_30min": total(self.size_30m.values()),
+#                 #SENTIMENT
+#                 "sentiment_bluesky_mean_2h": mean(self.sentiment_bluesky_2h.values()),
+#                 "sentiment_bluesky_mean_1d": mean(self.sentiment_bluesky_1d.values()),
+#                 "sentiment_news_mean_1d": mean(self.sentiment_news_1d.values()),
+#                 "sentiment_news_mean_3d": mean(self.sentiment_news_3d.values()),
+#                 "sentiment_bluesky_mean_general_2hours": general_sentiment_dict["sentiment_bluesky_mean_general_2hours"],
+#                 "sentiment_bluesky_mean_general_1d": general_sentiment_dict["sentiment_bluesky_mean_general_1d"],
+#                 # NEW TIME-BASED FEATURES - Ensure these are Python native int/float
+#                 "minutes_since_open": int(minutes_since_open), # Usiamo il valore dinamico
+#                 "day_of_week": int(now_ny.weekday()),
+#                 "day_of_month": int(now_ny.day),
+#                 "week_of_year": int(now_ny.isocalendar()[1]),
+#                 "month_of_year": int(now_ny.month),
+#                 "market_open_spike_flag": int(market_open_spike_flag),
+#                 "market_close_spike_flag": int(market_close_spike_flag),
+#                 # Fundamental data - ensure these are Python native floats
+#                 "eps": float(ticker_fundamentals["eps"]) if ticker_fundamentals.get("eps") is not None else None,
+#                 "freeCashFlow": float(ticker_fundamentals["freeCashFlow"]) if ticker_fundamentals.get("freeCashFlow") is not None else None,
+#                 "profit_margin": float(ticker_fundamentals["profit_margin"]) if ticker_fundamentals.get("profit_margin") is not None else None,
+#                 "debt_to_equity": float(ticker_fundamentals["debt_to_equity"]) if ticker_fundamentals.get("debt_to_equity") is not None else None
+#             }
+
+#             for macro_key_alias, macro_value in macro_data_dict.items():
+#                 features[macro_key_alias] = float(macro_value)
+
+#             result = json.dumps(features)
+#             print(f"📤 [PREDICTION] {ts_str} - {ticker} => {result}", file=sys.stderr)
+
+#             return [result]
+#         except Exception as e:
+#             print(f"[ERROR] on_timer for ticker {ticker}: {e}", file=sys.stderr)
+#             return [json.dumps({"ticker": ctx.get_current_key(), "timestamp": datetime.now(timezone.utc).isoformat(), "error": str(e)})]
+
+# # --- Helper for splitting sentiment data ---
+# def expand_sentiment_data(json_str):
+#     """
+#     Expands a single sentiment JSON string into multiple if it contains a list of tickers,
+#     otherwise passes through other data types.
+#     Handles 'GENERAL' ticker by passing it through.
+#     """
+#     try:
+#         data = json.loads(json_str)
+        
+#         if "social" in data and "sentiment_score" in data and isinstance(data.get("ticker"), list):
+#             expanded_records = []
+#             original_ticker_list = data["ticker"]
+            
+#             if "GENERAL" in original_ticker_list:
+#                 new_record = data.copy()
+#                 new_record["ticker"] = "GENERAL"
+#                 expanded_records.append(json.dumps(new_record))
+#                 print(f"[WARN] Sentiment data with 'GENERAL' ticker detected and handled.", file=sys.stderr)
+            
+#             for ticker_item in original_ticker_list:
+#                 if ticker_item != "GENERAL" and ticker_item in TOP_30_TICKERS:
+#                     new_record = data.copy()
+#                     new_record["ticker"] = ticker_item
+#                     expanded_records.append(json.dumps(new_record))
+            
+#             if not expanded_records:
+#                 print(f"[WARN] Sentiment data with no tracked or 'GENERAL' tickers: {json_str}", file=sys.stderr)
+#                 return []
+#             return expanded_records
+        
+#         return [json_str]
+#     except json.JSONDecodeError:
+#         print(f"[ERROR] Failed to decode JSON in expand_sentiment_data: {json_str}", file=sys.stderr)
+#         return []
+#     except Exception as e:
+#         print(f"[ERROR] expand_sentiment_data: {e} for {json_str}", file=sys.stderr)
+#         return []
+
+# def route_by_ticker(json_str):
+#     """Determines the key for incoming JSON data."""
+#     try:
+#         data = json.loads(json_str)
+#         if "alias" in data:
+#             return "macro_data_key"
+#         elif "ticker" in data:
+#             if data["ticker"] == "GENERAL":
+#                 return GENERAL_SENTIMENT_KEY
+#             elif data["ticker"] in TOP_30_TICKERS:
+#                 return data["ticker"]
+#             else:
+#                 print(f"[WARN] Ticker '{data['ticker']}' not in TOP_30_TICKERS. Discarding.", file=sys.stderr)
+#                 return "discard_key"
+#         else:
+#             print(f"[WARN] Data with no 'alias' or 'ticker' field: {json_str}", file=sys.stderr)
+#             return "unknown_data_key"
+#     except json.JSONDecodeError:
+#         print(f"[WARN] Failed to decode JSON for key_by: {json_str}", file=sys.stderr)
+#         return "invalid_json_key"
+#     except Exception as e:
+#         print(f"[ERROR] route_by_ticker: {e} for {json_str}", file=sys.stderr)
+#         return "error_key"
+
+
+# def main():
+#     load_fundamental_data()
+
+#     env = StreamExecutionEnvironment.get_execution_environment()
+#     env.set_parallelism(1) # Lasciamo il parallelism a 1 per ora, per evitare i problemi discussi
+#                             # con i global dicts e la coerenza dei dati.
+
+#     consumer_props = {
+#         'bootstrap.servers': 'kafka:9092',
+#         'group.id': 'flink_stock_group',
+#         'auto.offset.reset': 'earliest'
+#     }
+
+#     consumer = FlinkKafkaConsumer(
+#         topics=["stock_trades", "macrodata", "news_sentiment", "bluesky_sentiment"],
+#         deserialization_schema=SimpleStringSchema(),
+#         properties=consumer_props
+#     )
+
+#     producer = FlinkKafkaProducer(
+#         topic='aggregated_data',
+#         serialization_schema=SimpleStringSchema(),
+#         producer_config={'bootstrap.servers': 'kafka:9092'}
+#     )
+
+#     stream = env.add_source(consumer, type_info=Types.STRING())
+    
+#     expanded_stream = stream.flat_map(expand_sentiment_data, output_type=Types.STRING())
+
+#     keyed = expanded_stream.key_by(route_by_ticker, key_type=Types.STRING())
+    
+#     processed = keyed.process(SlidingAggregator(), output_type=Types.STRING())
+    
+#     processed.add_sink(producer)
+
+#     env.execute("Full Aggregation with Sliding Windows, Macrodata, Sentiment, Time, and Fundamental Features (Continuous)")
+
+# if __name__ == "__main__":
+#     main()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import os
 import sys
 import json
@@ -35,7 +1713,6 @@ macro_alias = {
 
 GENERAL_SENTIMENT_KEY = "general_sentiment_key"
 
-# Global dictionaries for shared state (read-only after load)
 macro_data_dict = {}
 general_sentiment_dict = {
     "sentiment_bluesky_mean_general_2hours": 0.0,
@@ -51,7 +1728,7 @@ MINIO_SECRET_KEY = "admin123"
 MINIO_SECURE = False
 
 def load_fundamental_data():
-    print("🚀 [INIT] Loading fundamental data from MinIO...", file=sys.stderr)
+    print(" [INIT] Loading fundamental data from MinIO...", file=sys.stderr)
     try:
         minio_client = Minio(
             MINIO_URL,
@@ -95,7 +1772,7 @@ def load_fundamental_data():
                         "profit_margin": profit_margin,
                         "debt_to_equity": debt_to_equity
                     }
-                    print(f"✅ [FUNDAMENTALS] Loaded data for {ticker}: {fundamentals_data[ticker]}", file=sys.stderr)
+                    print(f"[FUNDAMENTALS] Loaded data for {ticker}: {fundamentals_data[ticker]}", file=sys.stderr)
                 else:
                     print(f"[WARN] Parquet file for {ticker}/{object_name} is empty.", file=sys.stderr)
 
@@ -107,7 +1784,7 @@ def load_fundamental_data():
                 if response:
                     response.close()
                     response.release_conn()
-        print("✅ [INIT] Fundamental data loading complete.", file=sys.stderr)
+        print(" [INIT] Fundamental data loading complete.", file=sys.stderr)
 
     except Exception as e:
         print(f"[CRITICAL] Failed to initialize Minio client or load any fundamental data: {e}", file=sys.stderr)
@@ -117,14 +1794,25 @@ class SlidingAggregator(KeyedProcessFunction):
         def descriptor(name):
             return MapStateDescriptor(name, Types.STRING(), Types.FLOAT())
 
-        self.price_1m = runtime_context.get_map_state(descriptor("price_1m"))
-        self.price_5m = runtime_context.get_map_state(descriptor("price_5m"))
-        self.price_30m = runtime_context.get_map_state(descriptor("price_30m"))
+        # States for REAL trade data
+        self.real_price_1m = runtime_context.get_map_state(descriptor("real_price_1m"))
+        self.real_price_5m = runtime_context.get_map_state(descriptor("real_price_5m"))
+        self.real_price_30m = runtime_context.get_map_state(descriptor("real_price_30m"))
 
-        self.size_1m = runtime_context.get_map_state(descriptor("size_1m"))
-        self.size_5m = runtime_context.get_map_state(descriptor("size_5m"))
-        self.size_30m = runtime_context.get_map_state(descriptor("size_30m"))
+        self.real_size_1m = runtime_context.get_map_state(descriptor("real_size_1m"))
+        self.real_size_5m = runtime_context.get_map_state(descriptor("real_size_5m"))
+        self.real_size_30m = runtime_context.get_map_state(descriptor("real_size_30m"))
 
+        # States for FAKE (simulated) trade data
+        self.fake_price_1m = runtime_context.get_map_state(descriptor("fake_price_1m"))
+        self.fake_price_5m = runtime_context.get_map_state(descriptor("fake_price_5m"))
+        self.fake_price_30m = runtime_context.get_map_state(descriptor("fake_price_30m"))
+
+        self.fake_size_1m = runtime_context.get_map_state(descriptor("fake_size_1m"))
+        self.fake_size_5m = runtime_context.get_map_state(descriptor("fake_size_5m"))
+        self.fake_size_30m = runtime_context.get_map_state(descriptor("fake_size_30m"))
+
+        # States for sentiment (no real/fake distinction needed)
         self.sentiment_bluesky_2h = runtime_context.get_map_state(descriptor("sentiment_bluesky_2h"))
         self.sentiment_bluesky_1d = runtime_context.get_map_state(descriptor("sentiment_bluesky_1d"))
         self.sentiment_news_1d = runtime_context.get_map_state(descriptor("sentiment_news_1d"))
@@ -135,6 +1823,7 @@ class SlidingAggregator(KeyedProcessFunction):
 
         self.last_timer_state = runtime_context.get_state(
             ValueStateDescriptor("last_timer", Types.LONG()))
+
 
     def _cleanup_old_entries(self, state, window_minutes):
         """Removes entries from state that are older than the specified window_minutes."""
@@ -158,6 +1847,7 @@ class SlidingAggregator(KeyedProcessFunction):
         for k_remove in keys_to_remove:
             state.remove(k_remove)
 
+
     def process_element(self, value, ctx):
         """Processes each incoming element (JSON string) from Kafka."""
         try:
@@ -168,9 +1858,8 @@ class SlidingAggregator(KeyedProcessFunction):
             if current_key == "macro_data_key":
                 alias_key = data.get("alias")
                 if alias_key:
-                    # Convert to float to ensure JSON serializability later
                     macro_data_dict[alias_key] = float(data["value"])
-                    print(f"📥 [MACRO] {alias_key}: {macro_data_dict[alias_key]}", file=sys.stderr)
+                    print(f"[MACRO] {alias_key}: {macro_data_dict[alias_key]}", file=sys.stderr)
                 return []
 
             # --- Handle Sentiment Data (specific tickers or GENERAL) ---
@@ -187,7 +1876,7 @@ class SlidingAggregator(KeyedProcessFunction):
                     if social_source == "bluesky":
                         self.sentiment_bluesky_general_2h.put(ts_str, sentiment_score)
                         self.sentiment_bluesky_general_1d.put(ts_str, sentiment_score)
-                        print(f"📥 [SENTIMENT-GENERAL] Bluesky - {ts_str}: {sentiment_score}", file=sys.stderr)
+                        print(f"[SENTIMENT-GENERAL] Bluesky - {ts_str}: {sentiment_score}", file=sys.stderr)
                     else:
                         print(f"[WARN] General sentiment received for non-Bluesky source: {social_source}", file=sys.stderr)
                     return []
@@ -202,11 +1891,11 @@ class SlidingAggregator(KeyedProcessFunction):
                     else:
                         print(f"[WARN] Unknown social source for ticker {current_key}: {social_source}", file=sys.stderr)
                         return []
-                    print(f"📥 [SENTIMENT] {current_key} - {social_source} - {ts_str}: {sentiment_score}", file=sys.stderr)
+                    print(f"[SENTIMENT] {current_key} - {social_source} - {ts_str}: {sentiment_score}", file=sys.stderr)
                 return []
 
             # --- Handle Stock Trade Data ---
-            elif "price" in data and "size" in data:
+            elif "price" in data and "size" in data and "exchange" in data: # Added 'exchange' check
                 ticker = data.get("ticker")
                 if ticker not in TOP_30_TICKERS:
                     return []
@@ -216,23 +1905,26 @@ class SlidingAggregator(KeyedProcessFunction):
                     print(f"[ERROR] Missing timestamp in trade data: {data}", file=sys.stderr)
                     return []
 
-                event_time_utc = isoparse(ts_str).replace(tzinfo=timezone.utc)
-                event_time_ny = event_time_utc.astimezone(NY_TZ)
-
-                market_open_data_reception = event_time_ny.replace(hour=9, minute=30, second=0, microsecond=0)
-                market_close_data_reception = event_time_ny.replace(hour=16, minute=0, second=0, microsecond=0)
-
-                if not (market_open_data_reception <= event_time_ny < market_close_data_reception):
-                    print(f"[DEBUG] Skipping trade data for {ticker} outside market reception hours ({event_time_ny.strftime('%H:%M')} NYT).", file=sys.stderr)
-                    return []
-
                 price = float(data.get("price"))
                 size = float(data.get("size"))
+                exchange = data.get("exchange") # Retrieve exchange type
 
-                for state in [self.price_1m, self.price_5m, self.price_30m]:
-                    state.put(ts_str, price)
-                for state in [self.size_1m, self.size_5m, self.size_30m]:
-                    state.put(ts_str, size)
+                if exchange != "RANDOM": # Real data (e.g., "V" for Virtu Financial)
+                    self.real_price_1m.put(ts_str, price)
+                    self.real_price_5m.put(ts_str, price)
+                    self.real_price_30m.put(ts_str, price)
+                    self.real_size_1m.put(ts_str, size)
+                    self.real_size_5m.put(ts_str, size)
+                    self.real_size_30m.put(ts_str, size)
+                    # print(f"[TRADE-REAL] {ticker} - {ts_str}: Price={price}, Size={size}", file=sys.stderr) # Removed verbose print
+                else: # Fake (simulated) data
+                    self.fake_price_1m.put(ts_str, price)
+                    self.fake_price_5m.put(ts_str, price)
+                    self.fake_price_30m.put(ts_str, price)
+                    self.fake_size_1m.put(ts_str, size)
+                    self.fake_size_5m.put(ts_str, size)
+                    self.fake_size_30m.put(ts_str, size)
+                    # print(f"[TRADE-FAKE] {ticker} - {ts_str}: Price={price}, Size={size}", file=sys.stderr) # Removed verbose print
                 return []
 
             else:
@@ -246,11 +1938,14 @@ class SlidingAggregator(KeyedProcessFunction):
             print(f"[ERROR] process_element: {e} for value: {value}", file=sys.stderr)
             return []
         finally:
+            # Register timer for predictions every 5 seconds
             last_timer = self.last_timer_state.value()
             if last_timer is None or ctx.timer_service().current_processing_time() >= last_timer:
                 next_ts = ctx.timer_service().current_processing_time() + 5000
                 ctx.timer_service().register_processing_time_timer(next_ts)
                 self.last_timer_state.update(next_ts)
+
+            # Removed market open cleanup timer specific logic, as handling is now different.
 
 
     def on_timer(self, timestamp, ctx):
@@ -260,6 +1955,7 @@ class SlidingAggregator(KeyedProcessFunction):
             ts_str = now_utc.isoformat()
             ticker = ctx.get_current_key()
 
+            # Helper functions (remain the same)
             def mean(vals):
                 vals = list(vals)
                 return float(np.mean(vals)) if vals else 0.0
@@ -272,7 +1968,7 @@ class SlidingAggregator(KeyedProcessFunction):
                 vals = list(vals)
                 return float(np.sum(vals)) if vals else 0.0
 
-            # --- Handle GENERAL Sentiment Key ---
+            # --- Handle General Sentiment Key ---
             if ticker == GENERAL_SENTIMENT_KEY:
                 self._cleanup_old_entries(self.sentiment_bluesky_general_2h, 2 * 60)
                 self._cleanup_old_entries(self.sentiment_bluesky_general_1d, 24 * 60)
@@ -280,7 +1976,7 @@ class SlidingAggregator(KeyedProcessFunction):
                 general_sentiment_dict["sentiment_bluesky_mean_general_2hours"] = mean(self.sentiment_bluesky_general_2h.values())
                 general_sentiment_dict["sentiment_bluesky_mean_general_1d"] = mean(self.sentiment_bluesky_general_1d.values())
                 
-                print(f"🔄 [GENERAL SENTIMENT AGG] Updated general_sentiment_dict: {general_sentiment_dict}", file=sys.stderr)
+                print(f"[GENERAL SENTIMENT AGG] Updated general_sentiment_dict: {general_sentiment_dict}", file=sys.stderr)
                 return []
 
             # --- Handle Macro Data Key ---
@@ -292,29 +1988,57 @@ class SlidingAggregator(KeyedProcessFunction):
                 print(f"[WARN] on_timer fired for unexpected key: {ticker}", file=sys.stderr)
                 return []
 
-            now_ny = now_utc.astimezone(NY_TZ)
+            # Cleanup for ALL states (real and fake)
+            self._cleanup_old_entries(self.real_price_1m, 1)
+            self._cleanup_old_entries(self.real_price_5m, 5)
+            self._cleanup_old_entries(self.real_price_30m, 30)
+            self._cleanup_old_entries(self.real_size_1m, 1)
+            self._cleanup_old_entries(self.real_size_5m, 5)
+            self._cleanup_old_entries(self.real_size_30m, 30)
 
-            market_open_prediction = now_ny.replace(hour=9, minute=31, second=0, microsecond=0)
-            market_close_prediction = now_ny.replace(hour=15, minute=59, second=0, microsecond=0)
+            self._cleanup_old_entries(self.fake_price_1m, 1)
+            self._cleanup_old_entries(self.fake_price_5m, 5)
+            self._cleanup_old_entries(self.fake_price_30m, 30)
+            self._cleanup_old_entries(self.fake_size_1m, 1)
+            self._cleanup_old_entries(self.fake_size_5m, 5)
+            self._cleanup_old_entries(self.fake_size_30m, 30)
 
-            if not (market_open_prediction <= now_ny <= market_close_prediction):
-                print(f"[DEBUG] Skipping prediction for {ticker} outside market prediction hours ({now_ny.strftime('%H:%M')} NYT).", file=sys.stderr)
-                return []
-
-            self._cleanup_old_entries(self.price_1m, 1)
-            self._cleanup_old_entries(self.price_5m, 5)
-            self._cleanup_old_entries(self.price_30m, 30)
-            self._cleanup_old_entries(self.size_1m, 1)
-            self._cleanup_old_entries(self.size_5m, 5)
-            self._cleanup_old_entries(self.size_30m, 30)
+            # Sentiment cleanup (unchanged)
             self._cleanup_old_entries(self.sentiment_bluesky_2h, 2 * 60)
             self._cleanup_old_entries(self.sentiment_bluesky_1d, 24 * 60)
             self._cleanup_old_entries(self.sentiment_news_1d, 24 * 60)
             self._cleanup_old_entries(self.sentiment_news_3d, 3 * 24 * 60)
 
-            market_open_time = now_ny.replace(hour=9, minute=30, second=0, microsecond=0)
-            market_close_time = now_ny.replace(hour=16, minute=0, second=0, microsecond=0)
+            now_ny = now_utc.astimezone(NY_TZ)
+            market_open_time = now_ny.replace(hour=9, minute=30, second=0, microsecond=0, tzinfo=NY_TZ)
+            market_close_time = now_ny.replace(hour=16, minute=0, second=0, microsecond=0, tzinfo=NY_TZ)
+            
+            is_market_hours = market_open_time <= now_ny < market_close_time and now_ny.weekday() < 5 # Mon-Fri
 
+            is_simulated_prediction = False
+            if is_market_hours:
+                # If market is open, use real data
+                # print(f"[PREDICTION] Market is open for {ticker}. Using REAL data.", file=sys.stderr) # Removed verbose print
+                price_1m_values = self.real_price_1m.values()
+                price_5m_values = self.real_price_5m.values()
+                price_30m_values = self.real_price_30m.values()
+                size_1m_values = self.real_size_1m.values()
+                size_5m_values = self.real_size_5m.values()
+                size_30m_values = self.real_size_30m.values()
+                is_simulated_prediction = False
+            else:
+                # If market is closed, use fake data for prediction (Option B)
+                # print(f"[PREDICTION] Market is closed for {ticker}. Using FAKE data for simulation.", file=sys.stderr) # Removed verbose print
+                price_1m_values = self.fake_price_1m.values()
+                price_5m_values = self.fake_price_5m.values()
+                price_30m_values = self.fake_price_30m.values()
+                size_1m_values = self.fake_size_1m.values()
+                size_5m_values = self.fake_size_5m.values()
+                size_30m_values = self.fake_size_30m.values()
+                is_simulated_prediction = True
+
+
+            # Calculate market open/close spike flags (independent of prediction generation)
             market_open_spike_flag = 0
             market_close_spike_flag = 0
 
@@ -326,45 +2050,60 @@ class SlidingAggregator(KeyedProcessFunction):
 
             ticker_fundamentals = fundamentals_data.get(ticker, {})
 
+            # Handle "minutes_since_open" for dynamic values
+            minutes_since_open = -1 # Default value
+            if now_ny >= market_open_time and now_ny < market_close_time:
+                minutes_since_open = int((now_ny - market_open_time).total_seconds() // 60)
+            else:
+                # If before market open (e.g., overnight), calculate minutes from previous day's open
+                # otherwise, minutes from close
+                if now_ny < market_open_time: # From midnight until market open
+                    minutes_until_open = int((market_open_time - now_ny).total_seconds() // 60)
+                    minutes_since_open = -(minutes_until_open) # Negative value indicates "before open"
+                else: # After market close
+                    minutes_since_open = int((now_ny - market_close_time).total_seconds() // 60) + (16*60 - 9*60 - 30) # Minutes from close + market duration
+
+
             features = {
                 "ticker": ticker,
                 "timestamp": ts_str,
-                "price_mean_1min": mean(self.price_1m.values()),
-                "price_mean_5min": mean(self.price_5m.values()),
-                "price_std_5min": std(self.price_5m.values()),
-                "price_mean_30min": mean(self.price_30m.values()),
-                "price_std_30min": std(self.price_30m.values()),
-                "size_tot_1min": total(self.size_1m.values()),
-                "size_tot_5min": total(self.size_5m.values()),
-                "size_tot_30min": total(self.size_30m.values()),
-                #SENTIMENT
+                "price_mean_1min": mean(price_1m_values),
+                "price_mean_5min": mean(price_5m_values),
+                "price_std_5min": std(price_5m_values),
+                "price_mean_30min": mean(price_30m_values),
+                "price_std_30min": std(price_30m_values),
+                "size_tot_1min": total(size_1m_values),
+                "size_tot_5min": total(size_5m_values),
+                "size_tot_30min": total(size_30m_values),
+                # SENTIMENT
                 "sentiment_bluesky_mean_2h": mean(self.sentiment_bluesky_2h.values()),
                 "sentiment_bluesky_mean_1d": mean(self.sentiment_bluesky_1d.values()),
                 "sentiment_news_mean_1d": mean(self.sentiment_news_1d.values()),
                 "sentiment_news_mean_3d": mean(self.sentiment_news_3d.values()),
                 "sentiment_bluesky_mean_general_2hours": general_sentiment_dict["sentiment_bluesky_mean_general_2hours"],
                 "sentiment_bluesky_mean_general_1d": general_sentiment_dict["sentiment_bluesky_mean_general_1d"],
-                # NEW TIME-BASED FEATURES - Ensure these are Python native int/float
-                "minutes_since_open": int((now_ny - market_open_time).total_seconds() // 60) if now_ny >= market_open_time else -1,
+                # NEW TIME-BASED FEATURES
+                "minutes_since_open": int(minutes_since_open),
                 "day_of_week": int(now_ny.weekday()),
                 "day_of_month": int(now_ny.day),
                 "week_of_year": int(now_ny.isocalendar()[1]),
                 "month_of_year": int(now_ny.month),
                 "market_open_spike_flag": int(market_open_spike_flag),
                 "market_close_spike_flag": int(market_close_spike_flag),
-                # Fundamental data - ensure these are Python native floats
+                # Fundamental data
                 "eps": float(ticker_fundamentals["eps"]) if ticker_fundamentals.get("eps") is not None else None,
                 "freeCashFlow": float(ticker_fundamentals["freeCashFlow"]) if ticker_fundamentals.get("freeCashFlow") is not None else None,
                 "profit_margin": float(ticker_fundamentals["profit_margin"]) if ticker_fundamentals.get("profit_margin") is not None else None,
-                "debt_to_equity": float(ticker_fundamentals["debt_to_equity"]) if ticker_fundamentals.get("debt_to_equity") is not None else None
+                "debt_to_equity": float(ticker_fundamentals["debt_to_equity"]) if ticker_fundamentals.get("debt_to_equity") is not None else None,
+                # Flag to indicate if the prediction is based on simulated data
+                "is_simulated_prediction": is_simulated_prediction
             }
 
             for macro_key_alias, macro_value in macro_data_dict.items():
-                # Ensure macro values are converted to float
                 features[macro_key_alias] = float(macro_value)
 
             result = json.dumps(features)
-            print(f"📤 [PREDICTION] {ts_str} - {ticker} => {result}", file=sys.stderr)
+            print(f"[PREDICTION] {ts_str} - {ticker} => {result}", file=sys.stderr)
 
             return [result]
         except Exception as e:
@@ -398,7 +2137,7 @@ def expand_sentiment_data(json_str):
                     expanded_records.append(json.dumps(new_record))
             
             if not expanded_records:
-                print(f"[WARN] Sentiment data with no tracked or 'GENERAL' tickers: {json_str}", file=sys.stderr)
+                print(f"[WARN] Sentiment data with no tracked or 'GENERAL' tickers: {json.loads(json_str).get('ticker')}", file=sys.stderr)
                 return []
             return expanded_records
         
@@ -439,7 +2178,8 @@ def main():
     load_fundamental_data()
 
     env = StreamExecutionEnvironment.get_execution_environment()
-    env.set_parallelism(1)
+    env.set_parallelism(1) # We keep parallelism at 1 for now to avoid issues
+                            # with global dicts and data consistency.
 
     consumer_props = {
         'bootstrap.servers': 'kafka:9092',
@@ -454,7 +2194,7 @@ def main():
     )
 
     producer = FlinkKafkaProducer(
-        topic='aggregated-data',
+        topic='aggregated_data',
         serialization_schema=SimpleStringSchema(),
         producer_config={'bootstrap.servers': 'kafka:9092'}
     )
@@ -469,7 +2209,7 @@ def main():
     
     processed.add_sink(producer)
 
-    env.execute("Full Aggregation with Sliding Windows, Macrodata, Sentiment, Time, and Fundamental Features")
+    env.execute("Full Aggregation with Sliding Windows, Macrodata, Sentiment, Time, and Fundamental Features (Continuous)")
 
 if __name__ == "__main__":
     main()
@@ -556,6 +2296,220 @@ if __name__ == "__main__":
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### TENTATIVO DI PARALLELIZZAZIONE
 
 # import os
 # import sys

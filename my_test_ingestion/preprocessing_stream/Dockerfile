@@ -13,12 +13,8 @@ COPY preprocess_flink.py /opt/preprocess_flink.py
 # Copia i JAR per Kafka
 COPY flink-connector-kafka-1.17.0.jar /opt/flink/lib/
 COPY kafka-clients-3.3.2.jar /opt/flink/lib/
-#COPY flink-parquet-1.17.0.jar /opt/flink/lib/
-#COPY hadoop-common-3.3.6.jar /opt/flink/lib/
+#COPY flink-s3-fs-hadoop-1.17.0.jar /opt/flink/lib/
 
-# --- Connettori MinIO (S3A) ---
-#COPY hadoop-aws-3.3.6.jar /opt/flink/lib/
-#COPY aws-java-sdk-bundle-1.11.1026.jar /opt/flink/lib/
 
 CMD ["python", "/opt/preprocess_flink.py"]
 #CMD ["flink", "run", "-py", "/opt/preprocess_flink.py"]
