@@ -367,31 +367,31 @@ services:
 
 # ### AGGREGATION LAYER
 
-  flink:
+  # flink:
+  #   build:
+  #     context: ./preprocessing_stream
+  #   container_name: flink
+  #   depends_on: 
+  #     - kafka
+  #   restart: always
+
+  flink_main_job:
     build:
-      context: ./preprocessing_stream
-    container_name: flink
-    depends_on: 
+      context: ./preprocessing_stream2 
+      dockerfile: ./main_job.Dockerfile
+    container_name: flink_main_job
+    depends_on:
       - kafka
     restart: always
 
-  # flink_main_job:
-  #   build:
-  #     context: ./preprocessing_stream2 
-  #     dockerfile: ./Dockerfile
-  #   container_name: flink_main_job
-  #   depends_on:
-  #     - kafka
-  #   restart: always
-
-  # flink-global-job:
-  #   build:
-  #     context: ./preprocessing_stream2
-  #     dockerfile: ./Dockerfile2
-  #   container_name: flink-global-job
-  #   depends_on:
-  #     - kafka
-  #   restart: always
+  flink-global-job:
+    build:
+      context: ./preprocessing_stream2
+      dockerfile: ./global_job.Dockerfile
+    container_name: flink-global-job
+    depends_on:
+      - kafka
+    restart: always
 
   aggregated_storage:
       build: ./consumer_aggregated
