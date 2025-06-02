@@ -117,16 +117,17 @@ import nest_asyncio
 import asyncio
 import json
 import random
+import os
 
 # Patch for embedded environments (notebooks, PyCharm)
 nest_asyncio.apply()
 
 # Alpaca API config
-API_KEY = "PKWTO08TY1J3RJ4MHWHK"
-API_SECRET = "bNufl6Fcq7OwlxLjtAtk7z5SAGPcKQ5yqb7oH1as"
+API_KEY = os.getenv("API_KEY_ALPACA") 
+API_SECRET = os.getenv("API_SECRET_ALPACA")
 
 # Kafka config
-KAFKA_BROKER = 'kafka:9092'
+KAFKA_BROKER = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 KAFKA_TOPIC = 'stock_trades'
 
 def connect_kafka():

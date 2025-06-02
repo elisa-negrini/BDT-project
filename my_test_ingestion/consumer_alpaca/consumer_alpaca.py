@@ -89,13 +89,14 @@ import pandas as pd
 import s3fs
 import pytz
 from kafka import KafkaConsumer
+import os
 
 KAFKA_TOPIC = 'stock_trades'
-KAFKA_BOOTSTRAP_SERVERS = 'kafka:9092'
+KAFKA_BROKER = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 
-S3_ENDPOINT = 'http://minio:9000'
-S3_ACCESS_KEY = 'admin'
-S3_SECRET_KEY = 'admin123'
+S3_ENDPOINT_URL = os.getenv('S3_ENDPOINT_URL')
+S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY')
+S3_SECRET_KEY = os.getenv('S3_SECRET_KEY')
 S3_BUCKET = 'stock-data'
 
 # New York timezone for market hours check
@@ -107,7 +108,7 @@ def connect_kafka_consumer():
         try:
             consumer = KafkaConsumer(
                 KAFKA_TOPIC,
-                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                bootstrap_servers=KAFKA_BROKER,
                 value_deserializer=lambda m: json.loads(m.decode('utf-8')),
                 auto_offset_reset='earliest',
                 enable_auto_commit=True,
@@ -127,7 +128,7 @@ fs = s3fs.S3FileSystem(
     anon=False,
     key=S3_ACCESS_KEY,
     secret=S3_SECRET_KEY,
-    client_kwargs={'endpoint_url': S3_ENDPOINT}
+    client_kwargs={'endpoint_url': S3_ENDPOINT_URL}
 )
 
 if not fs.exists(S3_BUCKET):

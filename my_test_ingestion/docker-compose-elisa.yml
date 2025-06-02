@@ -77,144 +77,148 @@ services:
 
 ### PRODUCER STREAM
 
-#   # Kafka producer data_reddit
-#   kp_reddit:
-#     build: ./producer_reddit
-#     environment:
-#       KAFKA_SERVER: kafka:9092
-#     depends_on:
-#       - kafka
-#     restart: always
+  # Kafka producer data_reddit
+  kp_reddit:
+    build: ./producer_reddit
+    environment:
+      REDDIT_CLIENT_ID: ${REDDIT_CLIENT_ID}
+      REDDIT_CLIENT_SECRET: ${REDDIT_CLIENT_SECRET}
+      REDDIT_USER_AGENT: ${REDDIT_USER_AGENT}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+    depends_on:
+      - kafka
+    restart: always
   
   # Kafka producer data_finnhubnews
-  # kp_finnhubnews:
-  #   build: ./producer_finnhubnews
-  #   environment:
-  #     KAFKA_SERVER: kafka:9092
-  #   depends_on:
-  #     - kafka
-  #   restart: always
+  kp_finnhubnews:
+    build: ./producer_finnhubnews
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY}
+    depends_on:
+      - kafka
+    restart: always
 
-  # Kafka producer data_alpaca
-  # kp_alpaca:
-  #   build: ./producer_alpaca
-  #   environment:
-  #     KAFKA_SERVER: kafka:9092
-  #   depends_on:
-  #     - kafka
-  #   restart: always
+ # Kafka producer data_alpaca
+  kp_alpaca:
+    build: ./producer_alpaca
+    environment:
+      API_KEY_ALPACA: ${API_KEY_ALPACA}
+      API_SECRET_ALPACA: ${API_SECRET_ALPACA}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+    depends_on:
+      - kafka
+    restart: always
 
-  # # Kafka producer bluesky
-  # kp_bluesky:
-  #   build: ./producer_bluesky
-  #   environment:
-  #     KAFKA_SERVER: kafka:9092
-  #   depends_on:
-  #     - kafka
-  #   restart: always
+  # Kafka producer bluesky
+  kp_bluesky:
+    build: ./producer_bluesky
+    environment:
+      BLUESKY_IDENTIFIER: ${BLUESKY_IDENTIFIER}
+      BLUESKY_PASSWORD: ${BLUESKY_PASSWORD}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+    depends_on:
+      - kafka
+    restart: always
     
-  # # Kafka producer macrodata
-  # kp_macrodata:
-  #   build: ./producer_macrodata
-  #   environment:
-  #     KAFKA_SERVER: kafka:9092
-  #   depends_on:
-  #     - kafka
-  #   restart: always
+  # Kafka producer macrodata
+  kp_macrodata:
+    build: ./producer_macrodata
+    environment:
+      API_KEY_FRED: ${API_KEY_FRED}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+    depends_on:
+      - kafka
+    restart: always
 
 # ### CONSUMER STREAM
 
 
-#   # Kafka consumer finnhubnews
-#   kc_finnhubnews:
-#     build: ./consumer_finnhubnews
-#     environment:
-#       KAFKA_SERVER: kafka:9092
-#       S3_ENDPOINT: http://minio:9000
-#       S3_ACCESS_KEY: admin
-#       S3_SECRET_KEY: admin123
-#       S3_BUCKET: finnhub-data
-#     depends_on:
-#       - kafka
-#       - minio
-#     volumes:
-#       - ./consumer_finnhubnews:/app
-#     working_dir: /app
-#     command: python consumer_finnhubnews.py
-#     restart: always
+  # Kafka consumer finnhubnews
+  kc_finnhubnews:
+    build: ./consumer_finnhubnews
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    depends_on:
+      - kafka
+      - minio
+    volumes:
+      - ./consumer_finnhubnews:/app
+    working_dir: /app
+    command: python consumer_finnhubnews.py
+    restart: always
 
 
   # Kafka consumer alpaca
-  # kc_alpaca:
-  #   build: ./consumer_alpaca
-  #   depends_on:
-  #     - kafka
-  #     - minio
-  #   environment:
-  #     KAFKA_SERVER: kafka:9092
-  #     S3_ENDPOINT: http://minio:9000
-  #     S3_ACCESS_KEY: admin
-  #     S3_SECRET_KEY: admin123
-  #     S3_BUCKET: stock-data
-  #   volumes:
-  #     - ./consumer_alpaca:/app
-  #   working_dir: /app
-  #   command: python consumer_alpaca.py
-  #   restart: always
+  kc_alpaca:
+    build: ./consumer_alpaca
+    depends_on:
+      - kafka
+      - minio
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    volumes:
+      - ./consumer_alpaca:/app
+    working_dir: /app
+    command: python consumer_alpaca.py
+    restart: always
 
-#   # Kafka consumer reddit
-#   kc_reddit:
-#     build: ./consumer_reddit 
-#     environment:
-#       KAFKA_SERVER: kafka:9092
-#       S3_ENDPOINT: http://minio:9000
-#       S3_ACCESS_KEY: admin
-#       S3_SECRET_KEY: admin123
-#       S3_BUCKET: reddit-data
-#     depends_on:
-#       - kafka
-#       - minio
-#     volumes:
-#       - ./consumer_reddit:/app
-#     working_dir: /app
-#     command: python consumer_reddit.py
-#     restart: always
+  # Kafka consumer reddit
+  kc_reddit:
+    build: ./consumer_reddit 
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    depends_on:
+      - kafka
+      - minio
+    volumes:
+      - ./consumer_reddit:/app
+    working_dir: /app
+    command: python consumer_reddit.py
+    restart: always
 
-#   #kafka consumer bluesky
-#   kc_bluesky:
-#     build: ./consumer_bluesky
-#     depends_on:
-#       - kafka
-#       - minio
-#     environment:
-#       KAFKA_SERVER: kafka:9092
-#       S3_ENDPOINT: http://minio:9000
-#       S3_ACCESS_KEY: admin
-#       S3_SECRET_KEY: admin123
-#       S3_BUCKET: bluesky-data
-#     volumes:
-#       - ./consumer_bluesky:/app
-#     working_dir: /app
-#     command: python consumer_bluesky.py
-#     restart: always
+  #kafka consumer bluesky
+  kc_bluesky:
+    build: ./consumer_bluesky
+    depends_on:
+      - kafka
+      - minio
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    volumes:
+      - ./consumer_bluesky:/app
+    working_dir: /app
+    command: python consumer_bluesky.py
+    restart: always
 
-#   #kafka consumer macrodata
-#   kc_macrodata:
-#     build: ./consumer_macrodata
-#     depends_on:
-#       - kafka
-#       - minio
-#     environment:
-#       KAFKA_SERVER: kafka:9092
-#       S3_ENDPOINT: http://minio:9000
-#       S3_ACCESS_KEY: admin
-#       S3_SECRET_KEY: admin123
-#       S3_BUCKET: macro-data
-#     volumes:
-#       - ./consumer_macrodata:/app
-#     working_dir: /app
-#     command: python consumer_macrodata.py
-#     restart: always
+  #kafka consumer macrodata
+  kc_macrodata:
+    build: ./consumer_macrodata
+    depends_on:
+      - kafka
+      - minio
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    volumes:
+      - ./consumer_macrodata:/app
+    working_dir: /app
+    command: python consumer_macrodata.py
+    restart: always
 
 ### SENTIMENT ANALYSIS
 
@@ -298,28 +302,29 @@ services:
 
 
 # # PREDICTION
-  lstm_trainer:
-    build:
-      context: ./create_model_lstm  
-      dockerfile: Dockerfile
-    depends_on:
-      - postgre
-    environment:
-      - DB_HOST=postgre
-      - DB_PORT=5432
-      - DB_NAME=aggregated-data
-      - DB_USER=admin
-      - DB_PASSWORD=admin123
-    volumes:
-      - ./create_model_lstm/model:/app/model
-    deploy:
-      resources:
-        limits:
-          memory: 4G # Aumenta la memoria disponibile, ad esempio a 4GB o più
-          cpus: '2.0' # Alloca 2 core CPU, puoi aumentare o diminuire a seconda delle tue risorse
-        reservations:
-          memory: 2G # Riserva 2GB di memoria
-          cpus: '1.0' # Riserva 1 core CPU
+  # lstm_trainer:
+  #   build:
+  #     context: ./create_model_lstm  
+  #     dockerfile: Dockerfile
+  #   depends_on:
+  #     - postgre
+  #   environment:
+  #     - DB_HOST=postgre
+  #     - DB_PORT=5432
+  #     - DB_NAME=aggregated-data
+  #     - DB_USER=admin
+  #     - DB_PASSWORD=admin123
+  #   volumes:
+  #     - ./create_model_lstm/model:/app/model
+  #   #command: python train_lstm.py 
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 4G # Aumenta la memoria disponibile, ad esempio a 4GB o più
+  #         cpus: '2.0' # Alloca 2 core CPU, puoi aumentare o diminuire a seconda delle tue risorse
+  #       reservations:
+  #         memory: 2G # Riserva 2GB di memoria
+  #         cpus: '1.0' # Riserva 1 core CPU
     # deploy:
     #   resources:
     #     limits:
@@ -374,72 +379,69 @@ services:
 
 # Historical producer
 
-  # kp_h_macrodata:
-  #   build: ./kp_historical_macrodata
-  #   environment:
-  #     KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-  #   depends_on:
-  #     - kafka
+#   kp_h_macrodata:
+#     build: ./kp_historical_macrodata
+#     environment:
+#       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+#       API_KEY_FRED: ${API_KEY_FRED}
+#     depends_on:
+#       - kafka
 
-  # kp_h_alpaca:
-  #   build: ./kp_historical_alpaca
-  #   environment:
-  #     KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-  #     API_KEY_ALPACA: ${API_KEY_ALPACA}
-  #     API_SECRET_ALPACA: ${API_SECRET_ALPACA}
-  #   depends_on:
-  #     - kafka
+#   kp_h_alpaca:
+#     build: ./kp_historical_alpaca
+#     environment:
+#       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+#       API_KEY_ALPACA: ${API_KEY_ALPACA}
+#       API_SECRET_ALPACA: ${API_SECRET_ALPACA}
+#     depends_on:
+#       - kafka
 
-  # kp_h_company:
-  #   build:
-  #     context: ./kp_historical_company
-  #   container_name: kp_h_company
-  #   environment:
-  #     KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-  #   depends_on:
-  #     - kafka
+#   kp_h_company:
+#     build:
+#       context: ./kp_historical_company
+#     container_name: kp_h_company
+#     environment:
+#       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+#     depends_on:
+#       - kafka
 
-# historical consumer
-  # kc_h_company:
-  #   build:
-  #     context: ./kc_historical_company
-  #   container_name: kc_h_company
-  #   depends_on:
-  #     - kafka
-  #     - minio
-  #   environment:
-  #     S3_ENDPOINT: http://minio:9000
-  #     S3_ACCESS_KEY: admin
-  #     S3_SECRET_KEY: admin123
+# # historical consumer
+#   kc_h_company:
+#     build:
+#       context: ./kc_historical_company
+#     container_name: kc_h_company
+#     depends_on:
+#       - kafka
+#       - minio
+#     environment:
+#       S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+#       S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
+#       S3_SECRET_KEY: ${S3_SECRET_KEY}
       
-  # kc_h_alpaca:
-  #   build:
-  #     context: ./kc_historical_alpaca
-  #   container_name: kc_h_alpaca
-  #   depends_on:
-  #     - kafka
-  #     - spark-master
-  #     - minio
-  #   environment:
-  #     S3_ENDPOINT: http://minio:9000
-  #     S3_ACCESS_KEY: admin
-  #     S3_SECRET_KEY: admin123
-  #     S3_BUCKET: historical-data
+#   kc_h_alpaca:
+#     build:
+#       context: ./kc_historical_alpaca
+#     container_name: kc_h_alpaca
+#     depends_on:
+#       - kafka
+#       - minio
+#     environment:
+#       S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+#       S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
+#       S3_SECRET_KEY: ${S3_SECRET_KEY}
 
-  # kc_h_macrodata:
-  #   build:
-  #     context: ./kc_historical_macrodata
-  #   container_name: kc_h_macrodata
-  #   depends_on:
-  #     - spark-master
-  #     - kafka
-  #     - minio
-  #   environment:
-  #     S3_ENDPOINT: http://minio:9000
-  #     S3_ACCESS_KEY: admin
-  #     S3_SECRET_KEY: admin123
-  #     S3_BUCKET: macro-data
-  #     SPARK_SUBMIT_OPTIONS: --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
+#   kc_h_macrodata:
+#     build:
+#       context: ./kc_historical_macrodata
+#     container_name: kc_h_macrodata
+#     depends_on:
+#       - kafka
+#       - minio
+#     environment:
+#       S3_ENDPOINT: ${S3_ENDPOINT} 
+#       S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
+#       S3_SECRET_KEY: ${S3_SECRET_KEY}
+#       SPARK_SUBMIT_OPTIONS: --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
 
   # flink_historical:
   #     build:
@@ -451,10 +453,10 @@ services:
   #     restart: always
   #     environment:
   #       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-  #       POSTGRES_HOST: ${DB_HOST}       # Legge dal .env
-  #       POSTGRES_PORT: ${DB_PORT}       # Legge dal .env
-  #       POSTGRES_DB: ${DB_NAME}         # Legge dal .env
-  #       POSTGRES_USER: ${DB_USER}       # Legge dal .env
+  #       POSTGRES_HOST: ${DB_HOST} 
+  #       POSTGRES_PORT: ${DB_PORT} 
+  #       POSTGRES_DB: ${DB_NAME}   
+  #       POSTGRES_USER: ${DB_USER} 
   #       POSTGRES_PASSWORD: ${DB_PASSWORD} 
 
 

@@ -5,14 +5,15 @@ from kafka import KafkaConsumer
 from datetime import datetime
 import pyarrow as pa
 import pyarrow.parquet as pq
+import os
 
 # === Configurazioni ===
 KAFKA_TOPIC = 'reddit'
-KAFKA_BOOTSTRAP_SERVERS = 'kafka:9092'
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 
-S3_ENDPOINT = 'http://minio:9000'
-S3_ACCESS_KEY = 'admin'
-S3_SECRET_KEY = 'admin123'
+S3_ENDPOINT_URL = os.getenv('S3_ENDPOINT_URL')
+S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY')
+S3_SECRET_KEY = os.getenv('S3_SECRET_KEY')
 S3_BUCKET = 'reddit-data'
 
 # === Connessione a Kafka ===
@@ -38,7 +39,7 @@ fs = s3fs.S3FileSystem(
     anon=False,
     key=S3_ACCESS_KEY,
     secret=S3_SECRET_KEY,
-    client_kwargs={'endpoint_url': S3_ENDPOINT}
+    client_kwargs={'endpoint_url': S3_ENDPOINT_URL}
 )
 
 # === Crea il bucket solo se non esiste ===

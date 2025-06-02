@@ -84,11 +84,11 @@ logger = logging.getLogger("KafkaToMinio")
 
 # === CONFIG ===
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "h_company")
-MINIO_ENDPOINT = os.getenv("S3_ENDPOINT", "http://minio:9000")
-MINIO_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "admin")
-MINIO_SECRET_KEY = os.getenv("S3_SECRET_KEY", "admin123")
-MINIO_BUCKET = os.getenv("S3_BUCKET", "company-fundamentals")
+KAFKA_TOPIC = "h_company"
+MINIO_ENDPOINT = os.getenv("S3_ENDPOINT_URL")
+MINIO_ACCESS_KEY = os.getenv("S3_ACCESS_KEY")
+MINIO_SECRET_KEY = os.getenv("S3_SECRET_KEY")
+MINIO_BUCKET ="company-fundamentals"
 
 # === FUNZIONE CONSUMER KAFKA ===
 def connect_kafka_consumer():

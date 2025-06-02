@@ -4,11 +4,13 @@ import json
 from datetime import datetime, timedelta, timezone
 from kafka import KafkaProducer
 import traceback
+import os
 
 # === CONFIG ===
-client_id = 'XpeJWmueFBEGkyXjE-dpcA'
-client_secret = 'yOyCLHaB0Ur7R0sW75UUmc20MjCPkw'
-user_agent = 'Samu_Miki'
+client_id = os.getenv("REDDIT_CLIENT_ID")
+client_secret = os.getenv("REDDIT_CLIENT_SECRET")
+user_agent = os.getenv("REDDIT_USER_AGENT", "Samu_Miki") 
+
 
 subreddit = [
     "stocks", "investment", "wallstreetbets", "StockMarket",
@@ -17,7 +19,8 @@ subreddit = [
 ]
 
 KAFKA_TOPIC = "reddit"
-KAFKA_BROKER = "kafka:9092"
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+
 refresh_interval = 23  # ore
 pause_seconds = 30
 
@@ -31,7 +34,7 @@ def connect_kafka():
     while True:
         try:
             producer = KafkaProducer(
-                bootstrap_servers=KAFKA_BROKER,
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 value_serializer=lambda v: json.dumps(v).encode('utf-8')
             )
             print("✅ Connessione a Kafka riuscita.")

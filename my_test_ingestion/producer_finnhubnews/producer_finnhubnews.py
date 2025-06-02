@@ -10,8 +10,8 @@ import os
 print("🚀 Avvio producer notizie Finnhub")
 
 # === CONFIG ===
-API_KEY = "d056jb9r01qoigrsmf5gd056jb9r01qoigrsmf60"
-KAFKA_BROKER = os.environ.get("KAFKA_SERVER", "kafka:9092")
+API_KEY = os.getenv("FINNHUB_API_KEY")
+KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 KAFKA_TOPIC = 'finnhub'
 
 tickers = [
@@ -28,7 +28,7 @@ def connect_kafka():
     while True:
         try:
             producer = KafkaProducer(
-                bootstrap_servers=KAFKA_BROKER,
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 value_serializer=lambda v: json.dumps(v).encode("utf-8")
             )
             print("✅ Connessione a Kafka riuscita.")

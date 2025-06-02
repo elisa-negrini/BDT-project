@@ -16,13 +16,13 @@ from io import BytesIO
 
 # === CONFIG ===
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "h_alpaca")
-KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID", "consumer_alpaca")
+KAFKA_TOPIC = "h_alpaca"
+KAFKA_GROUP_ID = "consumer_alpaca"
 
-MINIO_ENDPOINT = os.getenv("S3_ENDPOINT", "http://minio:9000")
-MINIO_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "admin")
-MINIO_SECRET_KEY = os.getenv("S3_SECRET_KEY", "admin123")
-MINIO_BUCKET = os.getenv("S3_BUCKET", "historical-data")
+MINIO_ENDPOINT = os.getenv("S3_ENDPOINT_URL") 
+MINIO_ACCESS_KEY = os.getenv("S3_ACCESS_KEY")
+MINIO_SECRET_KEY = os.getenv("S3_SECRET_KEY")
+MINIO_BUCKET = "historical-data"
 
 # === LOGGING ===
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

@@ -1,0 +1,81 @@
+# .github/workflows/retrain.yml
+
+name: Weekly Model Retrain # Nome che apparirà nell'interfaccia di GitHub Actions
+
+on:
+  workflow_dispatch: # Permette di avviare il workflow manualmente dalla UI di GitHub
+  schedule:
+    # Ogni sabato alle 03:00 UTC (Universal Coordinated Time)
+    # Formato cron: Mins Hours DayOfMonth Month DayOfWeek
+    # 0 3 * * 6 significa: Minuto 0, Ora 3, Ogni giorno del mese, Ogni mese, Sabato (6)
+    - cron: '0 3 * * 6'
+
+jobs:
+  retrain_model:
+    runs-on: ubuntu-latest # Utilizza un runner Linux fornito da GitHub (ottimo per Docker)
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+        # Questo step scarica il tuo intero repository GitHub nel runner.
+        # È fondamentale per avere accesso a docker-compose.yml e ai tuoi file di codice.
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        # Consigliato per una gestione robusta delle build Docker.
+
+      - name: Build and run Docker Compose services for training
+        run: |
+          echo "Starting PostgreSQL service..."
+          # Avvia il tuo servizio 'postgre' in background (-d = detached).
+          # Questo servizio è definito nel tuo docker-compose.yml.
+          docker compose -f docker-compose.yml up -d postgre
+
+          echo "Waiting for PostgreSQL to be ready (30s)..."
+          # Una pausa per dare tempo al database di avviarsi.
+          # Per ambienti di produzione, considera uno script di health check più sofisticato
+          # (es. che testi attivamente la connessione al DB).
+          sleep 30
+
+          echo "Running LSTM trainer service..."
+          # Esegue il tuo servizio 'lstm_trainer'.
+          # --build: Ricostruisce l'immagine del trainer ad ogni esecuzione. Essenziale per includere
+          #          qualsiasi modifica al tuo Dockerfile o al codice Python del training.
+          # --abort-on-container-exit: Se il container del trainer esce con un errore,
+          #                              l'intero step e quindi il workflow di GitHub Actions fallirà.
+          #                              Questo è il comportamento desiderato per un'operazione di training.
+          docker compose -f docker-compose.yml run --build --abort-on-container-exit lstm_trainer
+
+      - name: Upload trained model and metrics as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: trained-model-and-metrics
+          # SPECIFICA I PERCORSI CORRETTI QUI:
+          # Questi percorsi devono essere relativi alla root del tuo repository
+          # e devono puntare ai file che il tuo script di training ha salvato
+          # nella cartella montata dal volume (./create_model_lstm/model).
+          path: |
+            ./create_model_lstm/model/lstm_multi_ticker.h5
+            ./create_model_lstm/model/best_model_metrics.json
+        # NOTA BENE: Puoi aggiungere un 'if: success()' se vuoi caricare gli artefatti
+        # solo se il training è andato a buon fine, ma 'always()' è spesso più utile
+        # per debuggare anche i fallimenti (per vedere se i file sono stati creati).
+
+      - name: Clean up Docker containers
+        # Questo step ferma e rimuove i container Docker che sono stati avviati
+        # da questo specifico workflow (in particolare il container 'postgre'
+        # che è stato avviato temporaneamente sul runner).
+        # 'if: always()' garantisce che questo step venga eseguito anche se i precedenti falliscono,
+        # per assicurare una pulizia delle risorse.
+        if: always()
+        run: docker compose -f docker-compose.yml down
+
+# Cosa fare adesso (solo un'ultima verifica)
+# Assicurati di aver fatto il git push delle ultime modifiche (il file retrain.yml e qualsiasi altra modifica ai tuoi Dockerfile o codici) 
+# sul tuo repository GitHub. Se non hai ancora fatto il push, GitHub non vedrà il tuo workflow.
+# Vai su GitHub, nella tab "Actions" del tuo repository.
+# Cerca il workflow "Weekly Model Retrain".
+# Clicca su "Run workflow" (o "Run workflow from branch" se presente) per avviarlo manualmente. Questa è la parte più 
+# importante per testare che tutto sia a posto.
+# Monitora i log dell'esecuzione. Se vedi che tutti gli step completano con successo (luce verde!), significa che il 
+# tuo setup funziona perfettamente e il tuo modello si addestrerà ogni sabato in automatico. Se ci sono errori, i log ti indicheranno dove guardare.

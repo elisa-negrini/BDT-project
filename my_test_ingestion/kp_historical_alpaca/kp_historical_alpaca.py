@@ -14,8 +14,8 @@ import pytz
 from threading import Timer
 
 # === CONFIGURAZIONE ===
-API_KEY_ALPACA = os.getenv("API_KEY_ALPACA", "PKSWWUCWEHB7XUXCFQWO")
-API_SECRET_ALPACA = os.getenv("API_SECRET_ALPACA", "wG7Qaan4bQqbmYQN7PaaraPzAhYtU29JLXqlnoCo")
+API_KEY_ALPACA = os.getenv("API_KEY_ALPACA") 
+API_SECRET_ALPACA = os.getenv("API_SECRET_ALPACA")
 
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "h_alpaca")
@@ -29,7 +29,7 @@ TICKERS = [
     "AAPL", "MSFT", "NVDA", "AMZN", "META", "ORCL", "GOOGL", "AVGO", "TSLA", "LLY",
     "JPM", "V", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA",
     "CVX", "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO", "IBM"
- ]
+]
 
 # === LOGGING ===
 logging.basicConfig(

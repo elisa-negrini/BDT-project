@@ -91,7 +91,7 @@ from kafka import KafkaProducer
 
 # === CONFIG ===
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "h_company")
+KAFKA_TOPIC = "h_company"
 PARQUET_FILE = "/app/kp_historical_company/df_company_fundamentals.parquet"
 
 # === CONNESSIONE KAFKA ===

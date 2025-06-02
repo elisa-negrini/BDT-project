@@ -3,19 +3,19 @@ import time
 import json
 from datetime import datetime
 from kafka import KafkaProducer
+import os
 
 # Il tuo accessJwt (access token)
 access_jwt = ""
 refresh_jwt = ""
-identifier = "michelelovatomenin.bsky.social"
-# La tua password (client secret)
-password = "BDT-project"
+identifier = os.getenv("BLUESKY_IDENTIFIER", "michelelovatomenin.bsky.social")
+password = os.getenv("BLUESKY_PASSWORD")
 
 # URL dell'API di Bluesky per cercare i post
 url = "https://bsky.social/xrpc/app.bsky.feed.searchPosts"
 
 # Kafka config
-KAFKA_BROKER = 'kafka:9092'
+KAFKA_BROKER = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 KAFKA_TOPIC = 'bluesky'
 
 # Kafka producer con retry finché il broker non è disponibile

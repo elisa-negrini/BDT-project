@@ -7,11 +7,11 @@ from kafka import KafkaProducer
 import pandas as pd
 
 # Kafka Config
-KAFKA_BROKER = 'kafka:9092'
+KAFKA_BROKER = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 KAFKA_TOPIC = 'macrodata'
 
 # FRED API Config
-API_KEY = "119c5415679f73cb0da3b62e9c2a534d"
+API_KEY = os.getenv("API_KEY_FRED")
 BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 
 # Serie FRED

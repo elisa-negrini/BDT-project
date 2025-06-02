@@ -7,15 +7,15 @@ import s3fs
 import os
 
 # === Configurazione Kafka ===
-KAFKA_BOOTSTRAP_SERVERS = "kafka:9092"
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 KAFKA_TOPIC = "h_macrodata"
 KAFKA_GROUP_ID = "macro-consumer-group"
 
 # === Configurazione MinIO ===
-MINIO_ENDPOINT = os.getenv("S3_ENDPOINT", "http://minio:9000").replace("http://", "")
-MINIO_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "admin")
-MINIO_SECRET_KEY = os.getenv("S3_SECRET_KEY", "admin123")
-MINIO_BUCKET = os.getenv("S3_BUCKET", "macro-data")
+MINIO_ENDPOINT = os.getenv("S3_ENDPOINT")
+MINIO_ACCESS_KEY = os.getenv("S3_ACCESS_KEY")
+MINIO_SECRET_KEY = os.getenv("S3_SECRET_KEY")
+MINIO_BUCKET = "macro-data"
 
 # === Connessione a MinIO via s3fs ===
 fs = s3fs.S3FileSystem(

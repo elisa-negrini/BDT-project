@@ -11,13 +11,13 @@ from datetime import datetime
 
 
 # === Parametri configurabili ===
-KAFKA_BROKER = 'kafka:9092'
+KAFKA_BROKER = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 TOPIC_NAME = 'macrodata'
 
-S3_ENDPOINT = os.getenv('S3_ENDPOINT', 'http://minio:9000')
-S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY', 'admin')
-S3_SECRET_KEY = os.getenv('S3_SECRET_KEY', 'admin123')
-S3_BUCKET = os.getenv('S3_BUCKET', 'macro-data')
+S3_ENDPOINT_URL = os.getenv('S3_ENDPOINT_URL')
+S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY')
+S3_SECRET_KEY = os.getenv('S3_SECRET_KEY')
+S3_BUCKET = 'macro-data'
 
 # === Connessione a Kafka ===
 def connect_kafka_consumer():
@@ -41,7 +41,7 @@ def connect_kafka_consumer():
 def ensure_bucket_exists():
     s3 = boto3.resource(
         's3',
-        endpoint_url=S3_ENDPOINT,
+        endpoint_url=S3_ENDPOINT_URL,
         aws_access_key_id=S3_ACCESS_KEY,
         aws_secret_access_key=S3_SECRET_KEY
     )
@@ -57,7 +57,7 @@ fs = s3fs.S3FileSystem(
     anon=False,
     key=S3_ACCESS_KEY,
     secret=S3_SECRET_KEY,
-    client_kwargs={'endpoint_url': S3_ENDPOINT}
+    client_kwargs={'endpoint_url': S3_ENDPOINT_URL}
 )
 
 # === Avvia Consumer ===
@@ -93,7 +93,7 @@ for message in consumer:
     
     # Path compatibile con lo storico
     filename = f"{alias}_{date_str}.parquet"
-    path = f"{S3_BUCKET}/{alias}/year={year}/{filename}"
+    path = f"{S3_BUCKET}/{alias}/{year}/{filename}"
 
     try:
         df.to_parquet(f"s3://{path}", engine="pyarrow", filesystem=fs, index=False)
