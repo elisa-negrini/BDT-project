@@ -1,0 +1,239 @@
+import os
+import sys
+import json
+import numpy as np
+from datetime import datetime, timezone, timedelta
+from dateutil.parser import isoparse
+import pytz
+from kafka import KafkaProducer
+from pyflink.datastream import StreamExecutionEnvironment
+from pyflink.common.serialization import SimpleStringSchema
+from pyflink.datastream.connectors import FlinkKafkaConsumer, FlinkKafkaProducer
+from pyflink.datastream.functions import KeyedProcessFunction, RuntimeContext
+from pyflink.common.typeinfo import Types
+from pyflink.datastream.state import MapStateDescriptor, ValueStateDescriptor
+
+# Alias per i dati macro, identici a quelli del job principale per coerenza
+macro_alias = {
+    "GDPC1": "gdp_real",
+    "CPIAUCSL": "cpi",
+    "FEDFUNDS": "ffr",
+    "DGS10": "t10y",
+    "DGS2": "t2y",
+    "T10Y2Y": "spread_10y_2y",
+    "UNRATE": "unemployment"
+}
+
+# Chiave fissa per lo stato dei dati globali, non dipendente da ticker
+GLOBAL_DATA_KEY = "global_context_key"
+MACRO_DATA_SUBKEY = "macro_data" # Sub-key per distinguere il tipo di dato nell'operatore
+GENERAL_SENTIMENT_SUBKEY = "general_sentiment" # Sub-key per distinguere il tipo di dato nell'operatore
+
+# Per coerenza, usiamo il fuso orario di New York se applicabile
+NY_TZ = pytz.timezone('America/New_York')
+
+class GlobalDataAggregator(KeyedProcessFunction):
+    def open(self, runtime_context: RuntimeContext):
+        def descriptor(name):
+            return MapStateDescriptor(name, Types.STRING(), Types.FLOAT())
+
+        self.macro_data_state = runtime_context.get_state(
+            ValueStateDescriptor("macro_data_values", Types.MAP(Types.STRING(), Types.FLOAT())))
+        
+        self.sentiment_bluesky_general_2h = runtime_context.get_map_state(descriptor("sentiment_bluesky_general_2h"))
+        self.sentiment_bluesky_general_1d = runtime_context.get_map_state(descriptor("sentiment_bluesky_general_1d"))
+
+        # Inizializza il produttore Kafka
+        self.output_producer = KafkaProducer(
+            bootstrap_servers=['kafka:9092'],
+            value_serializer=lambda v: json.dumps(v).encode('utf-8') # Serializza il JSON in byte
+        )
+
+    def _cleanup_old_entries(self, state, window_minutes):
+        """Rimuove le entry dallo stato più vecchie della finestra specificata."""
+        threshold = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
+        keys_to_remove = []
+        for k in list(state.keys()):
+            try:
+                dt_obj = isoparse(k)
+                if dt_obj.tzinfo is None:
+                    dt_obj = dt_obj.replace(tzinfo=timezone.utc)
+                
+                if dt_obj < threshold:
+                    keys_to_remove.append(k)
+            except ValueError:
+                print(f"[WARN] Invalid timestamp format '{k}' in state for cleanup. Removing.", file=sys.stderr)
+                keys_to_remove.append(k)
+            except Exception as e:
+                print(f"[ERROR] Unexpected error during cleanup for key '{k}': {e}. Removing.", file=sys.stderr)
+                keys_to_remove.append(k)
+        
+        for k_remove in keys_to_remove:
+            state.remove(k_remove)
+
+    def _emit_global_context_data(self):
+        """Prepara e invia il messaggio aggregato globale."""
+        now_utc = datetime.now(timezone.utc)
+        ts_str = now_utc.isoformat()
+
+        def calculate_mean(vals):
+            vals = list(vals)
+            return float(np.mean(vals)) if vals else 0.0
+
+        self._cleanup_old_entries(self.sentiment_bluesky_general_2h, 2 * 60)
+        self._cleanup_old_entries(self.sentiment_bluesky_general_1d, 24 * 60)
+
+        current_macro_data = self.macro_data_state.value()
+        if current_macro_data is None:
+            current_macro_data = {}
+
+        mean_bluesky_2h = calculate_mean(self.sentiment_bluesky_general_2h.values())
+        mean_bluesky_1d = calculate_mean(self.sentiment_bluesky_general_1d.values())
+
+        output_data = {
+            "timestamp": ts_str,
+            "macro_data": current_macro_data,
+            "general_sentiment": {
+                "sentiment_bluesky_mean_general_2hours": mean_bluesky_2h,
+                "sentiment_bluesky_mean_general_1d": mean_bluesky_1d
+            }
+        }
+        
+        # *** MODIFICA QUI: Invia il messaggio usando send() del KafkaProducer ***
+        print(f"[GLOBAL-AGGREGATION-EMIT] {ts_str} => {json.dumps(output_data)}", file=sys.stderr)
+        self.output_producer.send('global_data', output_data) # Invia il dizionario, il serializzatore lo converte in JSON byte
+        self.output_producer.flush() 
+
+    def process_element(self, value, ctx):
+        """Elabora ogni elemento in ingresso (stringa JSON) da Kafka."""
+        try:
+            data = json.loads(value)
+            # La key_by_function dovrebbe garantire che qui arrivi solo GLOBAL_DATA_KEY
+            # Tuttavia, l'operatore GlobalDataAggregator gestisce i sub-tipi di dati internamente
+            
+            emission_needed = False
+
+            # --- Gestione Dati Macro ---
+            # Controlla se il messaggio contiene un 'alias', indicando dati macro
+            if "alias" in data:
+                alias_key = data.get("alias")
+                new_value = float(data.get("value"))
+                
+                current_macro_data = self.macro_data_state.value()
+                if current_macro_data is None:
+                    current_macro_data = {}
+                
+                # Aggiorna lo stato solo se il valore è cambiato
+                if current_macro_data.get(alias_key) != new_value:
+                    current_macro_data[alias_key] = new_value
+                    self.macro_data_state.update(current_macro_data)
+                    print(f"[MACRO-GLOBAL] Updated {alias_key}: {new_value}", file=sys.stderr)
+                    emission_needed = True
+
+            # --- Gestione Sentiment Generale ---
+            elif "ticker" in data and isinstance(data["ticker"], list) and "GENERAL" in data["ticker"]:
+                sentiment_score = float(data.get("sentiment_score"))
+                ts_str = data.get("timestamp")
+
+                if not ts_str:
+                    print(f"[ERROR] Missing timestamp in general sentiment data: {data}", file=sys.stderr)
+                    return 
+                
+                self.sentiment_bluesky_general_2h.put(ts_str, sentiment_score)
+                self.sentiment_bluesky_general_1d.put(ts_str, sentiment_score)
+                print(f"[GENERAL-SENTIMENT-GLOBAL] Added sentiment {sentiment_score} at {ts_str}", file=sys.stderr)
+                emission_needed = True 
+            else:
+                # Questo print è ancora utile per capire cosa non viene processato dalla logica interna
+                print(f"[WARN] Data not processed by GlobalDataAggregator logic: {value}", file=sys.stderr)
+                return 
+            
+            if emission_needed:
+                self._emit_global_context_data()
+
+        except json.JSONDecodeError:
+            print(f"[ERROR] Failed to decode JSON in global job process_element: {value}", file=sys.stderr)
+        except Exception as e:
+            print(f"[ERROR] process_element in global job: {e} for value: {value}", file=sys.stderr)
+            
+
+    def on_timer(self, timestamp, ctx):
+        # Questo metodo non è più usato per l'emissione regolare.
+        # È qui solo come placeholder.
+        pass
+
+    def close(self):
+        # Chiudi il produttore quando l'operatore viene chiuso
+        if self.output_producer:
+            self.output_producer.close()
+
+
+# --- Helper per la key_by del job secondario ---
+def route_global_data_by_type(json_str):
+    """
+    Determina la chiave per i dati in ingresso nel job globale.
+    Route i dati macro e il sentiment generale sulla stessa chiave fissa.
+    """
+    try:
+        data = json.loads(json_str)
+        if "alias" in data: # Riconosce i dati macro
+            return GLOBAL_DATA_KEY 
+        # MODIFICA QUI: Controlla se 'GENERAL' è nella lista dei ticker
+        elif "ticker" in data and "GENERAL" in data["ticker"]: # Riconosce il sentiment generale
+            return GLOBAL_DATA_KEY
+        else:
+            # Dati non pertinenti per questo job, verranno filtrati
+            print(f"[DEBUG-ROUTE] Discarding data (no alias/not general sentiment): {json_str}", file=sys.stderr) # Lascia questo print per ora, utile per vedere i discards reali
+            return "discard_key" 
+
+    except json.JSONDecodeError:
+        print(f"[WARN] Failed to decode JSON for key_by in global job: {json_str}", file=sys.stderr)
+        return "invalid_json_key"
+    except Exception as e:
+        print(f"[ERROR] route_global_data_by_type: {e} for {json_str}", file=sys.stderr)
+        return "error_key"
+
+
+def main():
+    env = StreamExecutionEnvironment.get_execution_environment()
+    # Impostiamo la parallelizzazione a 1 per questo job,
+    # dato che gestisce uno stato globale (una sola istanza logica per la chiave fissa).
+    env.set_parallelism(1)
+
+    consumer_props = {
+        'bootstrap.servers': 'kafka:9092',
+        'group.id': 'flink_global_data_group',
+        'auto.offset.reset': 'earliest'
+    }
+
+    # Questo consumer legge i dati macro e il sentiment generale da topic specifici
+    consumer = FlinkKafkaConsumer(
+        topics=["macrodata", "bluesky_sentiment"], 
+        deserialization_schema=SimpleStringSchema(),
+        properties=consumer_props
+    )
+
+    stream = env.add_source(consumer, type_info=Types.STRING())
+    
+    # Filtriamo i messaggi che non sono né macro né sentiment generale (con ticker="GENERAL")
+    # Solo i dati che ritornano GLOBAL_DATA_KEY vengono processati.
+    filtered_stream = stream.filter(lambda x: route_global_data_by_type(x) == GLOBAL_DATA_KEY)
+
+    # Tutti i dati globali vengono "keyed" su una singola chiave fissa.
+    # Questo assicura che un'unica istanza dell'operatore GlobalDataAggregator gestisca tutto lo stato globale.
+    keyed_global = filtered_stream.key_by(route_global_data_by_type, key_type=Types.STRING())
+    
+    # Processa e aggrega i dati globali.
+    # L'emissione sul topic Kafka avviene direttamente all'interno di GlobalDataAggregator.
+    keyed_global.process(GlobalDataAggregator(), output_type=Types.STRING())
+    
+    # Non è necessario un .add_sink() qui, dato che l'emissione è interna all'operatore.
+    # Flink potrebbe avvertire che il job non ha un sink, ma il produttore interno è il nostro "sink".
+    # Per evitare warning e per completezza, potresti anche aggiungere un DummySink
+    # processed_global.add_sink(DummySink()) 
+    # ma per ora non è strettamente necessario se non ti dà errori di compilazione.
+
+    env.execute("Secondary Job: Global Data Aggregation (On-Change)")
+
+if __name__ == "__main__":
+    main()

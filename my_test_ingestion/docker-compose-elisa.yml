@@ -23,31 +23,6 @@ services:
     #   - ./create-topics.sh:/tmp/create-topics.sh
     # command: ["bash", "/tmp/create-topics.sh"]
 
-  # spark-master:
-  #   image: bitnami/spark:latest
-  #   environment:
-  #     - SPARK_MODE=master
-  #     - SPARK_RPC_AUTHENTICATION_ENABLED=no
-  #     - SPARK_RPC_ENCRYPTION_ENABLED=no
-  #     - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
-  #     - SPARK_SSL_ENABLED=no
-  #   ports:
-  #     - "7077:7077"
-  #     - "8080:8080"  # Spark master web UI
-
-  # spark-worker:
-  #   image: bitnami/spark:latest
-  #   depends_on:
-  #     - spark-master
-  #   environment:
-  #     - SPARK_MODE=worker
-  #     - SPARK_MASTER_URL=spark://spark-master:7077
-  #     - SPARK_WORKER_MEMORY=1G
-  #     - SPARK_WORKER_CORES=1
-  #   ports:
-  #     - "8081:8081"  # Spark worker web UI
-
-
   minio:
     image: minio/minio
     container_name: minio
@@ -78,16 +53,16 @@ services:
 ### PRODUCER STREAM
 
   # Kafka producer data_reddit
-  kp_reddit:
-    build: ./producer_reddit
-    environment:
-      REDDIT_CLIENT_ID: ${REDDIT_CLIENT_ID}
-      REDDIT_CLIENT_SECRET: ${REDDIT_CLIENT_SECRET}
-      REDDIT_USER_AGENT: ${REDDIT_USER_AGENT}
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-    depends_on:
-      - kafka
-    restart: always
+  # kp_reddit:
+  #   build: ./producer_reddit
+  #   environment:
+  #     REDDIT_CLIENT_ID: ${REDDIT_CLIENT_ID}
+  #     REDDIT_CLIENT_SECRET: ${REDDIT_CLIENT_SECRET}
+  #     REDDIT_USER_AGENT: ${REDDIT_USER_AGENT}
+  #     KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+  #   depends_on:
+  #     - kafka
+  #   restart: always
   
   # Kafka producer data_finnhubnews
   kp_finnhubnews:
@@ -133,129 +108,141 @@ services:
 
 # ### CONSUMER STREAM
 
-
   # Kafka consumer finnhubnews
-  kc_finnhubnews:
-    build: ./consumer_finnhubnews
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
-      S3_SECRET_KEY: ${S3_SECRET_KEY}
-    depends_on:
-      - kafka
-      - minio
-    volumes:
-      - ./consumer_finnhubnews:/app
-    working_dir: /app
-    command: python consumer_finnhubnews.py
-    restart: always
+  # kc_finnhubnews:
+  #   build: ./consumer_finnhubnews
+  #   environment:
+  #     KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+  #     S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+  #     S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+  #     S3_SECRET_KEY: ${S3_SECRET_KEY}
+  #   depends_on:
+  #     - kafka
+  #     - minio
+  #   volumes:
+  #     - ./consumer_finnhubnews:/app
+  #   working_dir: /app
+  #   command: python consumer_finnhubnews.py
+  #   restart: always
 
 
   # Kafka consumer alpaca
-  kc_alpaca:
-    build: ./consumer_alpaca
-    depends_on:
-      - kafka
-      - minio
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
-      S3_SECRET_KEY: ${S3_SECRET_KEY}
-    volumes:
-      - ./consumer_alpaca:/app
-    working_dir: /app
-    command: python consumer_alpaca.py
-    restart: always
+  # kc_alpaca:
+  #   build: ./consumer_alpaca
+  #   depends_on:
+  #     - kafka
+  #     - minio
+  #   environment:
+  #     KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+  #     S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+  #     S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+  #     S3_SECRET_KEY: ${S3_SECRET_KEY}
+  #   volumes:
+  #     - ./consumer_alpaca:/app
+  #   working_dir: /app
+  #   command: python consumer_alpaca.py
+  #   restart: always
 
   # Kafka consumer reddit
-  kc_reddit:
-    build: ./consumer_reddit 
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
-      S3_SECRET_KEY: ${S3_SECRET_KEY}
-    depends_on:
-      - kafka
-      - minio
-    volumes:
-      - ./consumer_reddit:/app
-    working_dir: /app
-    command: python consumer_reddit.py
-    restart: always
+  # kc_reddit:
+  #   build: ./consumer_reddit 
+  #   environment:
+  #     KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+  #     S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+  #     S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+  #     S3_SECRET_KEY: ${S3_SECRET_KEY}
+  #   depends_on:
+  #     - kafka
+  #     - minio
+  #   volumes:
+  #     - ./consumer_reddit:/app
+  #   working_dir: /app
+  #   command: python consumer_reddit.py
+  #   restart: always
 
   #kafka consumer bluesky
-  kc_bluesky:
-    build: ./consumer_bluesky
-    depends_on:
-      - kafka
-      - minio
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
-      S3_SECRET_KEY: ${S3_SECRET_KEY}
-    volumes:
-      - ./consumer_bluesky:/app
-    working_dir: /app
-    command: python consumer_bluesky.py
-    restart: always
+  # kc_bluesky:
+  #   build: ./consumer_bluesky
+  #   depends_on:
+  #     - kafka
+  #     - minio
+  #   environment:
+  #     KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+  #     S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+  #     S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+  #     S3_SECRET_KEY: ${S3_SECRET_KEY}
+  #   volumes:
+  #     - ./consumer_bluesky:/app
+  #   working_dir: /app
+  #   command: python consumer_bluesky.py
+  #   restart: always
 
   #kafka consumer macrodata
-  kc_macrodata:
-    build: ./consumer_macrodata
-    depends_on:
-      - kafka
-      - minio
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
-      S3_SECRET_KEY: ${S3_SECRET_KEY}
-    volumes:
-      - ./consumer_macrodata:/app
-    working_dir: /app
-    command: python consumer_macrodata.py
-    restart: always
+  # kc_macrodata:
+  #   build: ./consumer_macrodata
+  #   depends_on:
+  #     - kafka
+  #     - minio
+  #   environment:
+  #     KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+  #     S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+  #     S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+  #     S3_SECRET_KEY: ${S3_SECRET_KEY}
+  #   volumes:
+  #     - ./consumer_macrodata:/app
+  #   working_dir: /app
+  #   command: python consumer_macrodata.py
+  #   restart: always
 
 ### SENTIMENT ANALYSIS
 
-  # sentiment_bluesky:
-  #   build: ./sentiment_bluesky
+  sentiment_bluesky:
+    build:
+      context: .
+      dockerfile: ./sentiment_bluesky/Dockerfile
+    volumes:
+      # Mount per il tuo codice Python.
+      - ./sentiment_bluesky:/app
+      # Mount per la cartella del modello (tokenizer e .onnx).
+      - ./quantized_finbert:/model
+    working_dir: /app
+    depends_on:
+      - kafka
+    container_name: sentiment_bluesky
+    restart: always
+    environment:
+      # *** QUESTA È LA MODIFICA CHIAVE ***
+      # Dice a PyFlink di includere i JAR dalle directory standard di Flink
+      # (/opt/flink/lib e /opt/flink/opt) nella classpath.
+      # Il connettore Kafka verrà copiato in /opt/flink/lib dal Dockerfile.
+      - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
+      - FINBERT_MODEL_BASE_PATH=/model 
+    mem_limit: 4g # Consider increasing this if you raise parallelism
+    cpus: 1 
+
+  # sentiment_reddit:
+  #   build:
+  #     context: .
+  #     dockerfile: ./sentiment_reddit/Dockerfile
+  #   volumes:
+  #     # Mount per il tuo codice Python.
+  #     - ./sentiment_reddit:/app
+  #     # Mount per la cartella del modello (tokenizer e .onnx).
+  #     - ./quantized_finbert:/model
+  #   working_dir: /app
   #   depends_on:
   #     - kafka
-  #     - spark-master
-  #   #  - spark-worker
-  #   volumes:
-  #     - ./sentiment_bluesky:/app
-  #   working_dir: /app
-  #   command: >
-  #     spark-submit
-  #     --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
-  #     sentiment_bluesky.py
-  #   environment:
-  #     - PYSPARK_PYTHON=python3
+  #   container_name: sentiment_reddit
   #   restart: always
-
-#   sentiment_reddit:
-#     build: ./sentiment_reddit
-#     depends_on:
-#       - kafka
-#       - spark-master
-#       - spark-worker
-#     volumes:
-#       - ./sentiment_reddit:/app
-#     working_dir: /app
-#     command: >
-#       spark-submit
-#       --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
-#       sentiment_reddit.py
-#     environment:
-#        - PYSPARK_PYTHON=python3
-#     restart: always
-
+  #   environment:
+  #     # *** QUESTA È LA MODIFICA CHIAVE ***
+  #     # Dice a PyFlink di includere i JAR dalle directory standard di Flink
+  #     # (/opt/flink/lib e /opt/flink/opt) nella classpath.
+  #     # Il connettore Kafka verrà copiato in /opt/flink/lib dal Dockerfile.
+  #     - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
+  #     - FINBERT_MODEL_BASE_PATH=/model 
+  #   mem_limit: 4g # Consider increasing this if you raise parallelism
+  #   cpus: 1
 
   # sentiment_news:
   #   build: ./sentiment_news
@@ -273,7 +260,6 @@ services:
   #   environment:
   #      - PYSPARK_PYTHON=python3
   #   restart: always
-    
   
   # sentiment_consumer:
   #   build:
@@ -300,6 +286,23 @@ services:
   #     - kafka
   #   restart: always
 
+  flink_main_job:
+    build:
+      context: ./preprocessing_stream2 
+      dockerfile: ./main_job.Dockerfile
+    container_name: flink_main_job
+    depends_on:
+      - kafka
+    restart: always
+
+  flink-global-job:
+    build:
+      context: ./preprocessing_stream2
+      dockerfile: ./global_job.Dockerfile
+    container_name: flink-global-job
+    depends_on:
+      - kafka
+    restart: always
 
 # # PREDICTION
   # lstm_trainer:

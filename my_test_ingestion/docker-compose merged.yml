@@ -6,7 +6,6 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
     ports:
       - "2181:2181"
-
   kafka:
     image: confluentinc/cp-kafka:latest
     depends_on:
@@ -61,18 +60,18 @@ services:
      - ./data/minio:/data
     command: server /data --console-address ":9001"
 
-  # postgre:
-  #   image: postgres:16-alpine
-  #   container_name: postgre
-  #   environment:
-  #     POSTGRES_DB: aggregated-data
-  #     POSTGRES_USER: admin
-  #     POSTGRES_PASSWORD: admin123
-  #   ports:
-  #     - "5432:5432"
-  #   volumes:
-  #     - pgdata:/var/lib/postgresql/data
-  #   restart: always
+  postgre:
+    image: postgres:16-alpine
+    container_name: postgre
+    environment:
+      POSTGRES_DB: aggregated-data
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: always
 
 
 ### PRODUCER STREAM
@@ -113,14 +112,14 @@ services:
       - kafka
     restart: always
     
-  # # Kafka producer macrodata
-  # kp_macrodata:
-  #   build: ./producer_macrodata
-  #   environment:
-  #     KAFKA_SERVER: kafka:9092
-  #   depends_on:
-  #     - kafka
-  #   restart: always
+  # Kafka producer macrodata
+  kp_macrodata:
+    build: ./producer_macrodata
+    environment:
+      KAFKA_SERVER: kafka:9092
+    depends_on:
+      - kafka
+    restart: always
 
 # ### CONSUMER STREAM
 
@@ -257,7 +256,7 @@ services:
       - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
       - FINBERT_MODEL_BASE_PATH=/model 
     mem_limit: 4g # Consider increasing this if you raise parallelism
-    cpus: 2 
+    cpus: 1 
     
 
 
@@ -280,29 +279,29 @@ services:
 
 
 
-  sentiment_reddit:
-    build:
-      context: .
-      dockerfile: ./sentiment_reddit/Dockerfile
-    volumes:
-      # Mount per il tuo codice Python.
-      - ./sentiment_reddit:/app
-      # Mount per la cartella del modello (tokenizer e .onnx).
-      - ./quantized_finbert:/model
-    working_dir: /app
-    depends_on:
-      - kafka
-    container_name: sentiment_reddit
-    restart: always
-    environment:
-      # *** QUESTA È LA MODIFICA CHIAVE ***
-      # Dice a PyFlink di includere i JAR dalle directory standard di Flink
-      # (/opt/flink/lib e /opt/flink/opt) nella classpath.
-      # Il connettore Kafka verrà copiato in /opt/flink/lib dal Dockerfile.
-      - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
-      - FINBERT_MODEL_BASE_PATH=/model 
-    mem_limit: 4g # Consider increasing this if you raise parallelism
-    cpus: 2
+  # sentiment_reddit:
+  #   build:
+  #     context: .
+  #     dockerfile: ./sentiment_reddit/Dockerfile
+  #   volumes:
+  #     # Mount per il tuo codice Python.
+  #     - ./sentiment_reddit:/app
+  #     # Mount per la cartella del modello (tokenizer e .onnx).
+  #     - ./quantized_finbert:/model
+  #   working_dir: /app
+  #   depends_on:
+  #     - kafka
+  #   container_name: sentiment_reddit
+  #   restart: always
+  #   environment:
+  #     # *** QUESTA È LA MODIFICA CHIAVE ***
+  #     # Dice a PyFlink di includere i JAR dalle directory standard di Flink
+  #     # (/opt/flink/lib e /opt/flink/opt) nella classpath.
+  #     # Il connettore Kafka verrà copiato in /opt/flink/lib dal Dockerfile.
+  #     - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
+  #     - FINBERT_MODEL_BASE_PATH=/model 
+  #   mem_limit: 4g # Consider increasing this if you raise parallelism
+  #   cpus: 1
 
 
 
@@ -326,75 +325,88 @@ services:
   #   restart: always
     
 
-  sentiment_news:
-    build:
-      context: .
-      dockerfile: ./sentiment_news/Dockerfile
-    volumes:
-      # Mount per il tuo codice Python.
-      - ./sentiment_news:/app
-      # Mount per la cartella del modello (tokenizer e .onnx).
-      - ./quantized_finbert:/model
-    working_dir: /app
-    depends_on:
-      - kafka
-    container_name: sentiment_news
-    restart: always
-    environment:
-      # *** QUESTA È LA MODIFICA CHIAVE ***
-      # Dice a PyFlink di includere i JAR dalle directory standard di Flink
-      # (/opt/flink/lib e /opt/flink/opt) nella classpath.
-      # Il connettore Kafka verrà copiato in /opt/flink/lib dal Dockerfile.
-      - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
-      - FINBERT_MODEL_BASE_PATH=/model 
-    mem_limit: 4g # Consider increasing this if you raise parallelism
-    cpus: 2 
-
-
-
-
-
+  # sentiment_news:
+  #   build:
+  #     context: .
+  #     dockerfile: ./sentiment_news/Dockerfile
+  #   volumes:
+  #     # Mount per il tuo codice Python.
+  #     - ./sentiment_news:/app
+  #     # Mount per la cartella del modello (tokenizer e .onnx).
+  #     - ./quantized_finbert:/model
+  #   working_dir: /app
+  #   depends_on:
+  #     - kafka
+  #   container_name: sentiment_news
+  #   restart: always
+  #   environment:
+  #     # *** QUESTA È LA MODIFICA CHIAVE ***
+  #     # Dice a PyFlink di includere i JAR dalle directory standard di Flink
+  #     # (/opt/flink/lib e /opt/flink/opt) nella classpath.
+  #     # Il connettore Kafka verrà copiato in /opt/flink/lib dal Dockerfile.
+  #     - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
+  #     - FINBERT_MODEL_BASE_PATH=/model 
+  #   mem_limit: 4g # Consider increasing this if you raise parallelism
+  #   cpus: 1 
 
   
-  sentiment_consumer:
-    build:
-      context: ./consumer_sentiment
-    depends_on:
-      - kafka
-      - minio  # <-- Assicurati che ci sia un servizio "minio" definito
-    environment:
-      S3_ENDPOINT: http://minio:9000
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: admin123
-      S3_BUCKET: sentiment-data
-    networks:
-      - default  # o il nome della rete Docker se ne hai definita una custom
-    restart: always
+  # sentiment_consumer:
+  #   build:
+  #     context: ./consumer_sentiment
+  #   depends_on:
+  #     - kafka
+  #     - minio  # <-- Assicurati che ci sia un servizio "minio" definito
+  #   environment:
+  #     S3_ENDPOINT: http://minio:9000
+  #     S3_ACCESS_KEY: admin
+  #     S3_SECRET_KEY: admin123
+  #     S3_BUCKET: sentiment-data
+  #   networks:
+  #     - default  # o il nome della rete Docker se ne hai definita una custom
+  #   restart: always
 
 # ### AGGREGATION LAYER
 
-  flink:
+  # flink:
+  #   build:
+  #     context: ./preprocessing_stream
+  #   container_name: flink
+  #   depends_on: 
+  #     - kafka
+  #   restart: always
+
+  flink_main_job:
     build:
-      context: ./preprocessing_stream
-    container_name: flink
-    depends_on: 
+      context: ./preprocessing_stream2 
+      dockerfile: ./main_job.Dockerfile
+    container_name: flink_main_job
+    depends_on:
       - kafka
     restart: always
 
-  # aggregated_storage:
-  #     build: ./consumer_aggregated
-  #     container_name: aggregated_storage
-  #     depends_on:
-  #       - kafka 
-  #       - postgre
-  #     command: python consumer_aggregated.py
-  #     restart: always
-  #     environment: # <-- Aggiungi questa sezione
-  #       - POSTGRES_HOST=postgre
-  #       - POSTGRES_DB=aggregated-data
-  #       - POSTGRES_USER=admin
-  #       - POSTGRES_PASSWORD=admin123
-  #       - POSTGRES_PORT=5432
+  flink-global-job:
+    build:
+      context: ./preprocessing_stream2
+      dockerfile: ./global_job.Dockerfile
+    container_name: flink-global-job
+    depends_on:
+      - kafka
+    restart: always
+
+  aggregated_storage:
+      build: ./consumer_aggregated
+      container_name: aggregated_storage
+      depends_on:
+        - kafka 
+        - postgre
+      command: python consumer_aggregated.py
+      restart: always
+      environment: # <-- Aggiungi questa sezione
+        - POSTGRES_HOST=postgre
+        - POSTGRES_DB=aggregated-data
+        - POSTGRES_USER=admin
+        - POSTGRES_PASSWORD=admin123
+        - POSTGRES_PORT=5432
 
 # ### PREDICTION LAYER
 
@@ -460,27 +472,27 @@ services:
   #     - kafka
   #   restart: always
 
-  kp_h_company:
-    build:
-      context: ./kp_historical_company
-    container_name: kp_h_company
-    environment:
-      KAFKA_SERVER: kafka:9092
-    depends_on:
-      - kafka
+  # kp_h_company:
+  #   build:
+  #     context: ./kp_historical_company
+  #   container_name: kp_h_company
+  #   environment:
+  #     KAFKA_SERVER: kafka:9092
+  #   depends_on:
+  #     - kafka
 
 # historical consumer
-  kc_h_company:
-    build:
-      context: ./kc_historical_company
-    container_name: kc_h_company
-    depends_on:
-      - kafka
-      - minio
-    environment:
-      S3_ENDPOINT: http://minio:9000
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: admin123
+  # kc_h_company:
+  #   build:
+  #     context: ./kc_historical_company
+  #   container_name: kc_h_company
+  #   depends_on:
+  #     - kafka
+  #     - minio
+  #   environment:
+  #     S3_ENDPOINT: http://minio:9000
+  #     S3_ACCESS_KEY: admin
+  #     S3_SECRET_KEY: admin123
       
   # kc_h_alpaca:
   #   build:
