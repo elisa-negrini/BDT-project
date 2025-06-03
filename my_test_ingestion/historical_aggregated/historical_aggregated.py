@@ -111,9 +111,9 @@ class FullDayAggregator(KeyedProcessFunction):
                 timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
                 price_mean_1min DOUBLE PRECISION,
                 price_mean_5min DOUBLE PRECISION,
-                price_cv_5min DOUBLE PRECISION,
+                price_std_5min DOUBLE PRECISION,
                 price_mean_30min DOUBLE PRECISION,
-                price_cv_30min DOUBLE PRECISION,
+                price_std_30min DOUBLE PRECISION,
                 size_tot_1min DOUBLE PRECISION,
                 size_tot_5min DOUBLE PRECISION,
                 size_tot_30min DOUBLE PRECISION,
@@ -303,9 +303,9 @@ class FullDayAggregator(KeyedProcessFunction):
                 "timestamp": now.isoformat(),
                 "price_mean_1min": mean(window_vals("open", 1)),
                 "price_mean_5min": mean(window_vals("open", 5)),
-                "price_cv_5min": std(window_vals("open", 5))/mean(window_vals("open", 5)),
+                "price_std_5min": std(window_vals("open", 5))/mean(window_vals("open", 5)),
                 "price_mean_30min": mean(window_vals("open", 30)),
-                "price_cv_30min": std(window_vals("open", 30))/mean(window_vals("open", 30)),
+                "price_std_30min": std(window_vals("open", 30))/mean(window_vals("open", 30)),
                 "size_tot_1min": total(window_vals("volume", 1)),
                 "size_tot_5min": total(window_vals("volume", 5)),
                 "size_tot_30min": total(window_vals("volume", 30)),
@@ -346,8 +346,8 @@ class FullDayAggregator(KeyedProcessFunction):
         """Inserts a batch of aggregated data into the PostgreSQL table."""
         # Use self.table_name from the instance
         columns = [
-            "ticker", "timestamp", "price_mean_1min", "price_mean_5min", "price_cv_5min",
-            "price_mean_30min", "price_cv_30min", "size_tot_1min", "size_tot_5min",
+            "ticker", "timestamp", "price_mean_1min", "price_mean_5min", "price_std_5min",
+            "price_mean_30min", "price_std_30min", "size_tot_1min", "size_tot_5min",
             "size_tot_30min", "sentiment_bluesky_mean_2hours", "sentiment_bluesky_mean_1day",
             "sentiment_news_mean_1day", "sentiment_news_mean_3days",
             "sentiment_general_bluesky_mean_2hours", "sentiment_general_bluesky_mean_1day",
@@ -366,9 +366,9 @@ class FullDayAggregator(KeyedProcessFunction):
             "ON CONFLICT (ticker, timestamp) DO UPDATE SET "
             "price_mean_1min = EXCLUDED.price_mean_1min, "
             "price_mean_5min = EXCLUDED.price_mean_5min, "
-            "price_cv_5min = EXCLUDED.price_cv_5min, "
+            "price_std_5min = EXCLUDED.price_std_5min, "
             "price_mean_30min = EXCLUDED.price_mean_30min, "
-            "price_cv_30min = EXCLUDED.price_cv_30min, "
+            "price_std_30min = EXCLUDED.price_std_30min, "
             "size_tot_1min = EXCLUDED.size_tot_1min, "
             "size_tot_5min = EXCLUDED.size_tot_5min, "
             "size_tot_30min = EXCLUDED.size_tot_30min, "
