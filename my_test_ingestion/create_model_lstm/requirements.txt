@@ -4,3 +4,5 @@ sqlalchemy
 psycopg2-binary
 scikit-learn
 tensorflow==2.15.0
+joblib
+python-dateutil
