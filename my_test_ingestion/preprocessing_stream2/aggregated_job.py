@@ -344,10 +344,6 @@ class SlidingAggregator(KeyedProcessFunction):
                             merged_data[mapped_k] = float(v)
                         else:
                             merged_data[mapped_k] = v # Mantiene stringhe o altri tipi (es. None dal primo job)
-                    else:
-                        # Se è un campo non presente nell'OUTPUT_FIELD_ORDER, potresti volerlo ignorare
-                        # o aggiungerlo dinamicamente, ma dato OUTPUT_FIELD_ORDER, lo ignoriamo per ora.
-                        pass
                 
                 # Costruisci il dizionario finale nell'ordine desiderato
                 result_data = {}
@@ -358,7 +354,7 @@ class SlidingAggregator(KeyedProcessFunction):
                 
                 result_json = json.dumps(result_data)
                 print(f"[MAIN-DATA-PROCESS] {ticker} - Dati combinati e ordinati: {result_json}", file=sys.stderr)
-                return [result_json]
+                yield result_json
 
         except json.JSONDecodeError:
             print(f"[ERROR] Impossibile decodificare JSON: {value}", file=sys.stderr)
