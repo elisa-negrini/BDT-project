@@ -295,7 +295,7 @@ class SlidingAggregator(KeyedProcessFunction):
 
             # Usa il timestamp del timer per i calcoli orari, convertito in NY_TZ
             now_ny = ts_prediction.astimezone(NY_TZ) # Usa ts_prediction per ora NY
-            market_open_time = now_ny.replace(hour=9, minute=30, second=0, microsecond=0)
+            market_open_time = now_ny.replace(hour=15, minute=30, second=0, microsecond=0)
             market_close_time = now_ny.replace(hour=16, minute=0, second=0, microsecond=0)
             
             is_market_hours = market_open_time <= now_ny < market_close_time and now_ny.weekday() < 5 # Lun-Ven
@@ -359,7 +359,7 @@ class SlidingAggregator(KeyedProcessFunction):
                 "sentiment_bluesky_mean_2hours": mean(list(self.sentiment_bluesky_2h.values())), # Ensure list conversion
                 "sentiment_bluesky_mean_1day": mean(list(self.sentiment_bluesky_1d.values())), # Ensure list conversion
                 "sentiment_news_mean_1day": mean(list(self.sentiment_news_1d.values())),       # Ensure list conversion
-                "sentiment_news_mean_3ddays": mean(list(self.sentiment_news_3d.values())),       # Ensure list conversion
+                "sentiment_news_mean_3days": mean(list(self.sentiment_news_3d.values())),       # Ensure list conversion
                 # NEW TIME-BASED FEATURES
                 "minutes_since_open": int(minutes_since_open),
                 "day_of_week": int(now_ny.weekday()),
@@ -370,7 +370,7 @@ class SlidingAggregator(KeyedProcessFunction):
                 "market_close_spike_flag": int(market_close_spike_flag),
                 # Dati fondamentali
                 "eps": float(ticker_fundamentals["eps"]) if ticker_fundamentals.get("eps") is not None else None,
-                "freeCashFlow": float(ticker_fundamentals["freeCashFlow"]) if ticker_fundamentals.get("freeCashFlow") is not None else None,
+                "free_cash_flow": float(ticker_fundamentals["freeCashFlow"]) if ticker_fundamentals.get("freeCashFlow") is not None else None,
                 "profit_margin": float(ticker_fundamentals["profit_margin"]) if ticker_fundamentals.get("profit_margin") is not None else None,
                 "debt_to_equity": float(ticker_fundamentals["debt_to_equity"]) if ticker_fundamentals.get("debt_to_equity") is not None else None,
                 # Flag per indicare se la predizione è basata su dati simulati
