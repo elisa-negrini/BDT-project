@@ -90,31 +90,26 @@ class GlobalDataAggregator(KeyedProcessFunction):
         mean_bluesky_2h = calculate_mean(self.sentiment_bluesky_general_2h.values())
         mean_bluesky_1d = calculate_mean(self.sentiment_bluesky_general_1d.values())
 
+        # Flatten the output data
         output_data = {
             "timestamp": ts_str,
-            "macro_data": current_macro_data,
-            "general_sentiment": {
-                "sentiment_bluesky_mean_general_2hours": mean_bluesky_2h,
-                "sentiment_bluesky_mean_general_1d": mean_bluesky_1d
-            }
+            **current_macro_data, # Unpack macro data directly
+            "sentiment_bluesky_mean_general_2hours": mean_bluesky_2h,
+            "sentiment_bluesky_mean_general_1day": mean_bluesky_1d
         }
         
-        # *** MODIFICA QUI: Invia il messaggio usando send() del KafkaProducer ***
         print(f"[GLOBAL-AGGREGATION-EMIT] {ts_str} => {json.dumps(output_data)}", file=sys.stderr)
-        self.output_producer.send('global_data', output_data) # Invia il dizionario, il serializzatore lo converte in JSON byte
+        self.output_producer.send('global_data', output_data)
         self.output_producer.flush() 
 
     def process_element(self, value, ctx):
         """Elabora ogni elemento in ingresso (stringa JSON) da Kafka."""
         try:
             data = json.loads(value)
-            # La key_by_function dovrebbe garantire che qui arrivi solo GLOBAL_DATA_KEY
-            # Tuttavia, l'operatore GlobalDataAggregator gestisce i sub-tipi di dati internamente
             
             emission_needed = False
 
             # --- Gestione Dati Macro ---
-            # Controlla se il messaggio contiene un 'alias', indicando dati macro
             if "alias" in data:
                 alias_key = data.get("alias")
                 new_value = float(data.get("value"))
@@ -123,7 +118,6 @@ class GlobalDataAggregator(KeyedProcessFunction):
                 if current_macro_data is None:
                     current_macro_data = {}
                 
-                # Aggiorna lo stato solo se il valore è cambiato
                 if current_macro_data.get(alias_key) != new_value:
                     current_macro_data[alias_key] = new_value
                     self.macro_data_state.update(current_macro_data)
@@ -144,7 +138,6 @@ class GlobalDataAggregator(KeyedProcessFunction):
                 print(f"[GENERAL-SENTIMENT-GLOBAL] Added sentiment {sentiment_score} at {ts_str}", file=sys.stderr)
                 emission_needed = True 
             else:
-                # Questo print è ancora utile per capire cosa non viene processato dalla logica interna
                 print(f"[WARN] Data not processed by GlobalDataAggregator logic: {value}", file=sys.stderr)
                 return 
             
@@ -156,14 +149,7 @@ class GlobalDataAggregator(KeyedProcessFunction):
         except Exception as e:
             print(f"[ERROR] process_element in global job: {e} for value: {value}", file=sys.stderr)
             
-
-    def on_timer(self, timestamp, ctx):
-        # Questo metodo non è più usato per l'emissione regolare.
-        # È qui solo come placeholder.
-        pass
-
     def close(self):
-        # Chiudi il produttore quando l'operatore viene chiuso
         if self.output_producer:
             self.output_producer.close()
 
@@ -178,12 +164,10 @@ def route_global_data_by_type(json_str):
         data = json.loads(json_str)
         if "alias" in data: # Riconosce i dati macro
             return GLOBAL_DATA_KEY 
-        # MODIFICA QUI: Controlla se 'GENERAL' è nella lista dei ticker
         elif "ticker" in data and "GENERAL" in data["ticker"]: # Riconosce il sentiment generale
             return GLOBAL_DATA_KEY
         else:
-            # Dati non pertinenti per questo job, verranno filtrati
-            print(f"[DEBUG-ROUTE] Discarding data (no alias/not general sentiment): {json_str}", file=sys.stderr) # Lascia questo print per ora, utile per vedere i discards reali
+            print(f"[DEBUG-ROUTE] Discarding data (no alias/not general sentiment): {json_str}", file=sys.stderr)
             return "discard_key" 
 
     except json.JSONDecodeError:
@@ -196,8 +180,6 @@ def route_global_data_by_type(json_str):
 
 def main():
     env = StreamExecutionEnvironment.get_execution_environment()
-    # Impostiamo la parallelizzazione a 1 per questo job,
-    # dato che gestisce uno stato globale (una sola istanza logica per la chiave fissa).
     env.set_parallelism(1)
 
     consumer_props = {
@@ -206,7 +188,6 @@ def main():
         'auto.offset.reset': 'earliest'
     }
 
-    # Questo consumer legge i dati macro e il sentiment generale da topic specifici
     consumer = FlinkKafkaConsumer(
         topics=["macrodata", "bluesky_sentiment"], 
         deserialization_schema=SimpleStringSchema(),
@@ -215,24 +196,12 @@ def main():
 
     stream = env.add_source(consumer, type_info=Types.STRING())
     
-    # Filtriamo i messaggi che non sono né macro né sentiment generale (con ticker="GENERAL")
-    # Solo i dati che ritornano GLOBAL_DATA_KEY vengono processati.
     filtered_stream = stream.filter(lambda x: route_global_data_by_type(x) == GLOBAL_DATA_KEY)
 
-    # Tutti i dati globali vengono "keyed" su una singola chiave fissa.
-    # Questo assicura che un'unica istanza dell'operatore GlobalDataAggregator gestisca tutto lo stato globale.
     keyed_global = filtered_stream.key_by(route_global_data_by_type, key_type=Types.STRING())
     
-    # Processa e aggrega i dati globali.
-    # L'emissione sul topic Kafka avviene direttamente all'interno di GlobalDataAggregator.
     keyed_global.process(GlobalDataAggregator(), output_type=Types.STRING())
     
-    # Non è necessario un .add_sink() qui, dato che l'emissione è interna all'operatore.
-    # Flink potrebbe avvertire che il job non ha un sink, ma il produttore interno è il nostro "sink".
-    # Per evitare warning e per completezza, potresti anche aggiungere un DummySink
-    # processed_global.add_sink(DummySink()) 
-    # ma per ora non è strettamente necessario se non ti dà errori di compilazione.
-
     env.execute("Secondary Job: Global Data Aggregation (On-Change)")
 
 if __name__ == "__main__":

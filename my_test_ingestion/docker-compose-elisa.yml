@@ -221,29 +221,29 @@ services:
 
 ### SENTIMENT ANALYSIS
 
-  sentiment_bluesky:
-    build:
-      context: .
-      dockerfile: ./sentiment_bluesky/Dockerfile
-    volumes:
-      # Mount per il tuo codice Python.
-      - ./sentiment_bluesky:/app
-      # Mount per la cartella del modello (tokenizer e .onnx).
-      - ./quantized_finbert:/model
-    working_dir: /app
-    depends_on:
-      - kafka
-    container_name: sentiment_bluesky
-    restart: always
-    environment:
-      # *** QUESTA È LA MODIFICA CHIAVE ***
-      # Dice a PyFlink di includere i JAR dalle directory standard di Flink
-      # (/opt/flink/lib e /opt/flink/opt) nella classpath.
-      # Il connettore Kafka verrà copiato in /opt/flink/lib dal Dockerfile.
-      - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
-      - FINBERT_MODEL_BASE_PATH=/model 
-    mem_limit: 4g # Consider increasing this if you raise parallelism
-    cpus: 1 
+  # sentiment_bluesky:
+  #   build:
+  #     context: .
+  #     dockerfile: ./sentiment_bluesky/Dockerfile
+  #   volumes:
+  #     # Mount per il tuo codice Python.
+  #     - ./sentiment_bluesky:/app
+  #     # Mount per la cartella del modello (tokenizer e .onnx).
+  #     - ./quantized_finbert:/model
+  #   working_dir: /app
+  #   depends_on:
+  #     - kafka
+  #   container_name: sentiment_bluesky
+  #   restart: always
+  #   environment:
+  #     # *** QUESTA È LA MODIFICA CHIAVE ***
+  #     # Dice a PyFlink di includere i JAR dalle directory standard di Flink
+  #     # (/opt/flink/lib e /opt/flink/opt) nella classpath.
+  #     # Il connettore Kafka verrà copiato in /opt/flink/lib dal Dockerfile.
+  #     - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
+  #     - FINBERT_MODEL_BASE_PATH=/model 
+  #   mem_limit: 4g # Consider increasing this if you raise parallelism
+  #   cpus: 1 
 
   # sentiment_reddit:
   #   build:
@@ -269,81 +269,81 @@ services:
   #   mem_limit: 4g # Consider increasing this if you raise parallelism
   #   cpus: 1
 
-  sentiment_news:
-    build:
-      context: .
-      dockerfile: ./sentiment_news/Dockerfile
-    volumes:
-      # Mount per il tuo codice Python.
-      - ./sentiment_news:/app
-      # Mount per la cartella del modello (tokenizer e .onnx).
-      - ./quantized_finbert:/model
-    working_dir: /app
-    depends_on:
-      - kafka
-    container_name: sentiment_news
-    restart: always
-    environment:
-      # *** QUESTA È LA MODIFICA CHIAVE ***
-      # Dice a PyFlink di includere i JAR dalle directory standard di Flink
-      # (/opt/flink/lib e /opt/flink/opt) nella classpath.
-      # Il connettore Kafka verrà copiato in /opt/flink/lib dal Dockerfile.
-      - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
-      - FINBERT_MODEL_BASE_PATH=/model 
-    mem_limit: 4g # Consider increasing this if you raise parallelism
-    cpus: 1 
+  # sentiment_news:
+  #   build:
+  #     context: .
+  #     dockerfile: ./sentiment_news/Dockerfile
+  #   volumes:
+  #     # Mount per il tuo codice Python.
+  #     - ./sentiment_news:/app
+  #     # Mount per la cartella del modello (tokenizer e .onnx).
+  #     - ./quantized_finbert:/model
+  #   working_dir: /app
+  #   depends_on:
+  #     - kafka
+  #   container_name: sentiment_news
+  #   restart: always
+  #   environment:
+  #     # *** QUESTA È LA MODIFICA CHIAVE ***
+  #     # Dice a PyFlink di includere i JAR dalle directory standard di Flink
+  #     # (/opt/flink/lib e /opt/flink/opt) nella classpath.
+  #     # Il connettore Kafka verrà copiato in /opt/flink/lib dal Dockerfile.
+  #     - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
+  #     - FINBERT_MODEL_BASE_PATH=/model 
+  #   mem_limit: 4g # Consider increasing this if you raise parallelism
+  #   cpus: 1 
   
-  sentiment_consumer:
-    build:
-      context: ./consumer_sentiment
-    depends_on:
-      - kafka
-      - minio  # <-- Assicurati che ci sia un servizio "minio" definito
-    environment:
-      S3_ENDPOINT: http://minio:9000
-      S3_ACCESS_KEY: admin
-      S3_SECRET_KEY: admin123
-      S3_BUCKET: sentiment-data
-    networks:
-      - default  # o il nome della rete Docker se ne hai definita una custom
-    restart: always
+  # sentiment_consumer:
+  #   build:
+  #     context: ./consumer_sentiment
+  #   depends_on:
+  #     - kafka
+  #     - minio
+  #   environment:
+  #     S3_ENDPOINT: http://minio:9000
+  #     S3_ACCESS_KEY: admin
+  #     S3_SECRET_KEY: admin123
+  #     S3_BUCKET: sentiment-data
+  #   networks:
+  #     - default  # o il nome della rete Docker se ne hai definita una custom
+  #   restart: always
 
 # ### AGGREGATION LAYER
 
-  flink:
+  # flink:
+  #   build:
+  #     context: ./preprocessing_stream
+  #   container_name: flink
+  #   depends_on: 
+  #     - kafka
+  #   restart: always
+
+  flink_main_job:
     build:
-      context: ./preprocessing_stream
-    container_name: flink
-    depends_on: 
+      context: ./preprocessing_stream2 
+      dockerfile: ./main_job.Dockerfile
+    container_name: flink_main_job
+    depends_on:
       - kafka
     restart: always
 
-  # flink_main_job:
-  #   build:
-  #     context: ./preprocessing_stream2 
-  #     dockerfile: ./main_job.Dockerfile
-  #   container_name: flink_main_job
-  #   depends_on:
-  #     - kafka
-  #   restart: always
+  flink-global-job:
+    build:
+      context: ./preprocessing_stream2
+      dockerfile: ./global_job.Dockerfile
+    container_name: flink-global-job
+    depends_on:
+      - kafka
+    restart: always
 
-  # flink-global-job:
-  #   build:
-  #     context: ./preprocessing_stream2
-  #     dockerfile: ./global_job.Dockerfile
-  #   container_name: flink-global-job
-  #   depends_on:
-  #     - kafka
-  #   restart: always
-
-  # flink-aggregated-job:
-  #   build:
-  #     context: ./preprocessing_stream2
-  #     dockerfile: ./aggregated_job.Dockerfile
-  #   container_name: flink-aggregated-job
-  #   depends_on:
-  #     - kafka
-  #   restart: always
+  flink-aggregated-job:
+    build:
+      context: ./preprocessing_stream2
+      dockerfile: ./aggregated_job.Dockerfile
+    container_name: flink-aggregated-job
+    depends_on:
+      - kafka
+    restart: always
 
     # aggregated_storage:
     #   build: ./consumer_aggregated
@@ -360,7 +360,8 @@ services:
     #     - POSTGRES_PASSWORD=admin123
     #     - POSTGRES_PORT=5432
 
-# # PREDICTION
+### MODEL TRAINING
+
   # lstm_trainer:
   #   build:
   #     context: ./create_model_lstm  
@@ -389,7 +390,7 @@ services:
     #     limits:
     #       memory: 8g # Example: Give 4GB of RAM.
 
-# ### PREDICTION LAYER
+### PREDICTION LAYER
 
 #   predictor_layer:
 #     build:
@@ -398,86 +399,60 @@ services:
 #       - kafka
 #     restart: always
 
-#   predictor_layer2:
-#     build:
-#       context: ./prediction_layer2 
-#     depends_on:
-#       - kafka
-#     environment:
-#       - BOOTSTRAP_SERVERS: kafka:9092
-#     restart: always
 
-
-
-  prediction_consumer:
-    build:
-      context: ./prediction_layer # Il contesto di build è la directory corrente (dove si trova il Dockerfile)
-      dockerfile: Dockerfile # Il nome del tuo Dockerfile
-    container_name: prediction_layer
-    depends_on:
-      - kafka # Assicura che Kafka sia avviato prima del consumer
-    environment:
-      KAFKA_BROKER: kafka:9092 # Questo è CRUCIALE: usa il nome del servizio Kafka e la porta interna
-      KAFKA_TOPIC: aggregated_data
-    # Se vuoi esporre porte dal tuo consumer (es. per un'API di monitoraggio), aggiungile qui
-    # ports:
-    #   - "5000:5000"
-      # Non è strettamente necessario mappare volumi se gli artefatti sono copiati durante il build
-      # ma potresti farlo se vuoi aggiornare modello/scaler senza ricostruire l'immagine
-      # - ./model:/app/model
-      # - ./your_prediction_script_name.py:/app/your_prediction_script_name.py
-    restart: on-failure # Riavvia il container se fallisce
-
-  # prediction_layer:
+  # prediction_consumer:
   #   build:
-  #     context: .  # Contesto di build (dove c'è il Dockerfile)
-  #     dockerfile: ./prediction_layer/Dockerfile          # Nome esplicito del Dockerfile
+  #     context: ./prediction_layer # Il contesto di build è la directory corrente (dove si trova il Dockerfile)
+  #     dockerfile: Dockerfile # Il nome del tuo Dockerfile
   #   container_name: prediction_layer
   #   depends_on:
-  #     - kafka                         # Aspetta che Kafka sia pronto
+  #     - kafka # Assicura che Kafka sia avviato prima del consumer
   #   environment:
-  #     KAFKA_BROKER: kafka:9092        # Nome del servizio Kafka e porta interna
+  #     KAFKA_BROKER: kafka:9092 # Questo è CRUCIALE: usa il nome del servizio Kafka e la porta interna
   #     KAFKA_TOPIC: aggregated_data
-  #     PYFLINK_CLASSPATH:  /opt/flink/lib/*:/opt/flink/opt/*  
-  #   volumes:
-  #     - ./create_model_lstm:/app/create_model_lstm  # (Facoltativo) monta artefatti dinamici
-  #   restart: unless-stopped           # Meno aggressivo di on-failure, utile per container persistenti
+  #   # Se vuoi esporre porte dal tuo consumer (es. per un'API di monitoraggio), aggiungile qui
+  #   # ports:
+  #   #   - "5000:5000"
+  #     # Non è strettamente necessario mappare volumi se gli artefatti sono copiati durante il build
+  #     # ma potresti farlo se vuoi aggiornare modello/scaler senza ricostruire l'immagine
+  #     # - ./model:/app/model
+  #     # - ./your_prediction_script_name.py:/app/your_prediction_script_name.py
+  #   restart: on-failure # Riavvia il container se fallisce
+
+  prediction_layer:
+    build:
+      context: .
+      dockerfile: ./prediction_layer/Dockerfile
+    container_name: prediction_layer
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_BROKER: kafka:9092
+      KAFKA_TOPIC_AGGREGATED: aggregated_data
+      KAFKA_TOPIC_DASHBOARD: prediction
+      PYFLINK_CLASSPATH:  /opt/flink/lib/*:/opt/flink/opt/*  
+    mem_limit: 4g
+    volumes:
+      - ./create_model_lstm:/app/create_model_lstm
+    restart: unless-stopped
+    cpus: 1 
 
 
 
-  # prediction_layer:
-  #   build: 
-  #     context: .
-  #     dockerfile: prediction_layer/Dockerfile
-  #   depends_on:
-  #     - kafka
-  #     - spark-master
-  #   #  - spark-worker
-  #   volumes:
-  #     - ./prediction_layer:/app
-  #   working_dir: /app
-  #   command: >
-  #     spark-submit
-  #     --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
-  #     prediction_layer.py
-  #   environment:
-  #     - PYSPARK_PYTHON=python3
-  #   restart: always
 
+### DASHBOARD 
 
-# ### DASHBOARD 
-
-#   dashboard:
-#     build:
-#       context: ./dashboard
-#       dockerfile: Dockerfile
-#     container_name: dashboard
-#     ports:
-#       - "8501:8501"
-#     depends_on:
-#       - kafka
-#     environment:
-#       - PYTHONUNBUFFERED=1
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: dashboard
+    ports:
+      - "8501:8501"
+    depends_on:
+      - kafka
+    environment:
+      - PYTHONUNBUFFERED=1
 
 # ## CLEANER MINIO
 

@@ -1,3 +1,170 @@
+
+
+
+
+
+#INIZIALE FUNZIONANTE
+
+
+
+# import streamlit as st
+# st.set_page_config(page_title="📈 Real-Time Kafka Dashboard", layout="wide")
+
+# from kafka import KafkaConsumer
+# import json
+# import pandas as pd
+# import plotly.graph_objects as go
+# from datetime import datetime, timedelta, timezone
+# from streamlit_autorefresh import st_autorefresh
+
+# # 🔁 Auto-refresh ogni 3 secondi
+# st_autorefresh(interval=3000, key="refresh")
+
+# # Tickers disponibili
+# TICKERS = [
+#     "AAPL", "MSFT", "NVDA", "AMZN", "META", "BRK.B", "GOOGL", "AVGO", "TSLA", "IBM",
+#     "LLY", "JPM", "V", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA",
+#     "CVX", "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO"
+# ]
+# selected_ticker = st.selectbox("Select a ticker:", TICKERS)
+
+# # Kafka consumer (una sola volta)
+# @st.cache_resource
+# def create_consumers():
+#     consumer_prices = KafkaConsumer(
+#         "stock_trades",
+#         bootstrap_servers="kafka:9092",
+#         value_deserializer=lambda x: json.loads(x.decode("utf-8")),
+#         auto_offset_reset="latest",
+#         group_id="dashboard-consumer-prices"
+#     )
+#     consumer_predictions = KafkaConsumer(
+#         "prediction",
+#         bootstrap_servers="kafka:9092",
+#         value_deserializer=lambda x: json.loads(x.decode("utf-8")),
+#         auto_offset_reset="latest",
+#         group_id="dashboard-consumer-predictions"
+#     )
+#     return consumer_prices, consumer_predictions
+
+# consumer_prices, consumer_predictions = create_consumers()
+
+# # Buffer dati in sessione
+# if "price_buffer" not in st.session_state:
+#     st.session_state.price_buffer = {}
+# if "prediction_buffer" not in st.session_state:
+#     st.session_state.prediction_buffer = {}
+
+# if selected_ticker not in st.session_state.price_buffer:
+#     st.session_state.price_buffer[selected_ticker] = []
+# if selected_ticker not in st.session_state.prediction_buffer:
+#     st.session_state.prediction_buffer[selected_ticker] = []
+
+# # === CONSUMO TOPIC PREZZI ===
+# records = consumer_prices.poll(timeout_ms=100)
+# for tp, messages in records.items():
+#     for msg in messages:
+#         data = msg.value
+#         if data["ticker"] != selected_ticker:
+#             continue
+#         try:
+#             ts = datetime.fromisoformat(data["timestamp"].replace(" ", "T"))
+#             if ts.tzinfo is None:
+#                 ts = ts.replace(tzinfo=timezone.utc)
+#             st.session_state.price_buffer[selected_ticker].append({
+#                 "timestamp": ts,
+#                 "price": float(data["price"])
+#             })
+#         except:
+#             continue
+
+# # === CONSUMO TOPIC PREVISIONI ===
+# records_pred = consumer_predictions.poll(timeout_ms=100)
+# for tp, messages in records_pred.items():
+#     for msg in messages:
+#         data = msg.value
+#         if data["ticker"] != selected_ticker:
+#             continue
+#         try:
+#             ts = datetime.fromisoformat(data["target_timestamp"].replace(" ", "T"))
+#             if ts.tzinfo is None:
+#                 ts = ts.replace(tzinfo=timezone.utc)
+#             st.session_state.prediction_buffer[selected_ticker].append({
+#                 "timestamp": ts,
+#                 "predicted_price": float(data["predicted_price"])
+#             })
+#         except:
+#             continue
+
+# # === FILTRA ULTIMI 5 MINUTI ===
+# now = datetime.now(timezone.utc)
+# cutoff = now - timedelta(minutes=5)
+
+# filtered_prices = [
+#     d for d in st.session_state.price_buffer[selected_ticker]
+#     if d["timestamp"] >= cutoff
+# ]
+# filtered_predictions = [
+#     d for d in st.session_state.prediction_buffer[selected_ticker]
+#     if d["timestamp"] >= cutoff
+# ]
+
+# # === GRAFICO ===
+# if not filtered_prices:
+#     st.warning("Waiting for recent data from Kafka...")
+# else:
+#     df_prices = pd.DataFrame(filtered_prices)
+#     df_prices["timestamp"] = pd.to_datetime(df_prices["timestamp"])
+
+#     fig = go.Figure()
+
+#     # Linea prezzi reali
+#     fig.add_trace(go.Scatter(
+#         x=df_prices["timestamp"],
+#         y=df_prices["price"],
+#         mode="lines+markers",
+#         name="Real price",
+#         line=dict(color="blue")
+#     ))
+
+#     # Linea previsioni
+#     if filtered_predictions:
+#         df_preds = pd.DataFrame(filtered_predictions)
+#         df_preds["timestamp"] = pd.to_datetime(df_preds["timestamp"])
+
+#         fig.add_trace(go.Scatter(
+#             x=df_preds["timestamp"],
+#             y=df_preds["predicted_price"],
+#             mode="markers+lines",
+#             name="Predicted price",
+#             line=dict(color="red", dash="dash")
+#         ))
+
+#     fig.update_layout(
+#         title=f"Price and forecast: {selected_ticker}",
+#         xaxis_title="Time",
+#         yaxis_title="Price ($)",
+#         template="plotly_white"
+#     )
+
+#     st.plotly_chart(fig, use_container_width=True)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import streamlit as st
 st.set_page_config(page_title="📈 Real-Time Kafka Dashboard", layout="wide")
 
@@ -8,10 +175,10 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta, timezone
 from streamlit_autorefresh import st_autorefresh
 
-# 🔁 Auto-refresh ogni 3 secondi
+# 🔁 Auto-refresh every 3 seconds
 st_autorefresh(interval=3000, key="refresh")
 
-# Tickers disponibili
+# Available tickers (ensure this list matches the tickers your models are trained for)
 TICKERS = [
     "AAPL", "MSFT", "NVDA", "AMZN", "META", "BRK.B", "GOOGL", "AVGO", "TSLA", "IBM",
     "LLY", "JPM", "V", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA",
@@ -19,18 +186,18 @@ TICKERS = [
 ]
 selected_ticker = st.selectbox("Select a ticker:", TICKERS)
 
-# Kafka consumer (una sola volta)
+# Kafka consumer (initialized once)
 @st.cache_resource
 def create_consumers():
     consumer_prices = KafkaConsumer(
-        "stock_trades",
+        "stock_trades", # This topic remains the same for real-time price data
         bootstrap_servers="kafka:9092",
         value_deserializer=lambda x: json.loads(x.decode("utf-8")),
         auto_offset_reset="latest",
         group_id="dashboard-consumer-prices"
     )
     consumer_predictions = KafkaConsumer(
-        "prediction",
+        "prediction", # <--- CHANGED: Now consuming from 'prediction' topic
         bootstrap_servers="kafka:9092",
         value_deserializer=lambda x: json.loads(x.decode("utf-8")),
         auto_offset_reset="latest",
@@ -40,54 +207,58 @@ def create_consumers():
 
 consumer_prices, consumer_predictions = create_consumers()
 
-# Buffer dati in sessione
+# Data buffer in session state
 if "price_buffer" not in st.session_state:
     st.session_state.price_buffer = {}
 if "prediction_buffer" not in st.session_state:
     st.session_state.prediction_buffer = {}
 
+# Initialize buffers for the selected ticker if they don't exist
 if selected_ticker not in st.session_state.price_buffer:
     st.session_state.price_buffer[selected_ticker] = []
 if selected_ticker not in st.session_state.prediction_buffer:
     st.session_state.prediction_buffer[selected_ticker] = []
 
-# === CONSUMO TOPIC PREZZI ===
+# --- CONSUME PRICE TOPIC ---
 records = consumer_prices.poll(timeout_ms=100)
 for tp, messages in records.items():
     for msg in messages:
         data = msg.value
-        if data["ticker"] != selected_ticker:
+        # Ensure 'ticker' and 'timestamp' keys exist before accessing
+        if "ticker" not in data or "timestamp" not in data or data["ticker"] != selected_ticker:
             continue
         try:
-            ts = datetime.fromisoformat(data["timestamp"].replace(" ", "T"))
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
+            # Assuming timestamp from stock_trades is ISO format without timezone, then setting UTC
+            ts = datetime.fromisoformat(data["timestamp"].replace("Z", "+00:00")).astimezone(timezone.utc)
             st.session_state.price_buffer[selected_ticker].append({
                 "timestamp": ts,
                 "price": float(data["price"])
             })
-        except:
+        except Exception as e:
+            st.error(f"Error processing price message: {e} - Data: {data}")
             continue
 
-# === CONSUMO TOPIC PREVISIONI ===
+# --- CONSUME PREDICTIONS TOPIC ---
 records_pred = consumer_predictions.poll(timeout_ms=100)
 for tp, messages in records_pred.items():
     for msg in messages:
         data = msg.value
-        if data["ticker"] != selected_ticker:
+        # Ensure 'ticker', 'timestamp', and 'prediction' keys exist before accessing
+        # The 'timestamp' key from the prediction service is the target_timestamp for the prediction
+        if "ticker" not in data or "timestamp" not in data or "prediction" not in data or data["ticker"] != selected_ticker:
             continue
         try:
-            ts = datetime.fromisoformat(data["target_timestamp"].replace(" ", "T"))
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
+            # Timestamp from the prediction service is already ISO format and should be handled correctly
+            ts = datetime.fromisoformat(data["timestamp"]).astimezone(timezone.utc)
             st.session_state.prediction_buffer[selected_ticker].append({
                 "timestamp": ts,
-                "predicted_price": float(data["predicted_price"])
+                "predicted_price": float(data["prediction"]) # <--- CHANGED: Key is now 'prediction'
             })
-        except:
+        except Exception as e:
+            st.error(f"Error processing prediction message: {e} - Data: {data}")
             continue
 
-# === FILTRA ULTIMI 5 MINUTI ===
+# --- FILTER LAST 5 MINUTES OF DATA ---
 now = datetime.now(timezone.utc)
 cutoff = now - timedelta(minutes=5)
 
@@ -100,16 +271,17 @@ filtered_predictions = [
     if d["timestamp"] >= cutoff
 ]
 
-# === GRAFICO ===
+# --- PLOTLY CHART ---
+st.header(f"Real-Time Price & Prediction for {selected_ticker}")
 if not filtered_prices:
-    st.warning("Waiting for recent data from Kafka...")
+    st.warning("Waiting for recent price data from Kafka...")
 else:
     df_prices = pd.DataFrame(filtered_prices)
     df_prices["timestamp"] = pd.to_datetime(df_prices["timestamp"])
 
     fig = go.Figure()
 
-    # Linea prezzi reali
+    # Real price line
     fig.add_trace(go.Scatter(
         x=df_prices["timestamp"],
         y=df_prices["price"],
@@ -118,7 +290,7 @@ else:
         line=dict(color="blue")
     ))
 
-    # Linea previsioni
+    # Prediction line
     if filtered_predictions:
         df_preds = pd.DataFrame(filtered_predictions)
         df_preds["timestamp"] = pd.to_datetime(df_preds["timestamp"])
@@ -130,15 +302,25 @@ else:
             name="Predicted price",
             line=dict(color="red", dash="dash")
         ))
+    else:
+        st.info("No recent predictions available for this ticker yet. Waiting for data...")
+
 
     fig.update_layout(
         title=f"Price and forecast: {selected_ticker}",
-        xaxis_title="Time",
+        xaxis_title="Time (UTC)", # Explicitly state UTC
         yaxis_title="Price ($)",
-        template="plotly_white"
+        template="plotly_white",
+        hovermode="x unified" # Improves hover experience
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
+
+
+
+
+
 
 
 
