@@ -1,0 +1,31 @@
+ticker_id,ticker,company_name,company_name2,is_active
+1,AAPL,Apple,null,TRUE
+2,MSFT,Microsoft,null,TRUE
+3,NVDA,Nvidia,null,TRUE
+4,AMZN,Amazon,null,TRUE
+5,META,Meta,Meta Platforms,TRUE
+6,ORCL,Oracle,null,TRUE
+7,GOOGL,Google,Alphabet Inc.,TRUE
+8,AVGO,Broadcom,Broadcom Inc.,TRUE
+9,TSLA,Tesla,Tesla Inc.,TRUE
+10,IBM,Big Blue,IBM,TRUE
+11,LLY,Eli Lilly,Eli Lilly and Company,TRUE
+12,JPM,JPMorgan,JPMorgan Chase,TRUE
+13,V,Visa,Visa Inc.,TRUE
+14,XOM,Exxon,ExxonMobil,TRUE
+15,NFLX,Netflix,null,TRUE
+16,COST,Costco,Costco Wholesale Corporation,TRUE
+17,UNH,UnitedHealth,UnitedHealth Group,TRUE
+18,JNJ,Johnson & Johnson,Johnson,TRUE
+19,PG,Procter,Procter & Gamble,TRUE
+20,MA,Mastercard,Mastercard Inc.,TRUE
+21,CVX,Chevron,Chevron Corporation,TRUE
+22,MRK,Merck,Merck & Co.,TRUE
+23,PEP,Pepsi,PepsiCo,TRUE
+24,ABBV,AbbVie,null,TRUE
+25,ADBE,Adobe,Adobe Inc.,TRUE
+26,WMT,Walmart,Walmart Inc.,TRUE
+27,BAC,Bank of America,BofA,TRUE
+28,HD,Home Depot,The Home Depot,TRUE
+29,KO,Coca-Cola,The Coca-Cola Company,TRUE
+30,TMO,Thermo Fisher,Thermo Fisher Scientific,TRUE

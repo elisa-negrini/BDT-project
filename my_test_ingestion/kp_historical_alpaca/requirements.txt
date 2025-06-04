@@ -1,0 +1,6 @@
+kafka-python
+pandas
+alpaca-py
+pyarrow
+requests
+psycopg2-binary
