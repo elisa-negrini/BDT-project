@@ -409,40 +409,40 @@ services:
 
 
 
-  prediction_consumer:
-    build:
-      context: ./prediction_layer # Il contesto di build è la directory corrente (dove si trova il Dockerfile)
-      dockerfile: Dockerfile # Il nome del tuo Dockerfile
-    container_name: prediction_layer
-    depends_on:
-      - kafka # Assicura che Kafka sia avviato prima del consumer
-    environment:
-      KAFKA_BROKER: kafka:9092 # Questo è CRUCIALE: usa il nome del servizio Kafka e la porta interna
-      KAFKA_TOPIC: aggregated_data
-    # Se vuoi esporre porte dal tuo consumer (es. per un'API di monitoraggio), aggiungile qui
-    # ports:
-    #   - "5000:5000"
-      # Non è strettamente necessario mappare volumi se gli artefatti sono copiati durante il build
-      # ma potresti farlo se vuoi aggiornare modello/scaler senza ricostruire l'immagine
-      # - ./model:/app/model
-      # - ./your_prediction_script_name.py:/app/your_prediction_script_name.py
-    restart: on-failure # Riavvia il container se fallisce
-
-  # prediction_layer:
+  # prediction_consumer:
   #   build:
-  #     context: .  # Contesto di build (dove c'è il Dockerfile)
-  #     dockerfile: ./prediction_layer/Dockerfile          # Nome esplicito del Dockerfile
+  #     context: ./prediction_layer # Il contesto di build è la directory corrente (dove si trova il Dockerfile)
+  #     dockerfile: Dockerfile # Il nome del tuo Dockerfile
   #   container_name: prediction_layer
   #   depends_on:
-  #     - kafka                         # Aspetta che Kafka sia pronto
+  #     - kafka # Assicura che Kafka sia avviato prima del consumer
   #   environment:
-  #     KAFKA_BROKER: kafka:9092        # Nome del servizio Kafka e porta interna
+  #     KAFKA_BROKER: kafka:9092 # Questo è CRUCIALE: usa il nome del servizio Kafka e la porta interna
   #     KAFKA_TOPIC: aggregated_data
-  #     PYFLINK_CLASSPATH:  /opt/flink/lib/*:/opt/flink/opt/*  
-  #   volumes:
-  #     - ./create_model_lstm:/app/create_model_lstm  # (Facoltativo) monta artefatti dinamici
-  #   restart: unless-stopped           # Meno aggressivo di on-failure, utile per container persistenti
+  #   # Se vuoi esporre porte dal tuo consumer (es. per un'API di monitoraggio), aggiungile qui
+  #   # ports:
+  #   #   - "5000:5000"
+  #     # Non è strettamente necessario mappare volumi se gli artefatti sono copiati durante il build
+  #     # ma potresti farlo se vuoi aggiornare modello/scaler senza ricostruire l'immagine
+  #     # - ./model:/app/model
+  #     # - ./your_prediction_script_name.py:/app/your_prediction_script_name.py
+  #   restart: on-failure # Riavvia il container se fallisce
 
+  prediction_layer:
+    build:
+      context: .  # Contesto di build (dove c'è il Dockerfile)
+      dockerfile: ./prediction_layer/Dockerfile          # Nome esplicito del Dockerfile
+    container_name: prediction_layer
+    depends_on:
+      - kafka                         # Aspetta che Kafka sia pronto
+    environment:
+      KAFKA_BROKER: kafka:9092        # Nome del servizio Kafka e porta interna
+      KAFKA_TOPIC: aggregated_data
+      PYFLINK_CLASSPATH:  /opt/flink/lib/*:/opt/flink/opt/*  
+    volumes:
+      - ./create_model_lstm:/app/create_model_lstm  # (Facoltativo) monta artefatti dinamici
+    restart: unless-stopped           # Meno aggressivo di on-failure, utile per container persistenti
+    cpus: 3                    # Limita l'uso della CPU a 1 core
 
 
   # prediction_layer:
@@ -467,17 +467,17 @@ services:
 
 # ### DASHBOARD 
 
-#   dashboard:
-#     build:
-#       context: ./dashboard
-#       dockerfile: Dockerfile
-#     container_name: dashboard
-#     ports:
-#       - "8501:8501"
-#     depends_on:
-#       - kafka
-#     environment:
-#       - PYTHONUNBUFFERED=1
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: dashboard
+    ports:
+      - "8501:8501"
+    depends_on:
+      - kafka
+    environment:
+      - PYTHONUNBUFFERED=1
 
 # ## CLEANER MINIO
 
