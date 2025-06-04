@@ -299,258 +299,258 @@
 
 # # IN TEORIA QUELLO PIU SENSATO MA HA LOSS MOLTO ALTA E CI METTE MOLTO NON ANCORA PROVATO
 
-import os
-import numpy as np
-import pandas as pd
-import tensorflow as tf
-from tensorflow.keras import layers, models
-from sqlalchemy import create_engine, text
-import psycopg2 # For initial DB connection check
-import time # For retry sleep
-from psycopg2 import OperationalError # Specific exception for DB connection issues
-from sklearn.preprocessing import MinMaxScaler # Or StandardScaler
-import sys
-from tensorflow.keras.optimizers import Adam
+# import os
+# import numpy as np
+# import pandas as pd
+# import tensorflow as tf
+# from tensorflow.keras import layers, models
+# from sqlalchemy import create_engine, text
+# import psycopg2 # For initial DB connection check
+# import time # For retry sleep
+# from psycopg2 import OperationalError # Specific exception for DB connection issues
+# from sklearn.preprocessing import MinMaxScaler # Or StandardScaler
+# import sys
+# from tensorflow.keras.optimizers import Adam
 
-# --- Configure TensorFlow CPU threads ---
-num_cpu_cores = os.cpu_count()
-if num_cpu_cores:
-    tf.config.threading.set_inter_op_parallelism_threads(num_cpu_cores)
-    tf.config.threading.set_intra_op_parallelism_threads(num_cpu_cores)
-    print(f"\u2705 TensorFlow configured to use {num_cpu_cores} CPU cores for parallelism.")
-else:
-    print("\u274C Could not determine number of CPU cores. TensorFlow using default threading.")
+# # --- Configure TensorFlow CPU threads ---
+# num_cpu_cores = os.cpu_count()
+# if num_cpu_cores:
+#     tf.config.threading.set_inter_op_parallelism_threads(num_cpu_cores)
+#     tf.config.threading.set_intra_op_parallelism_threads(num_cpu_cores)
+#     print(f"\u2705 TensorFlow configured to use {num_cpu_cores} CPU cores for parallelism.")
+# else:
+#     print("\u274C Could not determine number of CPU cores. TensorFlow using default threading.")
 
-# --- Configuration Parameters ---
-N_STEPS = 5 # Number of past time steps to consider for each prediction
-BATCH_SIZE = 128
-EPOCHS = 7
+# # --- Configuration Parameters ---
+# N_STEPS = 5 # Number of past time steps to consider for each prediction
+# BATCH_SIZE = 128
+# EPOCHS = 7
 
-# --- Chronological Split Date ---
-TRAIN_VAL_SPLIT_DATE = '2024-10-01' # Choose an appropriate date for your data
+# # --- Chronological Split Date ---
+# TRAIN_VAL_SPLIT_DATE = '2024-10-01' # Choose an appropriate date for your data
 
-# --- Database Connection Retry Logic ---
-def connect_to_db_with_retries(max_retries=15, delay=5):
-    """
-    Attempts to connect to the PostgreSQL database with retries.
-    This ensures the application waits for the DB to be ready.
-    """
-    db_name = os.getenv("DB_NAME", "aggregated-data")
-    db_user = os.getenv("DB_USER", "admin")
-    db_password = os.getenv("DB_PASSWORD", "admin123")
-    db_host = os.getenv("DB_HOST", "postgre") # Use service name 'postgre' for Docker Compose
-    db_port = os.getenv("DB_PORT", "5432")
+# # --- Database Connection Retry Logic ---
+# def connect_to_db_with_retries(max_retries=15, delay=5):
+#     """
+#     Attempts to connect to the PostgreSQL database with retries.
+#     This ensures the application waits for the DB to be ready.
+#     """
+#     db_name = os.getenv("DB_NAME", "aggregated-data")
+#     db_user = os.getenv("DB_USER", "admin")
+#     db_password = os.getenv("DB_PASSWORD", "admin123")
+#     db_host = os.getenv("DB_HOST", "postgre") # Use service name 'postgre' for Docker Compose
+#     db_port = os.getenv("DB_PORT", "5432")
 
-    db_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+#     db_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
 
-    for i in range(max_retries):
-        try:
-            print(f"Attempting to connect to PostgreSQL (Attempt {i+1}/{max_retries})...")
-            engine = create_engine(db_url)
-            # Test connection immediately
-            with engine.connect() as connection:
-                connection.execute(text('SELECT 1')) 
-            print(f"\u2705 Successfully connected to PostgreSQL!")
-            return engine
-        except OperationalError as e:
-            print(f"PostgreSQL connection failed: {e}")
-            if i < max_retries - 1:
-                print(f"Retrying in {delay} seconds...")
-                time.sleep(delay)
-            else:
-                print("Max retries reached. Could not connect to PostgreSQL. Exiting.")
-                raise 
-        except Exception as e:
-            print(f"An unexpected error occurred during database connection: {e}")
-            if i < max_retries - 1:
-                print(f"Retrying in {delay} seconds...")
-                time.sleep(delay)
-            else:
-                print("Max retries reached due to unexpected error. Exiting.")
-                raise
-    return None
+#     for i in range(max_retries):
+#         try:
+#             print(f"Attempting to connect to PostgreSQL (Attempt {i+1}/{max_retries})...")
+#             engine = create_engine(db_url)
+#             # Test connection immediately
+#             with engine.connect() as connection:
+#                 connection.execute(text('SELECT 1')) 
+#             print(f"\u2705 Successfully connected to PostgreSQL!")
+#             return engine
+#         except OperationalError as e:
+#             print(f"PostgreSQL connection failed: {e}")
+#             if i < max_retries - 1:
+#                 print(f"Retrying in {delay} seconds...")
+#                 time.sleep(delay)
+#             else:
+#                 print("Max retries reached. Could not connect to PostgreSQL. Exiting.")
+#                 raise 
+#         except Exception as e:
+#             print(f"An unexpected error occurred during database connection: {e}")
+#             if i < max_retries - 1:
+#                 print(f"Retrying in {delay} seconds...")
+#                 time.sleep(delay)
+#             else:
+#                 print("Max retries reached due to unexpected error. Exiting.")
+#                 raise
+#     return None
 
-# --- Generator Function for Sequences (Modified for chronological split) ---
-def sequence_generator(db_engine, ticker_names_to_process, n_steps, feature_cols, scaler, ticker_name_to_code_map, start_date=None, end_date=None):
-    """
-    Generates sequences and corresponding targets by loading data for one ticker at a time,
-    within a specified date range.
-    """
-    for ticker_name_val in ticker_names_to_process:
-        try:
-            # Load data for the current ticker within the specified date range
-            query = f"SELECT * FROM aggregated_data WHERE ticker = '{ticker_name_val}'"
-            if start_date:
-                query += f" AND timestamp >= '{start_date}'"
-            if end_date:
-                query += f" AND timestamp < '{end_date}'" # Exclude end_date for training, include for validation
-            query += " ORDER BY timestamp"
+# # --- Generator Function for Sequences (Modified for chronological split) ---
+# def sequence_generator(db_engine, ticker_names_to_process, n_steps, feature_cols, scaler, ticker_name_to_code_map, start_date=None, end_date=None):
+#     """
+#     Generates sequences and corresponding targets by loading data for one ticker at a time,
+#     within a specified date range.
+#     """
+#     for ticker_name_val in ticker_names_to_process:
+#         try:
+#             # Load data for the current ticker within the specified date range
+#             query = f"SELECT * FROM aggregated_data WHERE ticker = '{ticker_name_val}'"
+#             if start_date:
+#                 query += f" AND timestamp >= '{start_date}'"
+#             if end_date:
+#                 query += f" AND timestamp < '{end_date}'" # Exclude end_date for training, include for validation
+#             query += " ORDER BY timestamp"
             
-            ticker_df = pd.read_sql(query, db_engine)
+#             ticker_df = pd.read_sql(query, db_engine)
 
-            # Rest of the generator's code remains the same:
-            # Preprocessing for the current ticker_df (similar to main script)
-            ticker_df = ticker_df.dropna() # Drop NaNs for this specific ticker
-            ticker_df['timestamp'] = pd.to_datetime(ticker_df['timestamp'], utc=True)
-            ticker_df = ticker_df.sort_values('timestamp') # Ensure sorted by timestamp
-            ticker_df = ticker_df.rename(columns={'y1': 'y'})
+#             # Rest of the generator's code remains the same:
+#             # Preprocessing for the current ticker_df (similar to main script)
+#             ticker_df = ticker_df.dropna() # Drop NaNs for this specific ticker
+#             ticker_df['timestamp'] = pd.to_datetime(ticker_df['timestamp'], utc=True)
+#             ticker_df = ticker_df.sort_values('timestamp') # Ensure sorted by timestamp
+#             ticker_df = ticker_df.rename(columns={'y1': 'y'})
 
-            # Create 'ticker_code' column in memory using the global mapping
-            ticker_df['ticker_code'] = ticker_df['ticker'].map(ticker_name_to_code_map).astype(np.int16)
+#             # Create 'ticker_code' column in memory using the global mapping
+#             ticker_df['ticker_code'] = ticker_df['ticker'].map(ticker_name_to_code_map).astype(np.int16)
 
-            # Apply the *pre-fitted* scaler to the features of this ticker's data
-            if not ticker_df.empty:
-                ticker_df[feature_cols] = scaler.transform(ticker_df[feature_cols])
+#             # Apply the *pre-fitted* scaler to the features of this ticker's data
+#             if not ticker_df.empty:
+#                 ticker_df[feature_cols] = scaler.transform(ticker_df[feature_cols])
 
-            if len(ticker_df) >= n_steps + 1: 
-                ticker_features = ticker_df[feature_cols].values.astype(np.float32)
-                ticker_target = ticker_df['y'].values.astype(np.float32)
+#             if len(ticker_df) >= n_steps + 1: 
+#                 ticker_features = ticker_df[feature_cols].values.astype(np.float32)
+#                 ticker_target = ticker_df['y'].values.astype(np.float32)
                 
-                sequences = np.lib.stride_tricks.sliding_window_view(ticker_features, (n_steps, ticker_features.shape[1]))
-                sequences = sequences.squeeze(axis=1)
+#                 sequences = np.lib.stride_tricks.sliding_window_view(ticker_features, (n_steps, ticker_features.shape[1]))
+#                 sequences = sequences.squeeze(axis=1)
 
-                targets = ticker_target[n_steps:]
+#                 targets = ticker_target[n_steps:]
                 
-                final_sequences = sequences[:-1] 
-                final_targets = targets
+#                 final_sequences = sequences[:-1] 
+#                 final_targets = targets
                 
-                final_ticker_codes = np.full(len(final_targets), ticker_df['ticker_code'].iloc[0], dtype=np.int32)
+#                 final_ticker_codes = np.full(len(final_targets), ticker_df['ticker_code'].iloc[0], dtype=np.int32)
                 
-                if len(final_sequences) == len(final_targets) and len(final_sequences) > 0:
-                    for i in range(len(final_sequences)):
-                        yield (final_sequences[i], final_ticker_codes[i]), final_targets[i]
-                else:
-                    print(f"  \u274C Warning: Inconsistent lengths for ticker_name {ticker_name_val} in range {start_date}-{end_date} after slicing in generator. Sequences: {len(final_sequences)}, Targets: {len(final_targets)}")
-            else:
-                pass # Not enough data for this ticker in this date range
-        except Exception as e:
-            print(f"  \u274C Error processing ticker_name {ticker_name_val} in range {start_date}-{end_date}: {e}")
-            continue # Continue to the next ticker
+#                 if len(final_sequences) == len(final_targets) and len(final_sequences) > 0:
+#                     for i in range(len(final_sequences)):
+#                         yield (final_sequences[i], final_ticker_codes[i]), final_targets[i]
+#                 else:
+#                     print(f"  \u274C Warning: Inconsistent lengths for ticker_name {ticker_name_val} in range {start_date}-{end_date} after slicing in generator. Sequences: {len(final_sequences)}, Targets: {len(final_targets)}")
+#             else:
+#                 pass # Not enough data for this ticker in this date range
+#         except Exception as e:
+#             print(f"  \u274C Error processing ticker_name {ticker_name_val} in range {start_date}-{end_date}: {e}")
+#             continue # Continue to the next ticker
 
-# --- Main Training Workflow ---
-if __name__ == "__main__":
-    print("\U0001F535 Step 1: Connessione e caricamento dati")
-    engine = connect_to_db_with_retries()
-    if engine is None:
-        sys.exit(1)
+# # --- Main Training Workflow ---
+# if __name__ == "__main__":
+#     print("\U0001F535 Step 1: Connessione e caricamento dati")
+#     engine = connect_to_db_with_retries()
+#     if engine is None:
+#         sys.exit(1)
 
-    # --- Initial Data Load for Feature Columns and Global Ticker Mapping ---
-    try:
-        print("  \u27A1 Caricamento di un campione per identificare le colonne delle features...")
-        # Load a small sample (without 'ticker_code' in SELECT, as it's not in DB)
-        sample_df = pd.read_sql("SELECT * FROM aggregated_data LIMIT 10000", engine) 
+#     # --- Initial Data Load for Feature Columns and Global Ticker Mapping ---
+#     try:
+#         print("  \u27A1 Caricamento di un campione per identificare le colonne delle features...")
+#         # Load a small sample (without 'ticker_code' in SELECT, as it's not in DB)
+#         sample_df = pd.read_sql("SELECT * FROM aggregated_data LIMIT 10000", engine) 
         
-        if sample_df.empty:
-            print("\u274C Nessun dato trovato nel database o campione troppo piccolo.")
-            sys.exit(1)
+#         if sample_df.empty:
+#             print("\u274C Nessun dato trovato nel database o campione troppo piccolo.")
+#             sys.exit(1)
 
-        # Rename target column for consistency
-        sample_df = sample_df.rename(columns={'y1': 'y'})
+#         # Rename target column for consistency
+#         sample_df = sample_df.rename(columns={'y1': 'y'})
 
-        # Determine feature columns from the sample. Exclude 'timestamp', 'ticker', 'y'.
-        feature_cols = [c for c in sample_df.columns if c not in ['timestamp', 'ticker', 'y']]
-        num_features = len(feature_cols)
+#         # Determine feature columns from the sample. Exclude 'timestamp', 'ticker', 'y'.
+#         feature_cols = [c for c in sample_df.columns if c not in ['timestamp', 'ticker', 'y']]
+#         num_features = len(feature_cols)
         
-        print("  \u27A1 Caricamento di tutti i nomi dei ticker unici per creare una mappatura consistente...")
-        # Get all distinct ticker names (strings) from the database
-        distinct_ticker_names_df = pd.read_sql("SELECT DISTINCT ticker FROM aggregated_data", engine)
+#         print("  \u27A1 Caricamento di tutti i nomi dei ticker unici per creare una mappatura consistente...")
+#         # Get all distinct ticker names (strings) from the database
+#         distinct_ticker_names_df = pd.read_sql("SELECT DISTINCT ticker FROM aggregated_data", engine)
         
-        if distinct_ticker_names_df.empty:
-            print("\u274C Nessun ticker unico trovato nel database.")
-            sys.exit(1)
+#         if distinct_ticker_names_df.empty:
+#             print("\u274C Nessun ticker unico trovato nel database.")
+#             sys.exit(1)
         
-        # Create a consistent mapping from ticker name (string) to integer code
-        # We use a temporary Series to leverage .cat.codes for sequential integer assignment
-        temp_ticker_series = distinct_ticker_names_df['ticker'].astype('category')
-        ticker_name_to_code_map = {name: code for code, name in enumerate(temp_ticker_series.cat.categories)}
-        num_unique_tickers = len(temp_ticker_series.cat.categories)
+#         # Create a consistent mapping from ticker name (string) to integer code
+#         # We use a temporary Series to leverage .cat.codes for sequential integer assignment
+#         temp_ticker_series = distinct_ticker_names_df['ticker'].astype('category')
+#         ticker_name_to_code_map = {name: code for code, name in enumerate(temp_ticker_series.cat.categories)}
+#         num_unique_tickers = len(temp_ticker_series.cat.categories)
 
-        print(f"\u2705 Identificate {num_features} features e {num_unique_tickers} ticker unici (codici numerici).")
+#         print(f"\u2705 Identificate {num_features} features e {num_unique_tickers} ticker unici (codici numerici).")
 
-    except Exception as e:
-        print(f"\u274C Errore durante il caricamento del campione o dei ticker unici: {e}")
-        sys.exit(1)
+#     except Exception as e:
+#         print(f"\u274C Errore durante il caricamento del campione o dei ticker unici: {e}")
+#         sys.exit(1)
 
-    print("\n\U0001F535 Step 2.5: Scaling delle features (su un campione)")
-    # Initialize and fit the scaler on the numerical features of the sample data.
-    # IMPORTANT: In a real-world scenario with chronological splits, the scaler
-    # should ideally be fitted ONLY on the training data to avoid data leakage.
-    # For this example, we fit it on a general sample.
-    scaler = MinMaxScaler()
-    scaler.fit(sample_df[feature_cols]) 
-    print("\u2705 Scaler (MinMaxScaler) addestrato su un campione di dati.")
+#     print("\n\U0001F535 Step 2.5: Scaling delle features (su un campione)")
+#     # Initialize and fit the scaler on the numerical features of the sample data.
+#     # IMPORTANT: In a real-world scenario with chronological splits, the scaler
+#     # should ideally be fitted ONLY on the training data to avoid data leakage.
+#     # For this example, we fit it on a general sample.
+#     scaler = MinMaxScaler()
+#     scaler.fit(sample_df[feature_cols]) 
+#     print("\u2705 Scaler (MinMaxScaler) addestrato su un campione di dati.")
         
-    print("\n\U0001F535 Step 3: Preparazione Dati per Generator (Split Cronologico)")
+#     print("\n\U0001F535 Step 3: Preparazione Dati per Generator (Split Cronologico)")
 
-    # Now, we use all unique ticker names for both train and validation sets,
-    # but the data retrieved by the generator will be split by date.
-    all_unique_ticker_names = list(ticker_name_to_code_map.keys())
+#     # Now, we use all unique ticker names for both train and validation sets,
+#     # but the data retrieved by the generator will be split by date.
+#     all_unique_ticker_names = list(ticker_name_to_code_map.keys())
 
-    print(f"\u2705 Tutti i {len(all_unique_ticker_names)} ticker verranno usati sia per il training che per la validazione con split cronologico.")
+#     print(f"\u2705 Tutti i {len(all_unique_ticker_names)} ticker verranno usati sia per il training che per la validazione con split cronologico.")
 
-    # Create TensorFlow Datasets using from_generator
-    # Data for training (all tickers, up to TRAIN_VAL_SPLIT_DATE)
-    dataset_train = tf.data.Dataset.from_generator(
-        lambda: sequence_generator(engine, all_unique_ticker_names, N_STEPS, feature_cols, scaler, ticker_name_to_code_map, end_date=TRAIN_VAL_SPLIT_DATE),
-        output_types=( (tf.float32, tf.int32), tf.float32 ), 
-        output_shapes=( (tf.TensorShape([N_STEPS, num_features]), tf.TensorShape([])), tf.TensorShape([]) )
-    )
-    dataset_train = dataset_train.shuffle(1000).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+#     # Create TensorFlow Datasets using from_generator
+#     # Data for training (all tickers, up to TRAIN_VAL_SPLIT_DATE)
+#     dataset_train = tf.data.Dataset.from_generator(
+#         lambda: sequence_generator(engine, all_unique_ticker_names, N_STEPS, feature_cols, scaler, ticker_name_to_code_map, end_date=TRAIN_VAL_SPLIT_DATE),
+#         output_types=( (tf.float32, tf.int32), tf.float32 ), 
+#         output_shapes=( (tf.TensorShape([N_STEPS, num_features]), tf.TensorShape([])), tf.TensorShape([]) )
+#     )
+#     dataset_train = dataset_train.shuffle(1000).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
 
-    # Data for validation (all tickers, from TRAIN_VAL_SPLIT_DATE onwards)
-    dataset_val = tf.data.Dataset.from_generator(
-        lambda: sequence_generator(engine, all_unique_ticker_names, N_STEPS, feature_cols, scaler, ticker_name_to_code_map, start_date=TRAIN_VAL_SPLIT_DATE),
-        output_types=( (tf.float32, tf.int32), tf.float32 ),
-        output_shapes=( (tf.TensorShape([N_STEPS, num_features]), tf.TensorShape([])), tf.TensorShape([]) )
-    )
-    dataset_val = dataset_val.batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+#     # Data for validation (all tickers, from TRAIN_VAL_SPLIT_DATE onwards)
+#     dataset_val = tf.data.Dataset.from_generator(
+#         lambda: sequence_generator(engine, all_unique_ticker_names, N_STEPS, feature_cols, scaler, ticker_name_to_code_map, start_date=TRAIN_VAL_SPLIT_DATE),
+#         output_types=( (tf.float32, tf.int32), tf.float32 ),
+#         output_shapes=( (tf.TensorShape([N_STEPS, num_features]), tf.TensorShape([])), tf.TensorShape([]) )
+#     )
+#     dataset_val = dataset_val.batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
 
-    print(f"\u2705 Dataset generators pronti per il training e la validazione con split cronologico.")
+#     print(f"\u2705 Dataset generators pronti per il training e la validazione con split cronologico.")
 
-    print("\n\U0001F535 Step 4: Costruzione modello")
-    input_seq = layers.Input(shape=(N_STEPS, num_features), name='input_seq') 
-    input_ticker = layers.Input(shape=(), dtype='int32', name='input_ticker')
+#     print("\n\U0001F535 Step 4: Costruzione modello")
+#     input_seq = layers.Input(shape=(N_STEPS, num_features), name='input_seq') 
+#     input_ticker = layers.Input(shape=(), dtype='int32', name='input_ticker')
 
-    # Use num_unique_tickers (the count of distinct integer codes) for the embedding layer
-    ticker_embedding = layers.Embedding(input_dim=num_unique_tickers, output_dim=8)(input_ticker)
-    ticker_embedding = layers.RepeatVector(N_STEPS)(ticker_embedding) 
+#     # Use num_unique_tickers (the count of distinct integer codes) for the embedding layer
+#     ticker_embedding = layers.Embedding(input_dim=num_unique_tickers, output_dim=8)(input_ticker)
+#     ticker_embedding = layers.RepeatVector(N_STEPS)(ticker_embedding) 
 
-    x = layers.Concatenate()([input_seq, ticker_embedding])
+#     x = layers.Concatenate()([input_seq, ticker_embedding])
 
-    x = layers.LSTM(64, return_sequences=False)(x) 
-    x = layers.Dense(32, activation='relu')(x) 
-    output = layers.Dense(1)(x) 
+#     x = layers.LSTM(64, return_sequences=False)(x) 
+#     x = layers.Dense(32, activation='relu')(x) 
+#     output = layers.Dense(1)(x) 
 
+# #     model = models.Model(inputs=[input_seq, input_ticker], outputs=output)
+# #     # Crea un'istanza dell'ottimizzatore Adam con il learning rate personalizzato
+# #     optimizer = Adam(learning_rate=CUSTOM_LEARNING_RATE) 
+
+# #     # Compila il modello passando l'istanza dell'ottimizzatore
+# #     model.compile(optimizer=optimizer, loss='mse') 
+# #     model.summary() 
+# #     print("\u2705 Modello costruito")
 #     model = models.Model(inputs=[input_seq, input_ticker], outputs=output)
-#     # Crea un'istanza dell'ottimizzatore Adam con il learning rate personalizzato
-#     optimizer = Adam(learning_rate=CUSTOM_LEARNING_RATE) 
+#     #model.compile(optimizer='adam', loss='mse') 
+#     optimizer = Adam(learning_rate=0.01) 
 
 #     # Compila il modello passando l'istanza dell'ottimizzatore
 #     model.compile(optimizer=optimizer, loss='mse') 
 #     model.summary() 
-#     print("\u2705 Modello costruito")
-    model = models.Model(inputs=[input_seq, input_ticker], outputs=output)
-    #model.compile(optimizer='adam', loss='mse') 
-    optimizer = Adam(learning_rate=0.01) 
+#     print("\u2705 Modello2 costruito")
 
-    # Compila il modello passando l'istanza dell'ottimizzatore
-    model.compile(optimizer=optimizer, loss='mse') 
-    model.summary() 
-    print("\u2705 Modello2 costruito")
+#     print("\n\U0001F535 Step 5: Training")
+#     history = model.fit(dataset_train, validation_data=dataset_val, epochs=EPOCHS)
+#     print("\u2705 Training completato")
 
-    print("\n\U0001F535 Step 5: Training")
-    history = model.fit(dataset_train, validation_data=dataset_val, epochs=EPOCHS)
-    print("\u2705 Training completato")
-
-    print("\n\U0001F535 Step 6: Salvataggio modello")
-    model_save_path = "model"
-    os.makedirs(model_save_path, exist_ok=True)
+#     print("\n\U0001F535 Step 6: Salvataggio modello")
+#     model_save_path = "model"
+#     os.makedirs(model_save_path, exist_ok=True)
     
-    model_filename = os.path.join(model_save_path, "lstm_multi_ticker2.h5")
-    model.save(model_filename)
-    print(f"\u2705 Modello multi-ticker salvato in {model_filename}")
+#     model_filename = os.path.join(model_save_path, "lstm_multi_ticker2.h5")
+#     model.save(model_filename)
+#     print(f"\u2705 Modello multi-ticker salvato in {model_filename}")
 
-    print("\n--- Training Pipeline Completed ---")
+#     print("\n--- Training Pipeline Completed ---")
 
 
 
@@ -1432,3 +1432,1916 @@ if __name__ == "__main__":
 #     print(f"\u2705 Modello multi-ticker salvato in {model_filename}")
 
 #     print("\n--- Training Pipeline Completed ---")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+###########################################################################
+#
+#
+#                      con lag 1 ticker 
+#
+#
+##########################################################################
+
+# import os
+# import numpy as np
+# import pandas as pd
+# import tensorflow as tf
+# from tensorflow.keras import layers, models
+# from sklearn.model_selection import train_test_split
+# from sqlalchemy import create_engine, text
+# import psycopg2
+# import time
+# from psycopg2 import OperationalError
+# from sklearn.preprocessing import MinMaxScaler
+# import joblib # Import per salvare/caricare lo scaler
+# import sys
+
+# # --- Configurazione GPU (se applicabile) ---
+# num_cpu_cores = os.cpu_count()
+# if num_cpu_cores:
+#     tf.config.threading.set_inter_op_parallelism_threads(num_cpu_cores)
+#     tf.config.threading.set_intra_op_parallelism_threads(num_cpu_cores)
+#     print(f"\u2705 TensorFlow configured to use {num_cpu_cores} CPU cores for parallelism.")
+# else:
+#     print("\u274C Could not determine number of CPU cores. TensorFlow using default threading.")
+
+# # --- Configurazione Parametri ---
+# N_STEPS = 5 # Numero di passi temporali passati da considerare
+# BATCH_SIZE = 256
+# EPOCHS = 10
+# TARGET_TICKER = "AAPL" # <--- Definisci qui il ticker specifico per cui addestrare il modello
+
+# # --- Percorsi per il salvataggio degli artefatti ---
+# MODEL_SAVE_PATH = "model"
+# # Il nome del file del modello includerà il ticker specifico
+# MODEL_FILENAME = os.path.join(MODEL_SAVE_PATH, f"lstm_model_{TARGET_TICKER}.h5")
+# # Il nome del file dello scaler includerà il ticker specifico
+# SCALER_FILENAME = os.path.join(MODEL_SAVE_PATH, f"scaler_{TARGET_TICKER}.pkl")
+
+# # --- Logica di Retry per la Connessione al Database ---
+# def connect_to_db_with_retries(max_retries=15, delay=5):
+#     db_name = os.getenv("DB_NAME", "aggregated-data")
+#     db_user = os.getenv("DB_USER", "admin")
+#     db_password = os.getenv("DB_PASSWORD", "admin123")
+#     db_host = os.getenv("DB_HOST", "postgre")
+#     db_port = os.getenv("DB_PORT", "5432")
+
+#     db_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+
+#     for i in range(max_retries):
+#         try:
+#             print(f"Tentativo di connessione a PostgreSQL (Tentativo {i+1}/{max_retries})...")
+#             engine = create_engine(db_url)
+#             with engine.connect() as connection:
+#                 connection.execute(text('SELECT 1'))
+#             print(f"\u2705 Connesso a PostgreSQL con successo!")
+#             return engine
+#         except OperationalError as e:
+#             print(f"Connessione PostgreSQL fallita: {e}")
+#             if i < max_retries - 1:
+#                 print(f"Riprovo tra {delay} secondi...")
+#                 time.sleep(delay)
+#             else:
+#                 print("Max tentativi raggiunti. Impossibile connettersi a PostgreSQL. Uscita.")
+#                 raise
+#         except Exception as e:
+#             print(f"Si è verificato un errore inatteso durante la connessione al database: {e}")
+#             if i < max_retries - 1:
+#                 print(f"Riprovo tra {delay} secondi...")
+#                 time.sleep(delay)
+#             else:
+#                 print("Max tentativi raggiunti a causa di errore inatteso. Uscita.")
+#                 raise
+#     return None
+
+# # --- Main Training Workflow ---
+# if __name__ == "__main__":
+#     print("\U0001F535 Step 1: Connessione e Caricamento Dati per Ticker Specifico")
+#     engine = connect_to_db_with_retries()
+#     if engine is None:
+#         sys.exit(1)
+
+#     # Carica solo i dati per il ticker specifico
+#     query = f"SELECT * FROM aggregated_data WHERE ticker = '{TARGET_TICKER}' ORDER BY timestamp"
+#     df = pd.read_sql(query, engine)
+#     print(f"\u2705 Dati caricati per ticker '{TARGET_TICKER}': {df.shape}")
+
+#     if df.empty:
+#         print(f"\u274C Nessun dato trovato per il ticker '{TARGET_TICKER}'. Uscita.")
+#         sys.exit(1)
+
+#     print("\n\U0001F535 Step 2: Preprocessing e Ottimizzazione Memoria")
+#     initial_rows = df.shape[0]
+#     df = df.dropna()
+#     print(f"  \u27A1 Rimosse {initial_rows - df.shape[0]} righe con NaNs. Rimanenti: {df.shape[0]}")
+
+#     df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
+#     df = df.sort_values('timestamp') # Non serve ordinare per ticker, è già uno solo
+
+#     # Ottimizzazione tipi di dati
+#     for col in df.select_dtypes(include=['float64']).columns:
+#         df[col] = df[col].astype(np.float32)
+#     for col in df.select_dtypes(include=['int64']).columns:
+#         if df[col].min() >= np.iinfo(np.int8).min and df[col].max() <= np.iinfo(np.int8).max:
+#             df[col] = df[col].astype(np.int8)
+#         elif df[col].min() >= np.iinfo(np.int16).min and df[col].max() <= np.iinfo(np.int16).max:
+#             df[col] = df[col].astype(np.int16)
+#         elif df[col].min() >= np.iinfo(np.int32).min and df[col].max() <= np.iinfo(np.int32).max:
+#             df[col] = df[col].astype(np.int32)
+    
+#     # Rimuovi la colonna 'ticker' e 'ticker_code' se non sono più necessarie per le features
+#     # Visto che il modello è specifico per il ticker, queste colonne non saranno feature di input
+#     if 'ticker' in df.columns:
+#         df = df.drop(columns=['ticker'])
+#     if 'ticker_code' in df.columns: # Nel codice originale era generato qui, non è più necessario
+#         df = df.drop(columns=['ticker_code'])
+
+#     df = df.rename(columns={'y1': 'y'})
+#     feature_cols = [c for c in df.columns if c not in ['timestamp', 'y']] # Ora ticker non è più tra le colonne
+
+#     print(f"\u2705 Preprocessing completato. Features identificate: {feature_cols}")
+
+#     print("\n\U0001F535 Step 2.5: Scaling delle features")
+#     scaler = MinMaxScaler()
+#     # Fit e transform solo sulle feature del ticker specifico
+#     df[feature_cols] = scaler.fit_transform(df[feature_cols])
+#     print("\u2705 Features scalate tra 0 e 1 (MinMaxScaler).")
+
+#     # --- SALVA LO SCALER ---
+#     os.makedirs(MODEL_SAVE_PATH, exist_ok=True)
+#     joblib.dump(scaler, SCALER_FILENAME)
+#     print(f"\u2705 Scaler salvato in {SCALER_FILENAME}")
+
+#     print("\n\U0001F535 Step 3: Creazione Sequenze Ottimizzata")
+#     if len(df) < N_STEPS + 1: # Hai bisogno di N_STEPS per la sequenza e 1 per il target
+#         print(f"\u274C Dati insufficienti per il ticker '{TARGET_TICKER}' per creare sequenze (necessari almeno {N_STEPS + 1} punti). Trovati {len(df)}. Uscita.")
+#         sys.exit(1)
+
+#     ticker_features = df[feature_cols].values.astype(np.float32)
+#     ticker_target = df['y'].values.astype(np.float32)
+
+#     # Usa sliding_window_view per creare le sequenze
+#     # np.lib.stride_tricks.sliding_window_view genera L - W + 1 finestre
+#     sequences = np.lib.stride_tricks.sliding_window_view(ticker_features, (N_STEPS, ticker_features.shape[1]))
+#     sequences = sequences.squeeze(axis=1) # Rimuove la dimensione extra aggiunta da sliding_window_view
+
+#     # I target sono il valore successivo alla sequenza.
+#     # Se la sequenza è da t a t+N_STEPS-1, il target è y[t+N_STEPS].
+#     # Quindi, i target iniziano dall'indice N_STEPS dell'array originale.
+#     targets = ticker_target[N_STEPS:]
+
+#     # Allinea le lunghezze di sequences e targets
+#     # 'sequences' avrà lunghezza len(ticker_df) - N_STEPS + 1
+#     # 'targets' avrà lunghezza len(ticker_df) - N_STEPS
+#     # Dobbiamo tagliare 'sequences' per farle corrispondere a 'targets'.
+#     # La sequenza `i` (da `i` a `i+N_STEPS-1`) predice `y[i+N_STEPS]`.
+#     # Quindi `sequences[0]` predice `targets[0]`.
+#     # Questo significa che la lunghezza di `sequences` e `targets` deve essere uguale.
+#     # Se `sequences` ha un elemento in più, taglia l'ultimo.
+#     if len(sequences) > len(targets):
+#         sequences = sequences[:len(targets)]
+#     elif len(sequences) < len(targets):
+#         # Questo caso non dovrebbe verificarsi con la logica attuale
+#         print(f"\u274C Errore inatteso: targets più lunghi delle sequenze. Targets: {len(targets)}, Sequenze: {len(sequences)}. Uscita.")
+#         sys.exit(1)
+
+#     X_seq = sequences
+#     y = targets
+
+#     print(f"\u2705 Sequenze create: X_seq={X_seq.shape}, y={y.shape}")
+
+#     # Train/validation split
+#     X_seq_train, X_seq_val, y_train, y_val = train_test_split(
+#         X_seq, y, test_size=0.2, random_state=42
+#     )
+
+#     # Converti in TensorFlow Datasets
+#     dataset_train = tf.data.Dataset.from_tensor_slices((X_seq_train, y_train))
+#     dataset_train = dataset_train.shuffle(1000).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+
+#     dataset_val = tf.data.Dataset.from_tensor_slices((X_seq_val, y_val))
+#     dataset_val = dataset_val.batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+
+#     print(f"\u2705 Dataset pronto: train={len(X_seq_train)} samples, val={len(X_seq_val)} samples")
+
+#     print("\n\U0001F535 Step 4: Costruzione Modello LSTM per Ticker Singolo")
+#     num_features = len(feature_cols)
+
+#     # L'input del modello è ora solo la sequenza di feature
+#     input_seq = layers.Input(shape=(N_STEPS, num_features), name='input_seq')
+
+#     # Solo strati LSTM e Dense, senza embedding del ticker
+#     x = layers.LSTM(64, return_sequences=False)(input_seq)
+#     x = layers.Dense(32, activation='relu')(x)
+#     output = layers.Dense(1)(x)
+
+#     # Il modello ha un solo input
+#     model = models.Model(inputs=input_seq, outputs=output)
+#     model.compile(optimizer='adam', loss='mse')
+#     model.summary()
+#     print("\u2705 Modello costruito")
+
+#     print("\n\U0001F535 Step 5: Training")
+#     history = model.fit(dataset_train, validation_data=dataset_val, epochs=EPOCHS)
+#     print("\u2705 Training completato")
+
+#     print("\n\U0001F535 Step 6: Salvataggio Modello")
+#     model.save(MODEL_FILENAME)
+#     print(f"\u2705 Modello salvato in {MODEL_FILENAME}")
+
+#     print("\n--- Training Pipeline Completata ---")
+
+
+###################################################################################
+#
+#
+#                            no lag
+#
+#
+###################################################################################
+# import os
+# import numpy as np
+# import pandas as pd
+# import tensorflow as tf
+# from tensorflow.keras import layers, models
+# from sklearn.model_selection import train_test_split
+# from sqlalchemy import create_engine, text
+# import psycopg2
+# import time
+# from psycopg2 import OperationalError
+# from sklearn.preprocessing import MinMaxScaler
+# import joblib # Import to save/load the scaler
+# import sys
+
+# # --- Configurazione GPU (se applicabile) ---
+# num_cpu_cores = os.cpu_count()
+# if num_cpu_cores:
+#     tf.config.threading.set_inter_op_parallelism_threads(num_cpu_cores)
+#     tf.config.threading.set_intra_op_parallelism_threads(num_cpu_cores)
+#     print(f"\u2705 TensorFlow configured to use {num_cpu_cores} CPU cores for parallelism.")
+# else:
+#     print("\u274C Could not determine number of CPU cores. TensorFlow using default threading.")
+
+# # --- Configuration Parameters ---
+# # N_STEPS is not directly used for sequence length in this 'lag-less' model,
+# # but it's good to keep track if you ever want to re-introduce sequence-based features.
+# # For a model predicting Y(t+1) from X(t), N_STEPS is conceptually 1, but we don't need to define it.
+# BATCH_SIZE = 256
+# EPOCHS = 10
+# TARGET_TICKER = "AAPL" # <--- Define the specific ticker here
+
+# # --- Paths for saving artifacts ---
+# MODEL_SAVE_PATH = "model"
+# # The model filename will include the specific ticker
+# MODEL_FILENAME = os.path.join(MODEL_SAVE_PATH, f"dense_model_{TARGET_TICKER}.h5")
+# # The scaler filename will include the specific ticker
+# SCALER_FILENAME = os.path.join(MODEL_SAVE_PATH, f"scaler_dense_{TARGET_TICKER}.pkl")
+
+# # --- Database Connection Retry Logic ---
+# def connect_to_db_with_retries(max_retries=15, delay=5):
+#     """
+#     Attempts to connect to the PostgreSQL database with retries.
+#     This ensures the application waits for the DB to be ready.
+#     """
+#     db_name = os.getenv("DB_NAME", "aggregated-data")
+#     db_user = os.getenv("DB_USER", "admin")
+#     db_password = os.getenv("DB_PASSWORD", "admin123")
+#     db_host = os.getenv("DB_HOST", "postgre") # Use service name 'postgre' for Docker Compose
+#     db_port = os.getenv("DB_PORT", "5432")
+
+#     db_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+
+#     for i in range(max_retries):
+#         try:
+#             print(f"Attempting to connect to PostgreSQL (Attempt {i+1}/{max_retries})...")
+#             engine = create_engine(db_url)
+#             # Test connection immediately
+#             with engine.connect() as connection:
+#                 connection.execute(text('SELECT 1'))
+#             print(f"\u2705 Successfully connected to PostgreSQL!")
+#             return engine
+#         except OperationalError as e:
+#             print(f"PostgreSQL connection failed: {e}")
+#             if i < max_retries - 1:
+#                 print(f"Retrying in {delay} seconds...")
+#                 time.sleep(delay)
+#             else:
+#                 print("Max retries reached. Could not connect to PostgreSQL. Exiting.")
+#                 raise # Re-raise the exception if max retries reached
+#         except Exception as e:
+#             print(f"An unexpected error occurred during database connection: {e}")
+#             if i < max_retries - 1:
+#                 print(f"Retrying in {delay} seconds...")
+#                 time.sleep(delay)
+#             else:
+#                 print("Max retries reached due to unexpected error. Exiting.")
+#                 raise
+#     return None
+
+# # --- Main Training Workflow ---
+# if __name__ == "__main__":
+#     print("\U0001F535 Step 1: Connecting and Loading Data for Specific Ticker")
+#     # Connect to database with retry logic
+#     engine = connect_to_db_with_retries()
+#     if engine is None:
+#         sys.exit(1) # Exit if no connection could be established
+
+#     # Load only data for the specific ticker
+#     query = f"SELECT * FROM aggregated_data WHERE ticker = '{TARGET_TICKER}' ORDER BY timestamp"
+#     df = pd.read_sql(query, engine)
+#     print(f"\u2705 Data loaded for ticker '{TARGET_TICKER}': {df.shape}")
+
+#     if df.empty:
+#         print(f"\u274C No data found for ticker '{TARGET_TICKER}'. Exiting.")
+#         sys.exit(1)
+
+#     print("\n\U0001F535 Step 2: Preprocessing and Memory Optimization")
+#     # Drop rows with any NaN values. Consider imputation strategies for production.
+#     initial_rows = df.shape[0]
+#     df = df.dropna()
+#     print(f"  \u27A1 Dropped {initial_rows - df.shape[0]} rows with NaNs. Remaining: {df.shape[0]}")
+
+#     df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True) # Ensure timezone awareness
+#     df = df.sort_values('timestamp') # No need to sort by ticker, it's already one ticker
+
+#     # Optimize data types to reduce memory footprint
+#     for col in df.select_dtypes(include=['float64']).columns:
+#         df[col] = df[col].astype(np.float32)
+#     for col in df.select_dtypes(include=['int64']).columns:
+#         if df[col].min() >= np.iinfo(np.int8).min and df[col].max() <= np.iinfo(np.int8).max:
+#             df[col] = df[col].astype(np.int8)
+#         elif df[col].min() >= np.iinfo(np.int16).min and df[col].max() <= np.iinfo(np.int16).max:
+#             df[col] = df[col].astype(np.int16)
+#         elif df[col].min() >= np.iinfo(np.int32).min and df[col].max() <= np.iinfo(np.int32).max:
+#             df[col] = df[col].astype(np.int32)
+    
+#     # Drop 'ticker' and 'ticker_code' columns as they are no longer input features
+#     if 'ticker' in df.columns:
+#         df = df.drop(columns=['ticker'])
+#     if 'ticker_code' in df.columns:
+#         df = df.drop(columns=['ticker_code'])
+
+#     # Rename target column
+#     df = df.rename(columns={'y1': 'y'})
+
+#     # Define features and target
+#     feature_cols = [c for c in df.columns if c not in ['timestamp', 'y']] # Now ticker is not among columns
+#     print(f"\u2705 Preprocessing completed. Identified features: {feature_cols}")
+
+#     print("\n\U0001F535 Step 2.5: Scaling features")
+#     scaler = MinMaxScaler()
+#     # Fit and transform only on the features of the specific ticker
+#     df[feature_cols] = scaler.fit_transform(df[feature_cols])
+#     print("\u2705 Features scaled between 0 and 1 (MinMaxScaler).")
+
+#     # --- SAVE THE SCALER ---
+#     os.makedirs(MODEL_SAVE_PATH, exist_ok=True)
+#     joblib.dump(scaler, SCALER_FILENAME)
+#     print(f"\u2705 Scaler saved to {SCALER_FILENAME}")
+
+#     print("\n\U0001F535 Step 3: Data Preparation (Single Input)")
+
+#     # For a "lag-less" model (or implicit lag of 1)
+#     # X will be the feature set at time t
+#     # Y will be the target value at time t+1
+    
+#     # Prepare features and target
+#     # Remove the last row of features, because it doesn't have a subsequent y target
+#     X = df[feature_cols].values[:-1].astype(np.float32) 
+#     # Remove the first row of the target, because it doesn't have a preceding X feature row
+#     y = df['y'].values[1:].astype(np.float32)
+
+#     # Ensure X and y have the same length
+#     if len(X) != len(y):
+#         print(f"\u274C X and y alignment error. X len: {len(X)}, y len: {len(y)}. Exiting.")
+#         sys.exit(1)
+
+#     print(f"\u2705 Data prepared: X={X.shape}, y={y.shape}")
+
+#     # Train/validation split
+#     X_train, X_val, y_train, y_val = train_test_split(
+#         X, y, test_size=0.2, random_state=42
+#     )
+
+#     # Convert to TensorFlow Datasets
+#     # The input is now just X_train (single point), not a sequence
+#     dataset_train = tf.data.Dataset.from_tensor_slices((X_train, y_train))
+#     dataset_train = dataset_train.shuffle(1000).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+
+#     dataset_val = tf.data.Dataset.from_tensor_slices((X_val, y_val))
+#     dataset_val = dataset_val.batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+
+#     print(f"\u2705 Dataset ready: train={len(X_train)} samples, val={len(X_val)} samples")
+
+#     print("\n\U0001F535 Step 4: Building Feed-Forward (Dense) Model")
+#     num_features = len(feature_cols)
+
+#     # Input layer for a single data point (features_at_t)
+#     input_layer = layers.Input(shape=(num_features,), name='input_features')
+
+#     # Dense layers (feed-forward network)
+#     x = layers.Dense(128, activation='relu')(input_layer) # First Dense layer
+#     x = layers.Dense(64, activation='relu')(x)            # Second Dense layer
+#     output = layers.Dense(1)(x)                           # Output layer for regression
+
+#     # The model has a single input
+#     model = models.Model(inputs=input_layer, outputs=output)
+#     model.compile(optimizer='adam', loss='mse')
+#     model.summary()
+#     print("\u2705 Model built")
+
+#     # --- COMPLETE STEP 5: Training ---
+#     print("\n\U0001F535 Step 5: Training")
+#     history = model.fit(dataset_train, validation_data=dataset_val, epochs=EPOCHS)
+#     print("\u2705 Training completed")
+
+#     # --- COMPLETE STEP 6: Saving Model ---
+#     print("\n\U0001F535 Step 6: Saving Model")
+#     os.makedirs(MODEL_SAVE_PATH, exist_ok=True) # Ensure directory exists
+#     model.save(MODEL_FILENAME)
+#     print(f"\u2705 Model saved to {MODEL_FILENAME}")
+
+#     print("\n--- Training Pipeline Completed ---")
+
+
+
+##############################################################################
+#
+#
+#                  loop per tutti i ticker
+#
+#
+##############################################################################
+# import os
+# import numpy as np
+# import pandas as pd
+# import tensorflow as tf
+# from tensorflow.keras import layers, models
+# from sklearn.model_selection import train_test_split
+# from sqlalchemy import create_engine, text
+# import psycopg2
+# import time
+# from psycopg2 import OperationalError
+# from sklearn.preprocessing import MinMaxScaler
+# import joblib # Import per salvare/caricare lo scaler
+# import sys
+
+# # --- Configurazione GPU (se applicabile) ---
+# # Se stai usando CPU, questa configurazione è per ottimizzare l'uso dei core.
+# # Se hai GPU, è preferibile la configurazione precedente con tf.config.list_physical_devices('GPU').
+# # Mantengo la tua configurazione CPU per coerenza con l'ultimo codice che hai fornito.
+# num_cpu_cores = os.cpu_count()
+# if num_cpu_cores:
+#     tf.config.threading.set_inter_op_parallelism_threads(num_cpu_cores)
+#     tf.config.threading.set_intra_op_parallelism_threads(num_cpu_cores)
+#     print(f"\u2705 TensorFlow configured to use {num_cpu_cores} CPU cores for parallelism.")
+# else:
+#     print("\u274C Could not determine number of CPU cores. TensorFlow using default threading.")
+
+# # --- Configurazione Parametri Globali ---
+# N_STEPS = 5 # Numero di passi temporali passati da considerare
+# BATCH_SIZE = 256
+# EPOCHS = 10
+
+# # --- LISTA DEI TICKER ---
+# # <<< INSERISCI QUI LA TUA LISTA DI TICKER >>>
+# # Esempio:
+# ALL_TICKERS = [
+#     "AAPL", "MSFT", "NVDA", "AMZN", "META", "ORCL", "GOOGL", "AVGO", "TSLA", "IBM",
+#     "LLY", "JPM", "V", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA",
+#     "CVX", "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO"
+# ]
+
+# # --- Percorsi per il salvataggio degli artefatti ---
+# MODEL_SAVE_PATH = "model" # La directory verrà creata se non esiste
+
+# # --- Logica di Retry per la Connessione al Database ---
+# def connect_to_db_with_retries(max_retries=15, delay=5):
+#     db_name = os.getenv("DB_NAME", "aggregated-data")
+#     db_user = os.getenv("DB_USER", "admin")
+#     db_password = os.getenv("DB_PASSWORD", "admin123")
+#     db_host = os.getenv("DB_HOST", "postgre")
+#     db_port = os.getenv("DB_PORT", "5432")
+
+#     db_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+
+#     for i in range(max_retries):
+#         try:
+#             print(f"Tentativo di connessione a PostgreSQL (Tentativo {i+1}/{max_retries})...")
+#             engine = create_engine(db_url)
+#             with engine.connect() as connection:
+#                 connection.execute(text('SELECT 1'))
+#             print(f"\u2705 Connesso a PostgreSQL con successo!")
+#             return engine
+#         except OperationalError as e:
+#             print(f"PostgreSQL connection failed: {e}")
+#             if i < max_retries - 1:
+#                 print(f"Riprovo tra {delay} secondi...")
+#                 time.sleep(delay)
+#             else:
+#                 print("Max tentativi raggiunti. Impossibile connettersi a PostgreSQL. Uscita.")
+#                 raise
+#         except Exception as e:
+#             print(f"Si è verificato un errore inatteso durante la connessione al database: {e}")
+#             if i < max_retries - 1:
+#                 print(f"Riprovo tra {delay} secondi...")
+#                 time.sleep(delay)
+#             else:
+#                 print("Max tentativi raggiunti a causa di errore inatteso. Uscita.")
+#                 raise
+#     return None
+
+# # --- Main Training Workflow ---
+# if __name__ == "__main__":
+#     print("\n" + "="*80)
+#     print("STARTING BATCH TRAINING FOR ALL TICKERS")
+#     print("="*80 + "\n")
+
+#     # Connettiti al database una sola volta all'inizio
+#     engine = connect_to_db_with_retries()
+#     if engine is None:
+#         sys.exit(1) # Esci se non riesci a connetterti al DB
+
+#     # Crea la directory per i modelli se non esiste
+#     os.makedirs(MODEL_SAVE_PATH, exist_ok=True)
+
+#     for i, current_ticker in enumerate(ALL_TICKERS):
+#         print(f"\n{'='*80}")
+#         print(f"TRAINING MODEL FOR TICKER: {current_ticker} ({i+1}/{len(ALL_TICKERS)})")
+#         print(f"{'='*80}\n")
+
+#         # Aggiorna i nomi dei file per il ticker corrente
+#         MODEL_FILENAME = os.path.join(MODEL_SAVE_PATH, f"lstm_model_{current_ticker}.h5")
+#         SCALER_FILENAME = os.path.join(MODEL_SAVE_PATH, f"scaler_{current_ticker}.pkl")
+
+#         try:
+#             print("\U0001F535 Step 1: Caricamento Dati per Ticker Specifico")
+#             # Carica solo i dati per il ticker specifico
+#             query = f"SELECT * FROM aggregated_data WHERE ticker = '{current_ticker}' ORDER BY timestamp"
+#             df = pd.read_sql(query, engine)
+#             print(f"\u2705 Dati caricati per ticker '{current_ticker}': {df.shape}")
+
+#             if df.empty:
+#                 print(f"\u274C Nessun dato trovato per il ticker '{current_ticker}'. Salto questo ticker.")
+#                 continue # Passa al prossimo ticker nel loop
+
+#             print("\n\U0001F535 Step 2: Preprocessing e Ottimizzazione Memoria")
+#             initial_rows = df.shape[0]
+#             df = df.dropna()
+#             print(f"  \u27A1 Rimosse {initial_rows - df.shape[0]} righe con NaNs. Rimanenti: {df.shape[0]}")
+
+#             # Controlla se rimangono dati dopo aver rimosso i NaN
+#             if df.empty:
+#                 print(f"\u274C Nessun dato rimanente per il ticker '{current_ticker}' dopo la rimozione dei NaN. Salto questo ticker.")
+#                 continue
+
+#             df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
+#             df = df.sort_values('timestamp')
+
+#             # Ottimizzazione tipi di dati
+#             for col in df.select_dtypes(include=['float64']).columns:
+#                 df[col] = df[col].astype(np.float32)
+#             for col in df.select_dtypes(include=['int64']).columns:
+#                 if df[col].min() >= np.iinfo(np.int8).min and df[col].max() <= np.iinfo(np.int8).max:
+#                     df[col] = df[col].astype(np.int8)
+#                 elif df[col].min() >= np.iinfo(np.int16).min and df[col].max() <= np.iinfo(np.int16).max:
+#                     df[col] = df[col].astype(np.int16)
+#                 elif df[col].min() >= np.iinfo(np.int32).min and df[col].max() <= np.iinfo(np.int32).max:
+#                     df[col] = df[col].astype(np.int32)
+            
+#             if 'ticker' in df.columns:
+#                 df = df.drop(columns=['ticker'])
+#             if 'ticker_code' in df.columns:
+#                 df = df.drop(columns=['ticker_code'])
+
+#             df = df.rename(columns={'y1': 'y'})
+#             feature_cols = [c for c in df.columns if c not in ['timestamp', 'y']]
+#             print(f"\u2705 Preprocessing completato. Features identificate: {feature_cols}")
+
+#             print("\n\U0001F535 Step 2.5: Scaling delle features")
+#             scaler = MinMaxScaler()
+#             df[feature_cols] = scaler.fit_transform(df[feature_cols])
+#             print("\u2705 Features scalate tra 0 e 1 (MinMaxScaler).")
+
+#             # --- SALVA LO SCALER ---
+#             joblib.dump(scaler, SCALER_FILENAME)
+#             print(f"\u2705 Scaler salvato in {SCALER_FILENAME}")
+
+#             print("\n\U0001F535 Step 3: Creazione Sequenze Ottimizzata")
+#             if len(df) < N_STEPS + 1:
+#                 print(f"\u274C Dati insufficienti per il ticker '{current_ticker}' per creare sequenze (necessari almeno {N_STEPS + 1} punti). Trovati {len(df)}. Salto questo ticker.")
+#                 continue
+
+#             ticker_features = df[feature_cols].values.astype(np.float32)
+#             ticker_target = df['y'].values.astype(np.float32)
+
+#             sequences = np.lib.stride_tricks.sliding_window_view(ticker_features, (N_STEPS, ticker_features.shape[1]))
+#             sequences = sequences.squeeze(axis=1)
+
+#             targets = ticker_target[N_STEPS:]
+
+#             if len(sequences) > len(targets):
+#                 sequences = sequences[:len(targets)]
+#             elif len(sequences) < len(targets):
+#                 print(f"\u274C Errore inatteso: targets più lunghi delle sequenze per ticker '{current_ticker}'. Targets: {len(targets)}, Sequenze: {len(sequences)}. Salto questo ticker.")
+#                 continue
+
+#             X_seq = sequences
+#             y = targets
+
+#             print(f"\u2705 Sequenze create: X_seq={X_seq.shape}, y={y.shape}")
+
+#             # Train/validation split
+#             X_seq_train, X_seq_val, y_train, y_val = train_test_split(
+#                 X_seq, y, test_size=0.2, random_state=42
+#             )
+
+#             # Converti in TensorFlow Datasets
+#             dataset_train = tf.data.Dataset.from_tensor_slices((X_seq_train, y_train))
+#             dataset_train = dataset_train.shuffle(1000).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+
+#             dataset_val = tf.data.Dataset.from_tensor_slices((X_seq_val, y_val))
+#             dataset_val = dataset_val.batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+
+#             print(f"\u2705 Dataset pronto: train={len(X_seq_train)} samples, val={len(X_seq_val)} samples")
+
+#             print("\n\U0001F535 Step 4: Costruzione Modello LSTM per Ticker Singolo")
+#             num_features = len(feature_cols)
+
+#             input_seq = layers.Input(shape=(N_STEPS, num_features), name='input_seq')
+#             x = layers.LSTM(64, return_sequences=False)(input_seq)
+#             x = layers.Dense(32, activation='relu')(x)
+#             output = layers.Dense(1)(x)
+
+#             model = models.Model(inputs=input_seq, outputs=output) # Correzione: models.Model
+#             model.compile(optimizer='adam', loss='mse')
+#             model.summary()
+#             print("\u2705 Modello costruito")
+
+#             print("\n\U0001F535 Step 5: Training")
+#             history = model.fit(dataset_train, validation_data=dataset_val, epochs=EPOCHS)
+#             print("\u2705 Training completato")
+
+#             print("\n\U0001F535 Step 6: Salvataggio Modello")
+#             model.save(MODEL_FILENAME)
+#             print(f"\u2705 Modello salvato in {MODEL_FILENAME}")
+
+#         except Exception as e:
+#             print(f"\u274C Errore durante il training per il ticker '{current_ticker}': {e}")
+#             print(f"Salto al prossimo ticker.")
+#             # Puoi aggiungere qui una logica per registrare gli errori o i ticker che falliscono.
+
+#     print("ALL BATCH TRAINING COMPLETED")
+
+
+#############################################################################################
+#
+#
+#                     FUNZIONA è IL MIGLIORE
+#
+#
+#############################################################################################
+# import os
+# import numpy as np
+# import pandas as pd
+# import tensorflow as tf
+# from tensorflow.keras import layers, models
+# from sklearn.model_selection import train_test_split
+# from sqlalchemy import create_engine, text
+# import psycopg2
+# import time
+# from psycopg2 import OperationalError
+# from sklearn.preprocessing import MinMaxScaler
+# import joblib # Import per salvare/caricare lo scaler
+# import sys
+# import multiprocessing # Import per la parallelizzazione
+# import json # Per salvare la ticker_map
+
+# # --- Configurazione GPU (se applicabile) ---
+# num_cpu_cores = os.cpu_count()
+# if num_cpu_cores:
+#     # Questa configurazione è importante per TensorFlow con multiprocessing
+#     # Ogni processo Python gestirà la propria sessione TF
+#     # e questa impostazione dovrebbe applicarsi a ciascun processo.
+#     tf.config.threading.set_inter_op_parallelism_threads(1) # Generalmente 1 per non competere tra i thread inter-op di un singolo processo
+#     tf.config.threading.set_intra_op_parallelism_threads(num_cpu_cores // multiprocessing.cpu_count() if multiprocessing.cpu_count() > 0 else 1) # Suddividi i core tra i processi se utile
+#     print(f"\u2705 TensorFlow configured for CPU parallelism with {num_cpu_cores} cores detected.")
+# else:
+#     print("\u274C Could not determine number of CPU cores. TensorFlow using default threading.")
+
+# # --- Configurazione Parametri Globali ---
+# N_STEPS = 5 # Numero di passi temporali passati da considerare
+# BATCH_SIZE = 256
+# EPOCHS = 10
+
+# # --- LISTA DEI TICKER ---
+# # <<< INSERISCI QUI LA TUA LISTA DI TICKER >>>
+# ALL_TICKERS = [
+#     "AAPL", "MSFT", "NVDA", "AMZN", "META", "ORCL", "GOOGL", "AVGO", "TSLA", "IBM",
+#     "LLY", "JPM", "V", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA",
+#     "CVX", "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO"
+# ]
+
+# # Numero di processi worker da usare per il training parallelo
+# # È buona pratica non superare il numero di core CPU disponibili
+# NUM_WORKERS = min(len(ALL_TICKERS), 3)
+
+# # --- Percorsi per il salvataggio degli artefatti ---
+# MODEL_SAVE_PATH = "model" # La directory verrà creata se non esiste
+# TICKER_MAP_FILENAME = os.path.join(MODEL_SAVE_PATH, "ticker_map2.json") # Mappa da salvare
+
+# KEY_FEATURE_TO_EMPHASIZE = "price_mean_1min"
+
+# # --- Logica di Retry per la Connessione al Database ---
+# def connect_to_db_with_retries(max_retries=15, delay=5):
+#     db_name = os.getenv("DB_NAME", "aggregated-data")
+#     db_user = os.getenv("DB_USER", "admin")
+#     db_password = os.getenv("DB_PASSWORD", "admin123")
+#     db_host = os.getenv("DB_HOST", "postgre")
+#     db_port = os.getenv("DB_PORT", "5432")
+
+#     db_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+
+#     for i in range(max_retries):
+#         try:
+#             # print(f"Tentativo di connessione a PostgreSQL (Tentativo {i+1}/{max_retries})...") # Commentato per log meno verbose in parallelo
+#             engine = create_engine(db_url)
+#             with engine.connect() as connection:
+#                 connection.execute(text('SELECT 1'))
+#             # print(f"\u2705 Connesso a PostgreSQL con successo!") # Commentato per log meno verbose in parallelo
+#             return engine
+#         except OperationalError as e:
+#             sys.stderr.write(f"PostgreSQL connection failed: {e}. Retrying in {delay}s...\n")
+#             time.sleep(delay)
+#         except Exception as e:
+#             sys.stderr.write(f"Unexpected error during DB connection: {e}. Retrying in {delay}s...\n")
+#             time.sleep(delay)
+#     sys.stderr.write("Max retries reached. Could not connect to PostgreSQL. Exiting.\n")
+#     raise Exception("Failed to connect to database.")
+
+
+# # --- Funzione per il training di un singolo ticker ---
+# def train_model_for_ticker(ticker_info):
+#     """
+#     Funzione wrapper per il training del modello per un singolo ticker.
+#     Viene eseguita in un processo separato.
+#     """
+#     current_ticker, ticker_code, total_tickers = ticker_info
+    
+#     # Ogni processo deve avere la propria connessione al DB
+#     try:
+#         engine = connect_to_db_with_retries()
+#     except Exception as e:
+#         print(f"\u274C Process for ticker {current_ticker}: Failed to connect to DB. Skipping. Error: {e}")
+#         return current_ticker, False # Return ticker name and success status
+
+#     print(f"\n{'='*80}")
+#     print(f"TRAINING MODEL FOR TICKER: {current_ticker} (Ticker Code: {ticker_code})")
+#     print(f"{'='*80}\n")
+
+#     MODEL_FILENAME = os.path.join(MODEL_SAVE_PATH, f"lstm_model_par2_{current_ticker}.h5")
+#     SCALER_FILENAME = os.path.join(MODEL_SAVE_PATH, f"scaler_par2_{current_ticker}.pkl")
+
+#     try:
+#         print(f"\U0001F535 [{current_ticker}] Step 1: Caricamento Dati")
+#         query = f"SELECT * FROM aggregated_data WHERE ticker = '{current_ticker}' ORDER BY timestamp"
+#         df = pd.read_sql(query, engine)
+#         print(f"\u2705 [{current_ticker}] Dati caricati: {df.shape}")
+
+#         if df.empty:
+#             print(f"\u274C [{current_ticker}] Nessun dato trovato. Salto.")
+#             return current_ticker, False
+
+#         print(f"\n\U0001F535 [{current_ticker}] Step 2: Preprocessing e Ottimizzazione Memoria")
+#         initial_rows = df.shape[0]
+#         df = df.dropna()
+#         print(f"  \u27A1 [{current_ticker}] Rimosse {initial_rows - df.shape[0]} righe con NaNs. Rimanenti: {df.shape[0]}")
+
+#         if df.empty:
+#             print(f"\u274C [{current_ticker}] Nessun dato rimanente dopo rimozione NaN. Salto.")
+#             return current_ticker, False
+
+#         df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
+#         df = df.sort_values('timestamp')
+
+#         for col in df.select_dtypes(include=['float64']).columns:
+#             df[col] = df[col].astype(np.float32)
+#         for col in df.select_dtypes(include=['int64']).columns:
+#             if df[col].min() >= np.iinfo(np.int8).min and df[col].max() <= np.iinfo(np.int8).max:
+#                 df[col] = df[col].astype(np.int8)
+#             elif df[col].min() >= np.iinfo(np.int16).min and df[col].max() <= np.iinfo(np.int16).max:
+#                 df[col] = df[col].astype(np.int16)
+#             elif df[col].min() >= np.iinfo(np.int32).min and df[col].max() <= np.iinfo(np.int32).max:
+#                 df[col] = df[col].astype(np.int32)
+        
+#         # 'ticker' e 'ticker_code' potrebbero non essere sempre presenti nel DataFrame
+#         # dopo la query, ma è buona pratica rimuoverli se presenti e non usati come features.
+#         if 'ticker' in df.columns:
+#             df = df.drop(columns=['ticker'])
+#         # NOTA: Qui 'ticker_code' lo reinseriamo come input separato del modello
+#         # quindi non deve essere scalato con le altre features.
+#         # Assicurati che non sia già una feature nel tuo DB se non vuoi scalare.
+#         if 'ticker_code' in df.columns:
+#             df = df.drop(columns=['ticker_code'])
+
+
+#         df = df.rename(columns={'y1': 'y'})
+#         feature_cols = [c for c in df.columns if c not in ['timestamp', 'y']]
+#         print(f"\u2705 [{current_ticker}] Preprocessing completato. Features: {feature_cols}")
+
+#         print(f"\n\U0001F535 [{current_ticker}] Step 2.5: Scaling delle features")
+#         scaler = MinMaxScaler()
+#         df[feature_cols] = scaler.fit_transform(df[feature_cols])
+#         print(f"\u2705 [{current_ticker}] Features scalate (MinMaxScaler).")
+
+#         joblib.dump(scaler, SCALER_FILENAME)
+#         print(f"\u2705 [{current_ticker}] Scaler salvato in {SCALER_FILENAME}")
+
+#         print(f"\n\U0001F535 [{current_ticker}] Step 3: Creazione Sequenze Ottimizzata")
+#         if len(df) < N_STEPS + 1:
+#             print(f"\u274C [{current_ticker}] Dati insufficienti ({len(df)} punti). Necessari almeno {N_STEPS + 1}. Salto.")
+#             return current_ticker, False
+
+#         ticker_features_scaled = df[feature_cols].values.astype(np.float32)
+#         ticker_target = df['y'].values.astype(np.float32)
+
+#         # Creazione delle sequenze
+#         # X_seq sarà (num_samples, N_STEPS, num_features)
+#         sequences = np.lib.stride_tricks.sliding_window_view(ticker_features_scaled, (N_STEPS, ticker_features_scaled.shape[1]))
+#         sequences = sequences.squeeze(axis=1) # Rimuovi la dimensione aggiuntiva introdotta da sliding_window_view
+
+#         # I target sono il valore 'y' successivo alla sequenza di N_STEPS
+#         targets = ticker_target[N_STEPS:]
+
+#         # Assicurati che le dimensioni combacino
+#         if len(sequences) > len(targets):
+#             sequences = sequences[:len(targets)]
+#         elif len(sequences) < len(targets):
+#             print(f"\u274C [{current_ticker}] Errore inatteso: targets più lunghi delle sequenze. Targets: {len(targets)}, Sequenze: {len(sequences)}. Salto.")
+#             return current_ticker, False
+
+#         X_seq = sequences
+#         y = targets
+
+#         print(f"\u2705 [{current_ticker}] Sequenze create: X_seq={X_seq.shape}, y={y.shape}")
+
+#         # Train/validation split
+#         X_seq_train, X_seq_val, y_train, y_val = train_test_split(
+#             X_seq, y, test_size=0.2, random_state=42
+#         )
+
+#         # Converti in TensorFlow Datasets
+#         dataset_train = tf.data.Dataset.from_tensor_slices((X_seq_train, y_train))
+#         dataset_train = dataset_train.shuffle(1000).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+
+#         dataset_val = tf.data.Dataset.from_tensor_slices((X_seq_val, y_val))
+#         dataset_val = dataset_val.batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+
+#         print(f"\u2705 [{current_ticker}] Dataset pronto: train={len(X_seq_train)} samples, val={len(X_seq_val)} samples")
+
+#         print(f"\n\U0001F535 [{current_ticker}] Step 4: Costruzione Modello LSTM con Input Ticker Code")
+#         num_features = len(feature_cols)
+
+#         # Input per la sequenza di features
+#         input_seq = layers.Input(shape=(N_STEPS, num_features), name='input_sequence')
+        
+#         # Input per il codice del ticker (un singolo valore intero per identificare il ticker)
+#         input_ticker_code = layers.Input(shape=(1,), name='input_ticker_code', dtype=tf.int32)
+        
+#         # Embedding layer per il codice del ticker
+#         # max_ticker_code deve essere basato sul numero massimo di ticker nel tuo mapping
+#         # Esempio: se hai 30 ticker, max_ticker_code potrebbe essere 30 o 31 (se i codici partono da 0)
+#         # Sostituisci 50 con il numero massimo di ticker codes reali + 1
+#         max_ticker_code = len(ALL_TICKERS) + 1 # Un valore sicuro che include tutti i possibili codici
+#         embedding_dim = 4 # Dimensione dell'embedding
+#         ticker_embedding = layers.Embedding(input_dim=max_ticker_code, output_dim=embedding_dim)(input_ticker_code)
+#         ticker_embedding = layers.Flatten()(ticker_embedding) # appiattisce l'embedding
+
+#         # LSTM per le sequenze di features
+#         lstm_out = layers.LSTM(64, return_sequences=False)(input_seq)
+        
+#         # Concateniamo l'output LSTM con l'embedding del ticker
+#         # Assicurati che le dimensioni siano compatibili per la concatenazione
+#         # lstm_out è (batch_size, 64)
+#         # ticker_embedding è (batch_size, embedding_dim)
+#         merged = layers.concatenate([lstm_out, ticker_embedding])
+
+#         # Dense layers
+#         x = layers.Dense(32, activation='relu')(merged)
+#         output = layers.Dense(1)(x)
+
+#         # Definisci il modello con due input
+#         model = models.Model(inputs=[input_seq, input_ticker_code], outputs=output)
+#         model.compile(optimizer='adam', loss='mse')
+#         model.summary()
+#         print(f"\u2705 [{current_ticker}] Modello costruito")
+
+#         print(f"\n\U0001F535 [{current_ticker}] Step 5: Training")
+#         # Per il training, dobbiamo fornire anche l'input per il ticker code
+#         # Creiamo un array di codici ticker della stessa dimensione di X_seq_train/val
+#         ticker_code_array_train = np.full((X_seq_train.shape[0], 1), ticker_code, dtype=np.int32)
+#         ticker_code_array_val = np.full((X_seq_val.shape[0], 1), ticker_code, dtype=np.int32)
+
+#         # Ricrea i TensorFlow Datasets con due input
+#         dataset_train = tf.data.Dataset.from_tensor_slices(((X_seq_train, ticker_code_array_train), y_train))
+#         dataset_train = dataset_train.shuffle(1000).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+
+#         dataset_val = tf.data.Dataset.from_tensor_slices(((X_seq_val, ticker_code_array_val), y_val))
+#         dataset_val = dataset_val.batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+
+#         history = model.fit(dataset_train, validation_data=dataset_val, epochs=EPOCHS, verbose=2) # verbose=2 per una output meno dettagliato
+#         print(f"\u2705 [{current_ticker}] Training completato")
+
+#         print(f"\n\U0001F535 [{current_ticker}] Step 6: Salvataggio Modello")
+#         model.save(MODEL_FILENAME)
+#         print(f"\u2705 [{current_ticker}] Modello salvato in {MODEL_FILENAME}")
+#         return current_ticker, True
+
+#     except Exception as e:
+#         print(f"\u274C [{current_ticker}] Errore durante il training: {e}")
+#         return current_ticker, False
+
+
+# # --- Main Training Workflow (Parallelizzato) ---
+# if __name__ == "__main__":
+#     print("\n" + "="*80)
+#     print("STARTING BATCH TRAINING FOR ALL TICKERS (PARALLELIZED)")
+#     print("="*80 + "\n")
+
+#     # Mappa i nomi dei ticker ai codici numerici
+#     # Questo è fondamentale perché il modello si aspetta un input numerico per il ticker
+#     # e deve essere consistente tra training e inferenza.
+#     ticker_name_to_code_map = {ticker: i for i, ticker in enumerate(ALL_TICKERS)}
+
+#     # Salva la mappa dei ticker
+#     os.makedirs(MODEL_SAVE_PATH, exist_ok=True)
+#     with open(TICKER_MAP_FILENAME, 'w') as f:
+#         json.dump(ticker_name_to_code_map, f)
+#     print(f"\u2705 Ticker mapping saved to {TICKER_MAP_FILENAME}")
+
+#     # Prepara la lista di argomenti per i processi (ticker, codice_ticker, numero_totale_ticker)
+#     tasks = [(ticker, ticker_name_to_code_map[ticker], len(ALL_TICKERS)) for ticker in ALL_TICKERS]
+
+#     successful_tickers = []
+#     failed_tickers = []
+
+#     # Usa un Pool di processi
+#     with multiprocessing.Pool(processes=NUM_WORKERS) as pool:
+#         # map applica la funzione a ciascun elemento della lista tasks e aspetta che tutti finiscano
+#         results = pool.map(train_model_for_ticker, tasks)
+
+#     for ticker, success in results:
+#         if success:
+#             successful_tickers.append(ticker)
+#         else:
+#             failed_tickers.append(ticker)
+
+#     print("\n" + "="*80)
+#     print("ALL BATCH TRAINING COMPLETED")
+#     print("="*80 + "\n")
+#     print(f"\u2705 Successfully trained models for: {successful_tickers}")
+#     if failed_tickers:
+#         print(f"\u274C Failed to train models for: {failed_tickers}")
+#         sys.exit(1) # Esci con errore se alcuni training sono falliti
+#     else:
+#         print("All models trained successfully!")
+ 
+
+import os
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+from tensorflow.keras import layers, models
+from sklearn.model_selection import train_test_split
+from sqlalchemy import create_engine, text
+import psycopg2
+import time
+from psycopg2 import OperationalError
+from sklearn.preprocessing import MinMaxScaler
+import joblib # Import per salvare/caricare lo scaler
+import sys
+import multiprocessing # Import per la parallelizzazione
+import json # Per salvare la ticker_map
+
+# --- Configurazione GPU (se applicabile) ---
+num_cpu_cores = os.cpu_count()
+if num_cpu_cores:
+    # Questa configurazione è importante per TensorFlow con multiprocessing
+    # Ogni processo Python gestirà la propria sessione TF
+    # e questa impostazione dovrebbe applicarsi a ciascun processo.
+    tf.config.threading.set_inter_op_parallelism_threads(1) # Generalmente 1 per non competere tra i thread inter-op di un singolo processo
+    tf.config.threading.set_intra_op_parallelism_threads(num_cpu_cores // multiprocessing.cpu_count() if multiprocessing.cpu_count() > 0 else 1) # Suddividi i core tra i processi se utile
+    print(f"\u2705 TensorFlow configured for CPU parallelism with {num_cpu_cores} cores detected.")
+else:
+    print("\u274C Could not determine number of CPU cores. TensorFlow using default threading.")
+
+# --- Configurazione Parametri Globali ---
+N_STEPS = 5 # Numero di passi temporali passati da considerare
+BATCH_SIZE = 256
+EPOCHS = 15
+
+# --- LISTA DEI TICKER ---
+# <<< INSERISCI QUI LA TUA LISTA DI TICKER >>>
+ALL_TICKERS = ["ABBV","PEP","MRK","NVDA"]
+    #"AAPL", "MSFT", "NVDA", "AMZN", "META", "ORCL", "GOOGL", "AVGO", "TSLA", "IBM",
+   # "LLY", "JPM", "V", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA",
+    #"CVX", "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO"
+#]
+
+# Numero di processi worker da usare per il training parallelo
+# È buona pratica non superare il numero di core CPU disponibili
+NUM_WORKERS = min(len(ALL_TICKERS), 3)
+
+# --- Percorsi per il salvataggio degli artefatti ---
+MODEL_SAVE_PATH = "model" # La directory verrà creata se non esiste
+TICKER_MAP_FILENAME = os.path.join(MODEL_SAVE_PATH, "ticker_map2.json") # Mappa da salvare
+
+# --- VARIABILE: FEATURE CHIAVE DA ENFATIZZARE ---
+# Imposta il nome della colonna che vuoi enfatizzare nella previsione.
+# Assicurati che questa colonna sia presente nei tuoi dati come feature di input.
+# Se non vuoi enfatizzare nessuna feature specifica, imposta a None.
+KEY_FEATURE_TO_EMPHASIZE = "price_mean_1min" # Esempio: 'close' o 'volume' se sono colonne di input
+# Se 'price 1 min' è una delle tue colonne di input (non il target y1),
+# potresti impostarla qui, ad esempio: KEY_FEATURE_TO_EMPHASIZE = 'price_1_min_feature_column'
+
+# --- Logica di Retry per la Connessione al Database ---
+def connect_to_db_with_retries(max_retries=15, delay=5):
+    db_name = os.getenv("DB_NAME", "aggregated-data")
+    db_user = os.getenv("DB_USER", "admin")
+    db_password = os.getenv("DB_PASSWORD", "admin123")
+    db_host = os.getenv("DB_HOST", "postgre")
+    db_port = os.getenv("DB_PORT", "5432")
+
+    db_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+
+    for i in range(max_retries):
+        try:
+            # print(f"Tentativo di connessione a PostgreSQL (Tentativo {i+1}/{max_retries})...") # Commentato per log meno verbose in parallelo
+            engine = create_engine(db_url)
+            with engine.connect() as connection:
+                connection.execute(text('SELECT 1'))
+            # print(f"\u2705 Connesso a PostgreSQL con successo!") # Commentato per log meno verbose in parallelo
+            return engine
+        except OperationalError as e:
+            sys.stderr.write(f"PostgreSQL connection failed: {e}. Retrying in {delay}s...\n")
+        except Exception as e:
+            sys.stderr.write(f"Unexpected error during DB connection: {e}. Retrying in {delay}s...\n")
+        time.sleep(delay) # Delay is outside the try-except for all retries
+    sys.stderr.write("Max retries reached. Could not connect to PostgreSQL. Exiting.\n")
+    raise Exception("Failed to connect to database.")
+
+
+# --- Funzione per il training di un singolo ticker ---
+def train_model_for_ticker(ticker_info):
+    """
+    Funzione wrapper per il training del modello per un singolo ticker.
+    Viene eseguita in un processo separato.
+    """
+    current_ticker, ticker_code, total_tickers = ticker_info
+    
+    # Ogni processo deve avere la propria connessione al DB
+    try:
+        engine = connect_to_db_with_retries()
+    except Exception as e:
+        print(f"\u274C Process for ticker {current_ticker}: Failed to connect to DB. Skipping. Error: {e}")
+        return current_ticker, False # Return ticker name and success status
+
+    print(f"\n{'='*80}")
+    print(f"TRAINING MODEL FOR TICKER: {current_ticker} (Ticker Code: {ticker_code})")
+    print(f"{'='*80}\n")
+
+    MODEL_FILENAME = os.path.join(MODEL_SAVE_PATH, f"lstm_model_par2_{current_ticker}.h5")
+    SCALER_FILENAME = os.path.join(MODEL_SAVE_PATH, f"scaler_par2_{current_ticker}.pkl")
+
+    try:
+        print(f"\U0001F535 [{current_ticker}] Step 1: Caricamento Dati")
+        query = f"SELECT * FROM aggregated_data WHERE ticker = '{current_ticker}' ORDER BY timestamp"
+        df = pd.read_sql(query, engine)
+        print(f"\u2705 [{current_ticker}] Dati caricati: {df.shape}")
+
+        if df.empty:
+            print(f"\u274C [{current_ticker}] Nessun dato trovato. Salto.")
+            return current_ticker, False
+
+        print(f"\n\U0001F535 [{current_ticker}] Step 2: Preprocessing e Ottimizzazione Memoria")
+        initial_rows = df.shape[0]
+        df = df.dropna()
+        print(f"   \u27A1 [{current_ticker}] Rimosse {initial_rows - df.shape[0]} righe con NaNs. Rimanenti: {df.shape[0]}")
+
+        if df.empty:
+            print(f"\u274C [{current_ticker}] Nessun dato rimanente dopo rimozione NaN. Salto.")
+            return current_ticker, False
+
+        df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
+        df = df.sort_values('timestamp')
+
+        for col in df.select_dtypes(include=['float64']).columns:
+            df[col] = df[col].astype(np.float32)
+        for col in df.select_dtypes(include=['int64']).columns:
+            if df[col].min() >= np.iinfo(np.int8).min and df[col].max() <= np.iinfo(np.int8).max:
+                df[col] = df[col].astype(np.int8)
+            elif df[col].min() >= np.iinfo(np.int16).min and df[col].max() <= np.iinfo(np.int16).max:
+                df[col] = df[col].astype(np.int16)
+            elif df[col].min() >= np.iinfo(np.int32).min and df[col].max() <= np.iinfo(np.int32).max:
+                df[col] = df[col].astype(np.int32)
+        
+        # 'ticker' e 'ticker_code' potrebbero non essere sempre presenti nel DataFrame
+        # dopo la query, ma è buona pratica rimuoverli se presenti e non usati come features.
+        if 'ticker' in df.columns:
+            df = df.drop(columns=['ticker'])
+        # NOTA: Qui 'ticker_code' lo reinseriamo come input separato del modello
+        # quindi non deve essere scalato con le altre features.
+        # Assicurati che non sia già una feature nel tuo DB se non vuoi scalare.
+        if 'ticker_code' in df.columns:
+            df = df.drop(columns=['ticker_code'])
+
+
+        df = df.rename(columns={'y1': 'y'})
+        feature_cols = [c for c in df.columns if c not in ['timestamp', 'y']]
+        print(f"\u2705 [{current_ticker}] Preprocessing completato. Features: {feature_cols}")
+
+        print(f"\n\U0001F535 [{current_ticker}] Step 2.5: Scaling delle features")
+        scaler = MinMaxScaler()
+        df[feature_cols] = scaler.fit_transform(df[feature_cols])
+        print(f"\u2705 [{current_ticker}] Features scalate (MinMaxScaler).")
+
+        joblib.dump(scaler, SCALER_FILENAME)
+        print(f"\u2705 [{current_ticker}] Scaler salvato in {SCALER_FILENAME}")
+
+        print(f"\n\U0001F535 [{current_ticker}] Step 3: Creazione Sequenze Ottimizzata")
+        if len(df) < N_STEPS + 1:
+            print(f"\u274C [{current_ticker}] Dati insufficienti ({len(df)} punti). Necessari almeno {N_STEPS + 1}. Salto.")
+            return current_ticker, False
+
+        ticker_features_scaled = df[feature_cols].values.astype(np.float32)
+        ticker_target = df['y'].values.astype(np.float32)
+
+        # Creazione delle sequenze
+        # X_seq sarà (num_samples, N_STEPS, num_features)
+        sequences = np.lib.stride_tricks.sliding_window_view(ticker_features_scaled, (N_STEPS, ticker_features_scaled.shape[1]))
+        sequences = sequences.squeeze(axis=1) # Rimuovi la dimensione aggiuntiva introdotta da sliding_window_view
+
+        # I target sono il valore 'y' successivo alla sequenza di N_STEPS
+        targets = ticker_target[N_STEPS:]
+
+        # Assicurati che le dimensioni combacino
+        if len(sequences) > len(targets):
+            sequences = sequences[:len(targets)]
+        elif len(sequences) < len(targets):
+            print(f"\u274C [{current_ticker}] Errore inatteso: targets più lunghi delle sequenze. Targets: {len(targets)}, Sequenze: {len(sequences)}. Salto.")
+            return current_ticker, False
+
+        X_seq = sequences
+        y = targets
+
+        X_seq_key_feature_only = None
+        key_feature_index = -1
+
+        # Se una feature chiave è specificata, estraila per un input separato
+        if KEY_FEATURE_TO_EMPHASIZE and KEY_FEATURE_TO_EMPHASIZE in feature_cols:
+            key_feature_index = feature_cols.index(KEY_FEATURE_TO_EMPHASIZE)
+            print(f"\u2705 [{current_ticker}] Emphasizing feature: '{KEY_FEATURE_TO_EMPHASIZE}' at index {key_feature_index}")
+            # Estrai la sequenza della feature chiave (shape: (samples, N_STEPS, 1))
+            X_seq_key_feature_only = X_seq[:, :, key_feature_index:key_feature_index+1]
+        
+        print(f"\u2705 [{current_ticker}] Sequenze create: X_seq={X_seq.shape}, y={y.shape}")
+
+        # Train/validation split
+        if X_seq_key_feature_only is not None:
+            X_seq_train, X_seq_val, X_seq_key_feature_only_train, X_seq_key_feature_only_val, y_train, y_val = train_test_split(
+                X_seq, X_seq_key_feature_only, y, test_size=0.2, random_state=42
+            )
+        else:
+            X_seq_train, X_seq_val, y_train, y_val = train_test_split(
+                X_seq, y, test_size=0.2, random_state=42
+            )
+
+        print(f"\u2705 [{current_ticker}] Dataset pronto: train={len(X_seq_train)} samples, val={len(X_seq_val)} samples")
+
+        print(f"\n\U0001F535 [{current_ticker}] Step 4: Costruzione Modello LSTM con Input Ticker Code e (opzionale) Feature Chiave")
+        num_features = len(feature_cols)
+
+        # Input per la sequenza principale di features
+        input_seq = layers.Input(shape=(N_STEPS, num_features), name='input_sequence')
+        
+        # Input per il codice del ticker (un singolo valore intero per identificare il ticker)
+        input_ticker_code = layers.Input(shape=(1,), name='input_ticker_code', dtype=tf.int32)
+        
+        # Embedding layer per il codice del ticker
+        max_ticker_code = len(ALL_TICKERS) + 1 # Un valore sicuro che include tutti i possibili codici
+        embedding_dim = 4 # Dimensione dell'embedding
+        ticker_embedding = layers.Embedding(input_dim=max_ticker_code, output_dim=embedding_dim)(input_ticker_code)
+        ticker_embedding = layers.Flatten()(ticker_embedding) # appiattisce l'embedding
+
+        # LSTM per le sequenze di features
+        lstm_out = layers.LSTM(64, return_sequences=False)(input_seq)
+        
+        # Lista degli input da concatenare
+        merged_inputs = [lstm_out, ticker_embedding]
+        model_inputs = [input_seq, input_ticker_code]
+
+        # Se la feature chiave è specificata, aggiungi il suo flusso di input
+        if X_seq_key_feature_only is not None:
+            input_key_feature_sequence = layers.Input(shape=(N_STEPS, 1), name='input_key_feature_sequence')
+            # Applica una rete neurale densa a ciascun passo temporale della feature chiave
+            key_feature_processed = layers.TimeDistributed(layers.Dense(8, activation='relu'))(input_key_feature_sequence)
+            key_feature_processed = layers.Flatten()(key_feature_processed) # Appiattisci l'output sequenziale
+            
+            merged_inputs.append(key_feature_processed)
+            model_inputs.append(input_key_feature_sequence)
+
+        # Concateniamo tutti gli input elaborati
+        merged = layers.concatenate(merged_inputs)
+
+        # Dense layers
+        x = layers.Dense(32, activation='relu')(merged)
+        output = layers.Dense(1)(x)
+
+        # Definisci il modello con tutti gli input
+        model = models.Model(inputs=model_inputs, outputs=output)
+        model.compile(optimizer='adam', loss='mse')
+        model.summary()
+        print(f"\u2705 [{current_ticker}] Modello costruito")
+
+        print(f"\n\U0001F535 [{current_ticker}] Step 5: Training")
+        # Per il training, dobbiamo fornire tutti gli input al modello
+        # Creiamo gli array di codici ticker e, se presenti, delle feature chiave
+        ticker_code_array_train = np.full((X_seq_train.shape[0], 1), ticker_code, dtype=np.int32)
+        ticker_code_array_val = np.full((X_seq_val.shape[0], 1), ticker_code, dtype=np.int32)
+
+        # Prepara i dati di training e validation in base agli input del modello
+        train_data_inputs = [X_seq_train, ticker_code_array_train]
+        val_data_inputs = [X_seq_val, ticker_code_array_val]
+        if X_seq_key_feature_only is not None:
+            train_data_inputs.append(X_seq_key_feature_only_train)
+            val_data_inputs.append(X_seq_key_feature_only_val)
+
+        # Ricrea i TensorFlow Datasets con tutti gli input
+        dataset_train = tf.data.Dataset.from_tensor_slices((tuple(train_data_inputs), y_train))
+        dataset_train = dataset_train.shuffle(1000).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+
+        dataset_val = tf.data.Dataset.from_tensor_slices((tuple(val_data_inputs), y_val))
+        dataset_val = dataset_val.batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+
+        history = model.fit(dataset_train, validation_data=dataset_val, epochs=EPOCHS, verbose=2) # verbose=2 per una output meno dettagliato
+        print(f"\u2705 [{current_ticker}] Training completato")
+
+        print(f"\n\U0001F535 [{current_ticker}] Step 6: Salvataggio Modello")
+        model.save(MODEL_FILENAME)
+        print(f"\u2705 [{current_ticker}] Modello salvato in {MODEL_FILENAME}")
+        return current_ticker, True
+
+    except Exception as e:
+        print(f"\u274C [{current_ticker}] Errore durante il training: {e}")
+        return current_ticker, False
+
+
+# --- Main Training Workflow (Parallelizzato) ---
+if __name__ == "__main__":
+    print("\n" + "="*80)
+    print("STARTING BATCH TRAINING FOR ALL TICKERS (PARALLELIZED)")
+    print("="*80 + "\n")
+
+    # Mappa i nomi dei ticker ai codici numerici
+    # Questo è fondamentale perché il modello si aspetta un input numerico per il ticker
+    # e deve essere consistente tra training e inferenza.
+    ticker_name_to_code_map = {ticker: i for i, ticker in enumerate(ALL_TICKERS)}
+
+    # Salva la mappa dei ticker
+    os.makedirs(MODEL_SAVE_PATH, exist_ok=True)
+    with open(TICKER_MAP_FILENAME, 'w') as f:
+        json.dump(ticker_name_to_code_map, f)
+    print(f"\u2705 Ticker mapping saved to {TICKER_MAP_FILENAME}")
+
+    # Prepara la lista di argomenti per i processi (ticker, codice_ticker, numero_totale_ticker)
+    tasks = [(ticker, ticker_name_to_code_map[ticker], len(ALL_TICKERS)) for ticker in ALL_TICKERS]
+
+    successful_tickers = []
+    failed_tickers = []
+
+    # Usa un Pool di processi
+    with multiprocessing.Pool(processes=NUM_WORKERS) as pool:
+        # map applica la funzione a ciascun elemento della lista tasks e aspetta che tutti finiscano
+        results = pool.map(train_model_for_ticker, tasks)
+
+    for ticker, success in results:
+        if success:
+            successful_tickers.append(ticker)
+        else:
+            failed_tickers.append(ticker)
+
+    print("\n" + "="*80)
+    print("ALL BATCH TRAINING COMPLETED")
+    print("="*80 + "\n")
+    print(f"\u2705 Successfully trained models for: {successful_tickers}")
+    if failed_tickers:
+        print(f"\u274C Failed to train models for: {failed_tickers}")
+        sys.exit(1) # Esci con errore se alcuni training sono falliti
+    else:
+        print("All models trained successfully!")
+    
+    sys.exit(0)
+
+
+
+
+
+
+
+# import os
+# import numpy as np
+# import pandas as pd
+# import tensorflow as tf
+# from tensorflow.keras import layers, models
+# from sklearn.model_selection import train_test_split
+# from sqlalchemy import create_engine, text
+# import psycopg2
+# import time
+# from psycopg2 import OperationalError
+# from sklearn.preprocessing import MinMaxScaler
+# import joblib # Import per salvare/caricare lo scaler
+# import sys
+# import multiprocessing # Import per la parallelizzazione
+# import json # Per salvare la ticker_map
+# from tensorflow.keras.callbacks import EarlyStopping # Import per EarlyStopping
+
+
+# # --- Configurazione GPU (se applicabile) ---
+# num_cpu_cores = os.cpu_count()
+# if num_cpu_cores:
+#     # Questa configurazione è importante per TensorFlow con multiprocessing
+#     # Ogni processo Python gestirà la propria sessione TF
+#     # e questa impostazione dovrebbe applicarsi a ciascun processo.
+#     tf.config.threading.set_inter_op_parallelism_threads(1) 
+#     # Modifica qui: Assicurati che ogni worker possa usare più thread se necessario.
+#     # num_cpu_cores // NUM_WORKERS è una buona euristica se NUM_WORKERS è definito prima.
+#     # Altrimenti, lasciare a TensorFlow la gestione interna con tutti i core disponibili.
+#     tf.config.threading.set_intra_op_parallelism_threads(num_cpu_cores) 
+#     print(f"\u2705 TensorFlow configured for CPU parallelism with {num_cpu_cores} cores detected.")
+# else:
+#     print("\u274C Could not determine number of CPU cores. TensorFlow using default threading.")
+
+# # --- Configurazione Parametri Globali ---
+# N_STEPS = 10 # Numero di passi temporali passati da considerare
+# BATCH_SIZE = 256
+# EPOCHS = 20
+# MIN_LOSS_THRESHOLD = 0.05# ABBASSATO drastricamente per un target scalato tra 0 e 1 (MSE di 0.005 è sqrt(0.005) = 0.07, cioè 7% dell'intervallo)
+
+# # --- LISTA DEI TICKER ---
+# ALL_TICKERS = [
+#     "AAPL", "MSFT", "NVDA", "AMZN", "META", "ORCL", "GOOGL", "AVGO", "TSLA", "IBM",
+#     "LLY", "JPM", "V", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA",
+#     "CVX", "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO"
+# ]
+
+# # Numero di processi worker da usare per il training parallelo
+# NUM_WORKERS = min(len(ALL_TICKERS), 4) # Definito prima della configurazione dei thread se vuoi usarlo lì.
+
+# # --- Percorsi per il salvataggio degli artefatti ---
+# MODEL_SAVE_PATH = "model" # La directory verrà creata se non esiste
+# TICKER_MAP_FILENAME = os.path.join(MODEL_SAVE_PATH, "ticker_map_es.json") # Mappa da salvare
+
+
+# # --- Logica di Retry per la Connessione al Database ---
+# def connect_to_db_with_retries(max_retries=15, delay=5):
+#     db_name = os.getenv("DB_NAME", "aggregated-data")
+#     db_user = os.getenv("DB_USER", "admin")
+#     db_password = os.getenv("DB_PASSWORD", "admin123")
+#     db_host = os.getenv("DB_HOST", "postgre")
+#     db_port = os.getenv("DB_PORT", "5432")
+
+#     db_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+
+#     for i in range(max_retries):
+#         try:
+#             engine = create_engine(db_url)
+#             with engine.connect() as connection:
+#                 connection.execute(text('SELECT 1'))
+#             return engine
+#         except OperationalError as e:
+#             sys.stderr.write(f"PostgreSQL connection failed: {e}. Retrying in {delay}s...\n")
+#             time.sleep(delay)
+#         except Exception as e:
+#             sys.stderr.write(f"Unexpected error during DB connection: {e}. Retrying in {delay}s...\n")
+#             time.sleep(delay)
+#     sys.stderr.write("Max retries reached. Could not connect to PostgreSQL. Exiting.\n")
+#     raise Exception("Failed to connect to database.")
+
+
+# # --- Funzione per il training di un singolo ticker ---
+# def train_model_for_ticker(ticker_info):
+#     current_ticker, ticker_code, total_tickers = ticker_info
+    
+#     try:
+#         engine = connect_to_db_with_retries()
+#     except Exception as e:
+#         print(f"\u274C Process for ticker {current_ticker}: Failed to connect to DB. Skipping. Error: {e}")
+#         return current_ticker, False
+
+#     print(f"\n{'='*80}")
+#     print(f"TRAINING MODEL FOR TICKER: {current_ticker} (Ticker Code: {ticker_code})")
+#     print(f"{'='*80}\n")
+
+#     MODEL_FILENAME = os.path.join(MODEL_SAVE_PATH, f"lstm_model_es_{current_ticker}.h5")
+#     FEATURE_SCALER_FILENAME = os.path.join(MODEL_SAVE_PATH, f"feature_scaler_es_{current_ticker}.pkl") # Rinominato
+#     TARGET_SCALER_FILENAME = os.path.join(MODEL_SAVE_PATH, f"target_scaler_es_{current_ticker}.pkl") # Nuovo scaler per il target
+
+#     try:
+#         print(f"\U0001F535 [{current_ticker}] Step 1: Caricamento Dati")
+#         query = f"SELECT * FROM aggregated_data WHERE ticker = '{current_ticker}' ORDER BY timestamp"
+#         df = pd.read_sql(query, engine)
+#         print(f"\u2705 [{current_ticker}] Dati caricati: {df.shape}")
+
+#         if df.empty:
+#             print(f"\u274C [{current_ticker}] Nessun dato trovato. Salto.")
+#             return current_ticker, False
+
+#         print(f"\n\U0001F535 [{current_ticker}] Step 2: Preprocessing e Ottimizzazione Memoria")
+#         initial_rows = df.shape[0]
+#         df = df.dropna()
+#         print(f"   \u27A1 [{current_ticker}] Rimosse {initial_rows - df.shape[0]} righe con NaNs. Rimanenti: {df.shape[0]}")
+
+#         if df.empty:
+#             print(f"\u274C [{current_ticker}] Nessun dato rimanente dopo rimozione NaN. Salto.")
+#             return current_ticker, False
+
+#         df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
+#         df = df.sort_values('timestamp')
+
+#         for col in df.select_dtypes(include=['float64']).columns:
+#             df[col] = df[col].astype(np.float32)
+#         for col in df.select_dtypes(include=['int64']).columns:
+#             if df[col].min() >= np.iinfo(np.int8).min and df[col].max() <= np.iinfo(np.int8).max:
+#                 df[col] = df[col].astype(np.int8)
+#             elif df[col].min() >= np.iinfo(np.int16).min and df[col].max() <= np.iinfo(np.int16).max:
+#                 df[col] = df[col].astype(np.int16)
+#             elif df[col].min() >= np.iinfo(np.int32).min and df[col].max() <= np.iinfo(np.int32).max:
+#                 df[col] = df[col].astype(np.int32)
+        
+#         if 'ticker' in df.columns:
+#             df = df.drop(columns=['ticker'])
+#         if 'ticker_code' in df.columns:
+#             df = df.drop(columns=['ticker_code'])
+
+#         df = df.rename(columns={'y1': 'y'})
+#         feature_cols = [c for c in df.columns if c not in ['timestamp', 'y']]
+#         print(f"\u2705 [{current_ticker}] Preprocessing completato. Features: {feature_cols}")
+
+#         print(f"\n\U0001F535 [{current_ticker}] Step 2.5: Scaling delle features e del target")
+        
+#         feature_scaler = MinMaxScaler()
+#         target_scaler = MinMaxScaler() 
+        
+#         df[feature_cols] = feature_scaler.fit_transform(df[feature_cols])
+#         # Scala il target 'y'
+#         df['y'] = target_scaler.fit_transform(df[['y']]) 
+        
+#         print(f"\u2705 [{current_ticker}] Features e Target scalati (MinMaxScaler).")
+
+#         joblib.dump(feature_scaler, FEATURE_SCALER_FILENAME)
+#         joblib.dump(target_scaler, TARGET_SCALER_FILENAME)
+#         print(f"\u2705 [{current_ticker}] Scaler per features e target salvati.")
+
+#         print(f"\n\U0001F535 [{current_ticker}] Step 3: Creazione Sequenze Ottimizzata")
+#         if len(df) < N_STEPS + 1:
+#             print(f"\u274C [{current_ticker}] Dati insufficienti ({len(df)} punti). Necessari almeno {N_STEPS + 1}. Salto.")
+#             return current_ticker, False
+
+#         ticker_features_scaled = df[feature_cols].values.astype(np.float32)
+#         ticker_target_scaled = df['y'].values.astype(np.float32) # Ora è scalato
+
+#         sequences = np.lib.stride_tricks.sliding_window_view(ticker_features_scaled, (N_STEPS, ticker_features_scaled.shape[1]))
+#         sequences = sequences.squeeze(axis=1)
+
+#         targets = ticker_target_scaled[N_STEPS:] # Usa il target scalato
+
+#         if len(sequences) > len(targets):
+#             sequences = sequences[:len(targets)]
+#         elif len(sequences) < len(targets):
+#             print(f"\u274C [{current_ticker}] Errore inatteso: targets più lunghi delle sequenze. Targets: {len(targets)}, Sequenze: {len(sequences)}. Salto.")
+#             return current_ticker, False
+
+#         X_seq = sequences
+#         y = targets # Questo y è ora scalato (tra 0 e 1)
+
+#         print(f"\u2705 [{current_ticker}] Sequenze create: X_seq={X_seq.shape}, y={y.shape}")
+
+#         X_seq_train, X_seq_val, y_train, y_val = train_test_split(
+#             X_seq, y, test_size=0.2, random_state=42
+#         )
+        
+#         # Non è necessario convertire in TensorFlow Datasets qui, si può fare direttamente nel fit
+#         #dataset_train = tf.data.Dataset.from_tensor_slices((X_seq_train, y_train))
+#         #dataset_train = dataset_train.shuffle(1000).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+
+#         #dataset_val = tf.data.Dataset.from_tensor_slices((X_seq_val, y_val))
+#         #dataset_val = dataset_val.batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+
+#         print(f"\u2705 [{current_ticker}] Dataset pronto: train={len(X_seq_train)} samples, val={len(X_seq_val)} samples")
+
+#         print(f"\n\U0001F535 [{current_ticker}] Step 4: Costruzione Modello LSTM con Input Ticker Code")
+#         num_features = len(feature_cols)
+
+#         input_seq = layers.Input(shape=(N_STEPS, num_features), name='input_sequence')
+#         input_ticker_code = layers.Input(shape=(1,), name='input_ticker_code', dtype=tf.int32)
+        
+#         max_ticker_code = len(ALL_TICKERS) + 1 
+#         embedding_dim = 4 
+#         ticker_embedding = layers.Embedding(input_dim=max_ticker_code, output_dim=embedding_dim)(input_ticker_code)
+#         ticker_embedding = layers.Flatten()(ticker_embedding) 
+
+#         lstm_out = layers.LSTM(64, return_sequences=False)(input_seq)
+        
+#         merged = layers.concatenate([lstm_out, ticker_embedding])
+
+#         x = layers.Dense(32, activation='relu')(merged)
+#         output = layers.Dense(1)(x) # L'output è un singolo valore scalato tra 0 e 1
+
+#         model = models.Model(inputs=[input_seq, input_ticker_code], outputs=output)
+#         model.compile(optimizer='adam', loss='mse')
+#         model.summary()
+#         print(f"\u2705 [{current_ticker}] Modello costruito")
+
+#         print(f"\n\U0001F535 [{current_ticker}] Step 5: Training")
+#         ticker_code_array_train = np.full((X_seq_train.shape[0], 1), ticker_code, dtype=np.int32)
+#         ticker_code_array_val = np.full((X_seq_val.shape[0], 1), ticker_code, dtype=np.int32)
+
+#         # Passa direttamente i NumPy array al fit. Keras li convertirà in tf.data.Dataset internamente.
+#         # Questo semplifica leggermente il codice senza perdere performance significative.
+#         train_data = (X_seq_train, ticker_code_array_train)
+#         val_data = (X_seq_val, ticker_code_array_val)
+
+#         class StopIfLossBelowThreshold(tf.keras.callbacks.Callback):
+#             def on_epoch_end(self, epoch, logs=None):
+#                 current_val_loss = logs.get('val_loss')
+#                 if current_val_loss is not None and current_val_loss <= MIN_LOSS_THRESHOLD:
+#                     print(f"\n\u2705 [{self.model.name}] Early stopping at epoch {epoch+1}: Validation loss ({current_val_loss:.4f}) reached target ({MIN_LOSS_THRESHOLD:.4f}).")
+#                     self.model.stop_training = True
+
+#         early_stopping_by_val_loss = EarlyStopping(
+#             monitor='val_loss',
+#             patience=5, 
+#             restore_best_weights=True,
+#             verbose=2 # Lascia 0 per non intasare i log
+#         )
+
+#         model._name = current_ticker 
+
+#         history = model.fit(
+#             x=train_data, # Passa la tupla di input
+#             y=y_train,    # Passa il target
+#             validation_data=(val_data, y_val), # Passa la tupla di input e il target per la validazione
+#             epochs=EPOCHS,
+#             callbacks=[early_stopping_by_val_loss, StopIfLossBelowThreshold()], 
+#             verbose=2 # CAMBIATO a 0 per la produzione parallela
+#         )
+
+#         final_loss = history.history['loss'][-1] if history.history['loss'] else float('inf')
+#         final_val_loss = history.history['val_loss'][-1] if history.history['val_loss'] else float('inf')
+#         print(f"\u2705 [{current_ticker}] Training completato. Loss Finale: {final_loss:.4f}, Val Loss Finale: {final_val_loss:.4f}")
+
+#         print(f"\n\U0001F535 [{current_ticker}] Step 6: Salvataggio Modello")
+#         model.save(MODEL_FILENAME)
+#         print(f"\u2705 [{current_ticker}] Modello salvato in {MODEL_FILENAME}")
+#         return current_ticker, True
+
+#     except Exception as e:
+#         print(f"\u274C [{current_ticker}] Errore durante il training: {e}")
+#         return current_ticker, False
+
+
+# # --- Main Training Workflow (Parallelizzato) ---
+# if __name__ == "__main__":
+#     print("\n" + "="*80)
+#     print("STARTING BATCH TRAINING FOR ALL TICKERS (PARALLELIZED)")
+#     print("="*80 + "\n")
+
+#     ticker_name_to_code_map = {ticker: i for i, ticker in enumerate(ALL_TICKERS)}
+
+#     os.makedirs(MODEL_SAVE_PATH, exist_ok=True)
+#     with open(TICKER_MAP_FILENAME, 'w') as f:
+#         json.dump(ticker_name_to_code_map, f)
+#     print(f"\u2705 Ticker mapping saved to {TICKER_MAP_FILENAME}")
+
+#     tasks = [(ticker, ticker_name_to_code_map[ticker], len(ALL_TICKERS)) for ticker in ALL_TICKERS]
+
+#     successful_tickers = []
+#     failed_tickers = []
+
+#     with multiprocessing.Pool(processes=NUM_WORKERS) as pool:
+#         results = pool.map(train_model_for_ticker, tasks)
+
+#     for ticker, success in results:
+#         if success:
+#             successful_tickers.append(ticker)
+#         else:
+#             failed_tickers.append(ticker)
+
+#     print("\n" + "="*80)
+#     print("ALL BATCH TRAINING COMPLETED")
+#     print("="*80 + "\n")
+#     print(f"\u2705 Successfully trained models for: {successful_tickers}")
+#     if failed_tickers:
+#         print(f"\u274C Failed to train models for: {failed_tickers}")
+#         sys.exit(1)
+#     else:
+#         print("All models trained successfully!")
+    
+#     sys.exit(0)
+
+# import os
+# import numpy as np
+# import pandas as pd
+# import tensorflow as tf
+# from tensorflow.keras import layers, models
+# from sklearn.model_selection import train_test_split
+# from sqlalchemy import create_engine, text
+# import psycopg2
+# import time
+# from psycopg2 import OperationalError
+# from sklearn.preprocessing import MinMaxScaler
+# import joblib # Import per salvare/caricare lo scaler
+# import sys
+# import multiprocessing # Import per la parallelizzazione
+# import json # Per salvare la ticker_map
+
+# # --- Configurazione GPU (se applicabile) ---
+# num_cpu_cores = os.cpu_count()
+# if num_cpu_cores:
+#     # Questa configurazione è importante per TensorFlow con multiprocessing
+#     # Ogni processo Python gestirà la propria sessione TF
+#     # e questa impostazione dovrebbe applicarsi a ciascun processo.
+#     tf.config.threading.set_inter_op_parallelism_threads(1)
+#     tf.config.threading.set_intra_op_parallelism_threads(num_cpu_cores // multiprocessing.cpu_count() if multiprocessing.cpu_count() > 0 else 1)
+#     print(f"\u2705 TensorFlow configured for CPU parallelism with {num_cpu_cores} cores detected.")
+# else:
+#     print("\u274C Could not determine number of CPU cores. TensorFlow using default threading.")
+
+# # --- Configurazione Parametri Globali ---
+# N_STEPS = 10 # Numero di passi temporali passati da considerare
+# BATCH_SIZE = 256
+# EPOCHS = 5
+
+# # --- LISTA DEI TICKER ---
+# ALL_TICKERS = [
+#     "AAPL", "MSFT", "NVDA", "AMZN", "META", "ORCL", "GOOGL", "AVGO", "TSLA", "IBM",
+#     "LLY", "JPM", "V", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA",
+#     "CVX", "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO"
+# ]
+
+# # Numero di processi worker da usare per il training parallelo
+# NUM_WORKERS = min(len(ALL_TICKERS), 3)
+
+# # --- Percorsi per il salvataggio degli artefatti ---
+# MODEL_SAVE_PATH = "model" # La directory verrà creata se non esiste
+# TICKER_MAP_FILENAME = os.path.join(MODEL_SAVE_PATH, "ticker_map_s.json") # Mappa da salvare
+
+# # --- Logica di Retry per la Connessione al Database ---
+# def connect_to_db_with_retries(max_retries=15, delay=5):
+#     db_name = os.getenv("DB_NAME", "aggregated-data")
+#     db_user = os.getenv("DB_USER", "admin")
+#     db_password = os.getenv("DB_PASSWORD", "admin123")
+#     db_host = os.getenv("DB_HOST", "postgre")
+#     db_port = os.getenv("DB_PORT", "5432")
+
+#     db_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+
+#     for i in range(max_retries):
+#         try:
+#             engine = create_engine(db_url)
+#             with engine.connect() as connection:
+#                 connection.execute(text('SELECT 1'))
+#             return engine
+#         except OperationalError as e:
+#             sys.stderr.write(f"PostgreSQL connection failed: {e}. Retrying in {delay}s...\n")
+#             time.sleep(delay)
+#         except Exception as e:
+#             sys.stderr.write(f"Unexpected error during DB connection: {e}. Retrying in {delay}s...\n")
+#             time.sleep(delay)
+#     sys.stderr.write("Max retries reached. Could not connect to PostgreSQL. Exiting.\n")
+#     raise Exception("Failed to connect to database.")
+
+# # --- Funzione per il training di un singolo ticker ---
+# def train_model_for_ticker(ticker_info):
+#     current_ticker, ticker_code, total_tickers = ticker_info
+    
+#     try:
+#         engine = connect_to_db_with_retries()
+#     except Exception as e:
+#         print(f"\u274C Process for ticker {current_ticker}: Failed to connect to DB. Skipping. Error: {e}")
+#         return current_ticker, False
+
+#     print(f"\n{'='*80}")
+#     print(f"TRAINING MODEL FOR TICKER: {current_ticker} (Ticker Code: {ticker_code})")
+#     print(f"{'='*80}\n")
+
+#     MODEL_FILENAME = os.path.join(MODEL_SAVE_PATH, f"lstm_model_s_{current_ticker}.h5")
+#     FEATURE_SCALER_FILENAME = os.path.join(MODEL_SAVE_PATH, f"feature_scaler_s_{current_ticker}.pkl")
+#     TARGET_SCALER_FILENAME = os.path.join(MODEL_SAVE_PATH, f"target_scaler_s_{current_ticker}.pkl")
+
+#     try:
+#         print(f"\U0001F535 [{current_ticker}] Step 1: Caricamento Dati")
+#         query = f"SELECT * FROM aggregated_data WHERE ticker = '{current_ticker}' ORDER BY timestamp"
+#         df = pd.read_sql(query, engine)
+#         print(f"\u2705 [{current_ticker}] Dati caricati: {df.shape}")
+
+#         if df.empty:
+#             print(f"\u274C [{current_ticker}] Nessun dato trovato. Salto.")
+#             return current_ticker, False
+
+#         print(f"\n\U0001F535 [{current_ticker}] Step 2: Preprocessing e Ottimizzazione Memoria")
+#         initial_rows = df.shape[0]
+#         df = df.dropna()
+#         print(f"   \u27A1 [{current_ticker}] Rimosse {initial_rows - df.shape[0]} righe con NaNs. Rimanenti: {df.shape[0]}")
+
+#         if df.empty:
+#             print(f"\u274C [{current_ticker}] Nessun dato rimanente dopo rimozione NaN. Salto.")
+#             return current_ticker, False
+
+#         df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
+#         df = df.sort_values('timestamp')
+
+#         for col in df.select_dtypes(include=['float64']).columns:
+#             df[col] = df[col].astype(np.float32)
+#         for col in df.select_dtypes(include=['int64']).columns:
+#             if df[col].min() >= np.iinfo(np.int8).min and df[col].max() <= np.iinfo(np.int8).max:
+#                 df[col] = df[col].astype(np.int8)
+#             elif df[col].min() >= np.iinfo(np.int16).min and df[col].max() <= np.iinfo(np.int16).max:
+#                 df[col] = df[col].astype(np.int16)
+#             elif df[col].min() >= np.iinfo(np.int32).min and df[col].max() <= np.iinfo(np.int32).max:
+#                 df[col] = df[col].astype(np.int32)
+        
+#         if 'ticker' in df.columns:
+#             df = df.drop(columns=['ticker'])
+#         if 'ticker_code' in df.columns:
+#             df = df.drop(columns=['ticker_code'])
+
+#         df = df.rename(columns={'y1': 'y'})
+#         feature_cols = [c for c in df.columns if c not in ['timestamp', 'y']]
+#         print(f"\u2705 [{current_ticker}] Preprocessing completato. Features: {feature_cols}")
+
+#         print(f"\n\U0001F535 [{current_ticker}] Step 2.5: Scaling delle features e del target")
+        
+#         feature_scaler = MinMaxScaler()
+#         target_scaler = MinMaxScaler()
+        
+#         df[feature_cols] = feature_scaler.fit_transform(df[feature_cols])
+#         df['y'] = target_scaler.fit_transform(df[['y']]) # Scale the target 'y'
+        
+#         print(f"\u2705 [{current_ticker}] Features e Target scalati (MinMaxScaler).")
+
+#         joblib.dump(feature_scaler, FEATURE_SCALER_FILENAME)
+#         joblib.dump(target_scaler, TARGET_SCALER_FILENAME)
+#         print(f"\u2705 [{current_ticker}] Scaler per features e target salvati.")
+
+#         print(f"\n\U0001F535 [{current_ticker}] Step 3: Creazione Sequenze Ottimizzata")
+#         if len(df) < N_STEPS + 1:
+#             print(f"\u274C [{current_ticker}] Dati insufficienti ({len(df)} punti). Necessari almeno {N_STEPS + 1}. Salto.")
+#             return current_ticker, False
+
+#         ticker_features_scaled = df[feature_cols].values.astype(np.float32)
+#         ticker_target_scaled = df['y'].values.astype(np.float32) # Use the scaled target
+
+#         sequences = np.lib.stride_tricks.sliding_window_view(ticker_features_scaled, (N_STEPS, ticker_features_scaled.shape[1]))
+#         sequences = sequences.squeeze(axis=1)
+
+#         targets = ticker_target_scaled[N_STEPS:] # Use the scaled target
+
+#         if len(sequences) > len(targets):
+#             sequences = sequences[:len(targets)]
+#         elif len(sequences) < len(targets):
+#             print(f"\u274C [{current_ticker}] Errore inatteso: targets più lunghi delle sequenze. Targets: {len(targets)}, Sequenze: {len(sequences)}. Salto.")
+#             return current_ticker, False
+
+#         X_seq = sequences
+#         y = targets # This y is now scaled (between 0 and 1)
+
+#         print(f"\u2705 [{current_ticker}] Sequenze create: X_seq={X_seq.shape}, y={y.shape}")
+
+#         X_seq_train, X_seq_val, y_train, y_val = train_test_split(
+#             X_seq, y, test_size=0.2, random_state=42
+#         )
+        
+#         print(f"\u2705 [{current_ticker}] Dataset pronto: train={len(X_seq_train)} samples, val={len(X_seq_val)} samples")
+
+#         print(f"\n\U0001F535 [{current_ticker}] Step 4: Costruzione Modello LSTM con Input Ticker Code")
+#         num_features = len(feature_cols)
+
+#         input_seq = layers.Input(shape=(N_STEPS, num_features), name='input_sequence')
+#         input_ticker_code = layers.Input(shape=(1,), name='input_ticker_code', dtype=tf.int32)
+        
+#         max_ticker_code = len(ALL_TICKERS) + 1
+#         embedding_dim = 4
+#         ticker_embedding = layers.Embedding(input_dim=max_ticker_code, output_dim=embedding_dim)(input_ticker_code)
+#         ticker_embedding = layers.Flatten()(ticker_embedding)
+
+#         lstm_out = layers.LSTM(64, return_sequences=False)(input_seq)
+        
+#         merged = layers.concatenate([lstm_out, ticker_embedding])
+
+#         x = layers.Dense(32, activation='relu')(merged)
+#         output = layers.Dense(1)(x) # The output is a single value, now scaled between 0 and 1
+
+#         model = models.Model(inputs=[input_seq, input_ticker_code], outputs=output)
+#         model.compile(optimizer='adam', loss='mse')
+#         model.summary()
+#         print(f"\u2705 [{current_ticker}] Modello costruito")
+
+#         print(f"\n\U0001F535 [{current_ticker}] Step 5: Training")
+#         ticker_code_array_train = np.full((X_seq_train.shape[0], 1), ticker_code, dtype=np.int32)
+#         ticker_code_array_val = np.full((X_seq_val.shape[0], 1), ticker_code, dtype=np.int32)
+
+#         train_data = (X_seq_train, ticker_code_array_train)
+#         val_data = (X_seq_val, ticker_code_array_val)
+
+#         # Setting a name for the model to appear in verbose logs
+#         model._name = current_ticker 
+
+#         history = model.fit(
+#             x=train_data,
+#             y=y_train,
+#             validation_data=(val_data, y_val),
+#             epochs=EPOCHS,
+#             verbose=2 # Changed to 2 for less verbose output during parallel processing
+#         )
+
+#         final_loss = history.history['loss'][-1] if history.history['loss'] else float('inf')
+#         final_val_loss = history.history['val_loss'][-1] if history.history['val_loss'] else float('inf')
+#         print(f"\u2705 [{current_ticker}] Training completato. Loss Finale: {final_loss:.4f}, Val Loss Finale: {final_val_loss:.4f}")
+
+#         print(f"\n\U0001F535 [{current_ticker}] Step 6: Salvataggio Modello")
+#         model.save(MODEL_FILENAME)
+#         print(f"\u2705 [{current_ticker}] Modello salvato in {MODEL_FILENAME}")
+#         return current_ticker, True
+
+#     except Exception as e:
+#         print(f"\u274C [{current_ticker}] Errore durante il training: {e}")
+#         return current_ticker, False
+
+
+# # --- Main Training Workflow (Parallelizzato) ---
+# if __name__ == "__main__":
+#     print("\n" + "="*80)
+#     print("STARTING BATCH TRAINING FOR ALL TICKERS (PARALLELIZED)")
+#     print("="*80 + "\n")
+
+#     ticker_name_to_code_map = {ticker: i for i, ticker in enumerate(ALL_TICKERS)}
+
+#     os.makedirs(MODEL_SAVE_PATH, exist_ok=True)
+#     with open(TICKER_MAP_FILENAME, 'w') as f:
+#         json.dump(ticker_name_to_code_map, f)
+#     print(f"\u2705 Ticker mapping saved to {TICKER_MAP_FILENAME}")
+
+#     tasks = [(ticker, ticker_name_to_code_map[ticker], len(ALL_TICKERS)) for ticker in ALL_TICKERS]
+
+#     successful_tickers = []
+#     failed_tickers = []
+
+#     with multiprocessing.Pool(processes=NUM_WORKERS) as pool:
+#         results = pool.map(train_model_for_ticker, tasks)
+
+#     for ticker, success in results:
+#         if success:
+#             successful_tickers.append(ticker)
+#         else:
+#             failed_tickers.append(ticker)
+
+#     print("\n" + "="*80)
+#     print("ALL BATCH TRAINING COMPLETED")
+#     print("="*80 + "\n")
+#     print(f"\u2705 Successfully trained models for: {successful_tickers}")
+#     if failed_tickers:
+#         print(f"\u274C Failed to train models for: {failed_tickers}")
+#         sys.exit(1)
+#     else:
+#         print("All models trained successfully!")
+    
+#     sys.exit(0)
+
+#####################################################################################
+### PROVA 2  un modello per ticker, circa 35 min totali
+###          N_STEPS = 5 # Numero di passi temporali passati da considerare
+###          BATCH_SIZE = 256
+###          EPOCHS = 10
+###          no early stopping
+###
+#####################################################################################
+### PROVA 3  un modello per ticker, circa 35 min totali
+###          N_STEPS = 5 # Numero di passi temporali passati da considerare
+###          BATCH_SIZE = 256
+###          EPOCHS = 10
+###          no early stopping
+###
+#####################################################################################
