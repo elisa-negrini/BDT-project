@@ -1242,9 +1242,9 @@ class SlidingAggregator(KeyedProcessFunction):
                 "timestamp": ts_str,
                 "price_mean_1min": mean(price_1m_list),
                 "price_mean_5min": mean(price_5m_list),
-                "price_std_5min": std(price_5m_list), # Passa la lista
+                "price_std_5min": std(price_5m_list),
                 "price_mean_30min": mean(price_30m_list),
-                "price_std_30min": std(price_30m_list), # Passa la lista
+                "price_std_30min": std(price_30m_list),
                 "size_tot_1min": total(size_1m_list),
                 "size_tot_5min": total(size_5m_list),
                 "size_tot_30min": total(size_30m_list),
