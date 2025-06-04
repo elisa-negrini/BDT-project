@@ -95,7 +95,7 @@ class GlobalDataAggregator(KeyedProcessFunction):
             "timestamp": ts_str,
             **current_macro_data, # Unpack macro data directly
             "sentiment_bluesky_mean_general_2hours": mean_bluesky_2h,
-            "sentiment_bluesky_mean_general_1d": mean_bluesky_1d
+            "sentiment_bluesky_mean_general_1day": mean_bluesky_1d
         }
         
         print(f"[GLOBAL-AGGREGATION-EMIT] {ts_str} => {json.dumps(output_data)}", file=sys.stderr)

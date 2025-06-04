@@ -356,10 +356,10 @@ class SlidingAggregator(KeyedProcessFunction):
                 "size_tot_5min": total(size_5m_values),
                 "size_tot_30min": total(size_30m_values),
                 # SENTIMENT SPECIFICO PER TICKER
-                "sentiment_bluesky_mean_2h": mean(list(self.sentiment_bluesky_2h.values())), # Ensure list conversion
-                "sentiment_bluesky_mean_1d": mean(list(self.sentiment_bluesky_1d.values())), # Ensure list conversion
-                "sentiment_news_mean_1d": mean(list(self.sentiment_news_1d.values())),       # Ensure list conversion
-                "sentiment_news_mean_3d": mean(list(self.sentiment_news_3d.values())),       # Ensure list conversion
+                "sentiment_bluesky_mean_2hours": mean(list(self.sentiment_bluesky_2h.values())), # Ensure list conversion
+                "sentiment_bluesky_mean_1day": mean(list(self.sentiment_bluesky_1d.values())), # Ensure list conversion
+                "sentiment_news_mean_1day": mean(list(self.sentiment_news_1d.values())),       # Ensure list conversion
+                "sentiment_news_mean_3ddays": mean(list(self.sentiment_news_3d.values())),       # Ensure list conversion
                 # NEW TIME-BASED FEATURES
                 "minutes_since_open": int(minutes_since_open),
                 "day_of_week": int(now_ny.weekday()),
