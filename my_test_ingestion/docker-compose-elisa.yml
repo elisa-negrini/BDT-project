@@ -23,6 +23,31 @@ services:
     #   - ./create-topics.sh:/tmp/create-topics.sh
     # command: ["bash", "/tmp/create-topics.sh"]
 
+
+  # spark-master:
+  #   image: bitnami/spark:latest
+  #   environment:
+  #     - SPARK_MODE=master
+  #     - SPARK_RPC_AUTHENTICATION_ENABLED=no
+  #     - SPARK_RPC_ENCRYPTION_ENABLED=no
+  #     - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+  #     - SPARK_SSL_ENABLED=no
+  #   ports:
+  #     - "7077:7077"
+  #     - "8080:8080"  # Spark master web UI
+
+  # spark-worker:
+  #   image: bitnami/spark:latest
+  #   depends_on:
+  #     - spark-master
+  #   environment:
+  #     - SPARK_MODE=worker
+  #     - SPARK_MASTER_URL=spark://spark-master:7077
+  #     - SPARK_WORKER_MEMORY=1G
+  #     - SPARK_WORKER_CORES=1
+  #   ports:
+  #     - "8081:8081"  # Spark worker web UI
+
   minio:
     image: minio/minio
     container_name: minio
@@ -36,18 +61,18 @@ services:
      - ./data/minio:/data
     command: server /data --console-address ":9001"
 
-  postgre:
-    image: postgres:16-alpine
-    container_name: postgre
-    environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    restart: always
+  # postgre:
+  #   image: postgres:16-alpine
+  #   container_name: postgre
+  #   environment:
+  #     POSTGRES_DB: ${DB_NAME}
+  #     POSTGRES_USER: ${DB_USER}
+  #     POSTGRES_PASSWORD: ${DB_PASSWORD}
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+  #   restart: always
 
 
 ### PRODUCER STREAM
@@ -244,81 +269,81 @@ services:
   #   mem_limit: 4g # Consider increasing this if you raise parallelism
   #   cpus: 1
 
-  # sentiment_news:
-  #   build:
-  #     context: .
-  #     dockerfile: ./sentiment_news/Dockerfile
-  #   volumes:
-  #     # Mount per il tuo codice Python.
-  #     - ./sentiment_news:/app
-  #     # Mount per la cartella del modello (tokenizer e .onnx).
-  #     - ./quantized_finbert:/model
-  #   working_dir: /app
-  #   depends_on:
-  #     - kafka
-  #   container_name: sentiment_news
-  #   restart: always
-  #   environment:
-  #     # *** QUESTA È LA MODIFICA CHIAVE ***
-  #     # Dice a PyFlink di includere i JAR dalle directory standard di Flink
-  #     # (/opt/flink/lib e /opt/flink/opt) nella classpath.
-  #     # Il connettore Kafka verrà copiato in /opt/flink/lib dal Dockerfile.
-  #     - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
-  #     - FINBERT_MODEL_BASE_PATH=/model 
-  #   mem_limit: 4g # Consider increasing this if you raise parallelism
-  #   cpus: 1 
+  sentiment_news:
+    build:
+      context: .
+      dockerfile: ./sentiment_news/Dockerfile
+    volumes:
+      # Mount per il tuo codice Python.
+      - ./sentiment_news:/app
+      # Mount per la cartella del modello (tokenizer e .onnx).
+      - ./quantized_finbert:/model
+    working_dir: /app
+    depends_on:
+      - kafka
+    container_name: sentiment_news
+    restart: always
+    environment:
+      # *** QUESTA È LA MODIFICA CHIAVE ***
+      # Dice a PyFlink di includere i JAR dalle directory standard di Flink
+      # (/opt/flink/lib e /opt/flink/opt) nella classpath.
+      # Il connettore Kafka verrà copiato in /opt/flink/lib dal Dockerfile.
+      - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
+      - FINBERT_MODEL_BASE_PATH=/model 
+    mem_limit: 4g # Consider increasing this if you raise parallelism
+    cpus: 1 
   
-  # sentiment_consumer:
-  #   build:
-  #     context: ./consumer_sentiment
-  #   depends_on:
-  #     - kafka
-  #     - minio  # <-- Assicurati che ci sia un servizio "minio" definito
-  #   environment:
-  #     S3_ENDPOINT: http://minio:9000
-  #     S3_ACCESS_KEY: admin
-  #     S3_SECRET_KEY: admin123
-  #     S3_BUCKET: sentiment-data
-  #   networks:
-  #     - default  # o il nome della rete Docker se ne hai definita una custom
-  #   restart: always
+  sentiment_consumer:
+    build:
+      context: ./consumer_sentiment
+    depends_on:
+      - kafka
+      - minio  # <-- Assicurati che ci sia un servizio "minio" definito
+    environment:
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: admin
+      S3_SECRET_KEY: admin123
+      S3_BUCKET: sentiment-data
+    networks:
+      - default  # o il nome della rete Docker se ne hai definita una custom
+    restart: always
 
 # ### AGGREGATION LAYER
 
-  # flink:
+  flink:
+    build:
+      context: ./preprocessing_stream
+    container_name: flink
+    depends_on: 
+      - kafka
+    restart: always
+
+  # flink_main_job:
   #   build:
-  #     context: ./preprocessing_stream
-  #   container_name: flink
-  #   depends_on: 
+  #     context: ./preprocessing_stream2 
+  #     dockerfile: ./main_job.Dockerfile
+  #   container_name: flink_main_job
+  #   depends_on:
   #     - kafka
   #   restart: always
 
-  flink_main_job:
-    build:
-      context: ./preprocessing_stream2 
-      dockerfile: ./main_job.Dockerfile
-    container_name: flink_main_job
-    depends_on:
-      - kafka
-    restart: always
+  # flink-global-job:
+  #   build:
+  #     context: ./preprocessing_stream2
+  #     dockerfile: ./global_job.Dockerfile
+  #   container_name: flink-global-job
+  #   depends_on:
+  #     - kafka
+  #   restart: always
 
-  flink-global-job:
-    build:
-      context: ./preprocessing_stream2
-      dockerfile: ./global_job.Dockerfile
-    container_name: flink-global-job
-    depends_on:
-      - kafka
-    restart: always
-
-  flink-aggregated-job:
-    build:
-      context: ./preprocessing_stream2
-      dockerfile: ./aggregated_job.Dockerfile
-    container_name: flink-aggregated-job
-    depends_on:
-      - kafka
-    restart: always
+  # flink-aggregated-job:
+  #   build:
+  #     context: ./preprocessing_stream2
+  #     dockerfile: ./aggregated_job.Dockerfile
+  #   container_name: flink-aggregated-job
+  #   depends_on:
+  #     - kafka
+  #   restart: always
 
     # aggregated_storage:
     #   build: ./consumer_aggregated
@@ -381,6 +406,63 @@ services:
 #     environment:
 #       - BOOTSTRAP_SERVERS: kafka:9092
 #     restart: always
+
+
+
+  prediction_consumer:
+    build:
+      context: ./prediction_layer # Il contesto di build è la directory corrente (dove si trova il Dockerfile)
+      dockerfile: Dockerfile # Il nome del tuo Dockerfile
+    container_name: prediction_layer
+    depends_on:
+      - kafka # Assicura che Kafka sia avviato prima del consumer
+    environment:
+      KAFKA_BROKER: kafka:9092 # Questo è CRUCIALE: usa il nome del servizio Kafka e la porta interna
+      KAFKA_TOPIC: aggregated_data
+    # Se vuoi esporre porte dal tuo consumer (es. per un'API di monitoraggio), aggiungile qui
+    # ports:
+    #   - "5000:5000"
+      # Non è strettamente necessario mappare volumi se gli artefatti sono copiati durante il build
+      # ma potresti farlo se vuoi aggiornare modello/scaler senza ricostruire l'immagine
+      # - ./model:/app/model
+      # - ./your_prediction_script_name.py:/app/your_prediction_script_name.py
+    restart: on-failure # Riavvia il container se fallisce
+
+  # prediction_layer:
+  #   build:
+  #     context: .  # Contesto di build (dove c'è il Dockerfile)
+  #     dockerfile: ./prediction_layer/Dockerfile          # Nome esplicito del Dockerfile
+  #   container_name: prediction_layer
+  #   depends_on:
+  #     - kafka                         # Aspetta che Kafka sia pronto
+  #   environment:
+  #     KAFKA_BROKER: kafka:9092        # Nome del servizio Kafka e porta interna
+  #     KAFKA_TOPIC: aggregated_data
+  #     PYFLINK_CLASSPATH:  /opt/flink/lib/*:/opt/flink/opt/*  
+  #   volumes:
+  #     - ./create_model_lstm:/app/create_model_lstm  # (Facoltativo) monta artefatti dinamici
+  #   restart: unless-stopped           # Meno aggressivo di on-failure, utile per container persistenti
+
+
+
+  # prediction_layer:
+  #   build: 
+  #     context: .
+  #     dockerfile: prediction_layer/Dockerfile
+  #   depends_on:
+  #     - kafka
+  #     - spark-master
+  #   #  - spark-worker
+  #   volumes:
+  #     - ./prediction_layer:/app
+  #   working_dir: /app
+  #   command: >
+  #     spark-submit
+  #     --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
+  #     prediction_layer.py
+  #   environment:
+  #     - PYSPARK_PYTHON=python3
+  #   restart: always
 
 
 # ### DASHBOARD 
