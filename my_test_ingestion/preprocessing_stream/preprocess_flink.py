@@ -37,7 +37,7 @@
 
 # macro_data_dict = {}
 # general_sentiment_dict = {
-#     "sentiment_bluesky_mean_general_2hours": 0.0,
+#     "sentiment_general_bluesky_2hours": 0.0,
 #     "sentiment_bluesky_mean_general_1d": 0.0
 # }
 # fundamentals_data = {}
@@ -79,7 +79,7 @@
 #                     row = df.iloc[0]
 #                     # Ensure all values are converted to standard Python types (float, int)
 #                     eps = float(row.get("eps")) if "eps" in row and pd.notna(row.get("eps")) else None
-#                     fcf = float(row.get("cashflow_freeCashFlow")) if "cashflow_freeCashFlow" in row and pd.notna(row.get("cashflow_freeCashFlow")) else None
+#                     fcf = float(row.get("cashflow_free_cash_flow")) if "cashflow_freeCashFlow" in row and pd.notna(row.get("cashflow_freeCashFlow")) else None
 #                     revenue = float(row.get("revenue")) if "revenue" in row and pd.notna(row.get("revenue")) else None
 #                     net_income = float(row.get("netIncome")) if "netIncome" in row and pd.notna(row.get("netIncome")) else None
 #                     debt = float(row.get("balance_totalDebt")) if "balance_totalDebt" in row and pd.notna(row.get("balance_totalDebt")) else None
@@ -869,8 +869,8 @@ GENERAL_SENTIMENT_KEY = "general_sentiment_key"
 
 macro_data_dict = {}
 general_sentiment_dict = {
-    "sentiment_bluesky_mean_general_2hours": 0.0,
-    "sentiment_bluesky_mean_general_1d": 0.0
+    "sentiment_general_bluesky_mean_2hours": 0.0,
+    "sentiment_general_bluesky_mean_1day": 0.0
 }
 fundamentals_data = {}
 
@@ -922,7 +922,7 @@ def load_fundamental_data():
 
                     fundamentals_data[ticker] = {
                         "eps": eps,
-                        "freeCashFlow": fcf,
+                        "free_cash_flow": fcf,
                         "profit_margin": profit_margin,
                         "debt_to_equity": debt_to_equity
                     }
@@ -1144,8 +1144,8 @@ class SlidingAggregator(KeyedProcessFunction):
                 bluesky_gen_2h_list = list(self.sentiment_bluesky_general_2h.values())
                 bluesky_gen_1d_list = list(self.sentiment_bluesky_general_1d.values())
 
-                general_sentiment_dict["sentiment_bluesky_mean_general_2hours"] = mean(bluesky_gen_2h_list)
-                general_sentiment_dict["sentiment_bluesky_mean_general_1d"] = mean(bluesky_gen_1d_list)
+                general_sentiment_dict["sentiment_general_bluesky_mean_2hours"] = mean(bluesky_gen_2h_list)
+                general_sentiment_dict["sentiment_general_bluesky_mean_1day"] = mean(bluesky_gen_1d_list)
                 
                 print(f"[GENERAL SENTIMENT AGG] Updated general_sentiment_dict: {general_sentiment_dict}", file=sys.stderr)
                 # ... (re-register timer remain unchanged)
@@ -1182,7 +1182,7 @@ class SlidingAggregator(KeyedProcessFunction):
             self._cleanup_old_entries(self.sentiment_news_3d, 3 * 24 * 60)
 
             now_ny = now_utc.astimezone(NY_TZ)
-            market_open_time = now_ny.replace(hour=9, minute=30, second=0, microsecond=0)
+            market_open_time = now_ny.replace(hour=15, minute=30, second=0, microsecond=0)
             market_close_time = now_ny.replace(hour=16, minute=0, second=0, microsecond=0)
             
             is_market_hours = market_open_time <= now_ny < market_close_time and now_ny.weekday() < 5 # Mon-Fri
@@ -1249,12 +1249,12 @@ class SlidingAggregator(KeyedProcessFunction):
                 "size_tot_5min": total(size_5m_list),
                 "size_tot_30min": total(size_30m_list),
                 # SENTIMENT
-                "sentiment_bluesky_mean_2h": mean(sentiment_bluesky_2h_list),
-                "sentiment_bluesky_mean_1d": mean(sentiment_bluesky_1d_list),
-                "sentiment_news_mean_1d": mean(sentiment_news_1d_list),
-                "sentiment_news_mean_3d": mean(sentiment_news_3d_list),
-                "sentiment_bluesky_mean_general_2hours": general_sentiment_dict["sentiment_bluesky_mean_general_2hours"],
-                "sentiment_bluesky_mean_general_1d": general_sentiment_dict["sentiment_bluesky_mean_general_1d"],
+                "sentiment_bluesky_mean_2hours": mean(sentiment_bluesky_2h_list),
+                "sentiment_bluesky_mean_1day": mean(sentiment_bluesky_1d_list),
+                "sentiment_news_mean_1day": mean(sentiment_news_1d_list),
+                "sentiment_news_mean_3days": mean(sentiment_news_3d_list),
+                "sentiment_general_bluesky_mean_2hours": general_sentiment_dict["sentiment_general_bluesky_mean_2hours"],
+                "sentiment_general_bluesky_mean_1day": general_sentiment_dict["sentiment_general_bluesky_mean_1day"],
                 # NEW TIME-BASED FEATURES - unchanged
                 "minutes_since_open": int(minutes_since_open),
                 "day_of_week": int(now_ny.weekday()),
@@ -1265,7 +1265,7 @@ class SlidingAggregator(KeyedProcessFunction):
                 "market_close_spike_flag": int(market_close_spike_flag),
                 # Fundamental data - unchanged
                 "eps": float(ticker_fundamentals["eps"]) if ticker_fundamentals.get("eps") is not None else None,
-                "freeCashFlow": float(ticker_fundamentals["freeCashFlow"]) if ticker_fundamentals.get("freeCashFlow") is not None else None,
+                "free_cash_flow": float(ticker_fundamentals["free_cash_flow"]) if ticker_fundamentals.get("free_cash_flow") is not None else None,
                 "profit_margin": float(ticker_fundamentals["profit_margin"]) if ticker_fundamentals.get("profit_margin") is not None else None,
                 "debt_to_equity": float(ticker_fundamentals["debt_to_equity"]) if ticker_fundamentals.get("debt_to_equity") is not None else None,
                 "is_simulated_prediction": is_simulated_prediction
