@@ -61,18 +61,18 @@ services:
      - ./data/minio:/data
     command: server /data --console-address ":9001"
 
-  postgre:
-    image: postgres:16-alpine
-    container_name: postgre
-    environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    restart: always
+  # postgre:
+  #   image: postgres:16-alpine
+  #   container_name: postgre
+  #   environment:
+  #     POSTGRES_DB: ${DB_NAME}
+  #     POSTGRES_USER: ${DB_USER}
+  #     POSTGRES_PASSWORD: ${DB_PASSWORD}
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+  #   restart: always
 
   # db:
   #   build:
@@ -100,52 +100,52 @@ services:
   #     - kafka
   #   restart: always
   
-#   # Kafka producer data_finnhubnews
-#   kp_finnhubnews:
-#     build: ./producer_finnhubnews
-#     environment:
-#       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-#       FINNHUB_API_KEY: ${FINNHUB_API_KEY}
-#     depends_on:
-#       - kafka
-#     restart: always
+  # Kafka producer data_finnhubnews
+  kp_finnhubnews:
+    build: ./producer_finnhubnews
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY}
+    depends_on:
+      - kafka
+    restart: always
 
-#  # Kafka producer data_alpaca
-  # kp_alpaca:
-  #   build: ./producer_alpaca
-  #   environment:
-  #     API_KEY_ALPACA: ${API_KEY_ALPACA}
-  #     API_SECRET_ALPACA: ${API_SECRET_ALPACA}
-  #     KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-  #     POSTGRES_HOST: ${DB_HOST} 
-  #     POSTGRES_PORT: ${DB_PORT} 
-  #     POSTGRES_DB: ${DB_NAME}   
-  #     POSTGRES_USER: ${DB_USER} 
-  #     POSTGRES_PASSWORD: ${DB_PASSWORD} 
-  #   depends_on:
-  #     - kafka
-  #   restart: always
+ # Kafka producer data_alpaca
+  kp_alpaca:
+    build: ./producer_alpaca
+    environment:
+      API_KEY_ALPACA: ${API_KEY_ALPACA}
+      API_SECRET_ALPACA: ${API_SECRET_ALPACA}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      POSTGRES_HOST: ${DB_HOST} 
+      POSTGRES_PORT: ${DB_PORT} 
+      POSTGRES_DB: ${DB_NAME}   
+      POSTGRES_USER: ${DB_USER} 
+      POSTGRES_PASSWORD: ${DB_PASSWORD} 
+    depends_on:
+      - kafka
+    restart: always
 
-#   # Kafka producer bluesky
-#   kp_bluesky:
-#     build: ./producer_bluesky
-#     environment:
-#       BLUESKY_IDENTIFIER: ${BLUESKY_IDENTIFIER}
-#       BLUESKY_PASSWORD: ${BLUESKY_PASSWORD}
-#       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-#     depends_on:
-#       - kafka
-#     restart: always
+  # Kafka producer bluesky
+  kp_bluesky:
+    build: ./producer_bluesky
+    environment:
+      BLUESKY_IDENTIFIER: ${BLUESKY_IDENTIFIER}
+      BLUESKY_PASSWORD: ${BLUESKY_PASSWORD}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+    depends_on:
+      - kafka
+    restart: always
     
-#   # Kafka producer macrodata
-#   kp_macrodata:
-#     build: ./producer_macrodata
-#     environment:
-#       API_KEY_FRED: ${API_KEY_FRED}
-#       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-#     depends_on:
-#       - kafka
-#     restart: always
+  # Kafka producer macrodata
+  kp_macrodata:
+    build: ./producer_macrodata
+    environment:
+      API_KEY_FRED: ${API_KEY_FRED}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+    depends_on:
+      - kafka
+    restart: always
 
 # ### CONSUMER STREAM
 
@@ -235,31 +235,31 @@ services:
   #   command: python consumer_macrodata.py
   #   restart: always
 
-### SENTIMENT ANALYSIS
+## SENTIMENT ANALYSIS
 
-  # sentiment_bluesky:
-  #   build:
-  #     context: .
-  #     dockerfile: ./sentiment_bluesky/Dockerfile
-  #   volumes:
-  #     # Mount per il tuo codice Python.
-  #     - ./sentiment_bluesky:/app
-  #     # Mount per la cartella del modello (tokenizer e .onnx).
-  #     - ./quantized_finbert:/model
-  #   working_dir: /app
-  #   depends_on:
-  #     - kafka
-  #   container_name: sentiment_bluesky
-  #   restart: always
-  #   environment:
-  #     # *** QUESTA È LA MODIFICA CHIAVE ***
-  #     # Dice a PyFlink di includere i JAR dalle directory standard di Flink
-  #     # (/opt/flink/lib e /opt/flink/opt) nella classpath.
-  #     # Il connettore Kafka verrà copiato in /opt/flink/lib dal Dockerfile.
-  #     - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
-  #     - FINBERT_MODEL_BASE_PATH=/model 
-  #   mem_limit: 4g # Consider increasing this if you raise parallelism
-  #   cpus: 1 
+  sentiment_bluesky:
+    build:
+      context: .
+      dockerfile: ./sentiment_bluesky/Dockerfile
+    volumes:
+      # Mount per il tuo codice Python.
+      - ./sentiment_bluesky:/app
+      # Mount per la cartella del modello (tokenizer e .onnx).
+      - ./quantized_finbert:/model
+    working_dir: /app
+    depends_on:
+      - kafka
+    container_name: sentiment_bluesky
+    restart: always
+    environment:
+      # *** QUESTA È LA MODIFICA CHIAVE ***
+      # Dice a PyFlink di includere i JAR dalle directory standard di Flink
+      # (/opt/flink/lib e /opt/flink/opt) nella classpath.
+      # Il connettore Kafka verrà copiato in /opt/flink/lib dal Dockerfile.
+      - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
+      - FINBERT_MODEL_BASE_PATH=/model 
+    mem_limit: 4g # Consider increasing this if you raise parallelism
+    cpus: 1 
 
   # sentiment_reddit:
   #   build:
@@ -285,54 +285,54 @@ services:
   #   mem_limit: 4g # Consider increasing this if you raise parallelism
   #   cpus: 1
 
-  # sentiment_news:
-  #   build:
-  #     context: .
-  #     dockerfile: ./sentiment_news/Dockerfile
-  #   volumes:
-  #     # Mount per il tuo codice Python.
-  #     - ./sentiment_news:/app
-  #     # Mount per la cartella del modello (tokenizer e .onnx).
-  #     - ./quantized_finbert:/model
-  #   working_dir: /app
-  #   depends_on:
-  #     - kafka
-  #   container_name: sentiment_news
-  #   restart: always
-  #   environment:
-  #     # *** QUESTA È LA MODIFICA CHIAVE ***
-  #     # Dice a PyFlink di includere i JAR dalle directory standard di Flink
-  #     # (/opt/flink/lib e /opt/flink/opt) nella classpath.
-  #     # Il connettore Kafka verrà copiato in /opt/flink/lib dal Dockerfile.
-  #     - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
-  #     - FINBERT_MODEL_BASE_PATH=/model 
-  #   mem_limit: 4g # Consider increasing this if you raise parallelism
-  #   cpus: 1 
+  sentiment_news:
+    build:
+      context: .
+      dockerfile: ./sentiment_news/Dockerfile
+    volumes:
+      # Mount per il tuo codice Python.
+      - ./sentiment_news:/app
+      # Mount per la cartella del modello (tokenizer e .onnx).
+      - ./quantized_finbert:/model
+    working_dir: /app
+    depends_on:
+      - kafka
+    container_name: sentiment_news
+    restart: always
+    environment:
+      # *** QUESTA È LA MODIFICA CHIAVE ***
+      # Dice a PyFlink di includere i JAR dalle directory standard di Flink
+      # (/opt/flink/lib e /opt/flink/opt) nella classpath.
+      # Il connettore Kafka verrà copiato in /opt/flink/lib dal Dockerfile.
+      - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
+      - FINBERT_MODEL_BASE_PATH=/model 
+    mem_limit: 4g # Consider increasing this if you raise parallelism
+    cpus: 1 
   
-  # sentiment_consumer:
-  #   build:
-  #     context: ./consumer_sentiment
-  #   depends_on:
-  #     - kafka
-  #     - minio
-  #   environment:
-  #     S3_ENDPOINT: http://minio:9000
-  #     S3_ACCESS_KEY: admin
-  #     S3_SECRET_KEY: admin123
-  #     S3_BUCKET: sentiment-data
-  #   networks:
-  #     - default  # o il nome della rete Docker se ne hai definita una custom
-  #   restart: always
+  sentiment_consumer:
+    build:
+      context: ./consumer_sentiment
+    depends_on:
+      - kafka
+      - minio
+    environment:
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: admin
+      S3_SECRET_KEY: admin123
+      S3_BUCKET: sentiment-data
+    networks:
+      - default  # o il nome della rete Docker se ne hai definita una custom
+    restart: always
 
 # ### AGGREGATION LAYER
 
-  # flink:
-  #   build:
-  #     context: ./preprocessing_stream
-  #   container_name: flink
-  #   depends_on: 
-  #     - kafka
-  #   restart: always
+  flink:
+    build:
+      context: ./preprocessing_stream
+    container_name: flink
+    depends_on: 
+      - kafka
+    restart: always
 
   # flink_main_job:
   #   build:
@@ -416,24 +416,42 @@ services:
 #     restart: always
 
 
-  # prediction_consumer:
-  #   build:
-  #     context: ./prediction_layer # Il contesto di build è la directory corrente (dove si trova il Dockerfile)
-  #     dockerfile: Dockerfile # Il nome del tuo Dockerfile
-  #   container_name: prediction_layer
-  #   depends_on:
-  #     - kafka # Assicura che Kafka sia avviato prima del consumer
-  #   environment:
-  #     KAFKA_BROKER: kafka:9092 # Questo è CRUCIALE: usa il nome del servizio Kafka e la porta interna
-  #     KAFKA_TOPIC: aggregated_data
-  #   # Se vuoi esporre porte dal tuo consumer (es. per un'API di monitoraggio), aggiungile qui
-  #   # ports:
-  #   #   - "5000:5000"
-  #     # Non è strettamente necessario mappare volumi se gli artefatti sono copiati durante il build
-  #     # ma potresti farlo se vuoi aggiornare modello/scaler senza ricostruire l'immagine
-  #     # - ./model:/app/model
-  #     # - ./your_prediction_script_name.py:/app/your_prediction_script_name.py
-  #   restart: on-failure # Riavvia il container se fallisce
+  prediction_consumer:
+    build:
+      context: ./prediction_layer # Il contesto di build è la directory corrente (dove si trova il Dockerfile)
+      dockerfile: Dockerfile # Il nome del tuo Dockerfile
+    container_name: prediction_layer
+    depends_on:
+      - kafka # Assicura che Kafka sia avviato prima del consumer
+    environment:
+      KAFKA_BROKER: kafka:9092 # Questo è CRUCIALE: usa il nome del servizio Kafka e la porta interna
+      KAFKA_TOPIC: aggregated_data
+    # Se vuoi esporre porte dal tuo consumer (es. per un'API di monitoraggio), aggiungile qui
+    # ports:
+    #   - "5000:5000"
+      # Non è strettamente necessario mappare volumi se gli artefatti sono copiati durante il build
+      # ma potresti farlo se vuoi aggiornare modello/scaler senza ricostruire l'immagine
+      # - ./model:/app/model
+      # - ./your_prediction_script_name.py:/app/your_prediction_script_name.py
+    restart: on-failure # Riavvia il container se fallisce
+
+
+   #consumer prediction
+  kc_prediction:
+    build: ./consumer_prediction
+    depends_on:
+      - kafka
+      - minio
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    volumes:
+      - ./consumer_prediction:/app
+    working_dir: /app
+    command: python consumer_prediction.py
+    restart: always
 
 #   prediction_layer:
 #     build:
@@ -458,17 +476,17 @@ services:
 
 # ### DASHBOARD 
 
-#   dashboard:
-#     build:
-#       context: ./dashboard
-#       dockerfile: Dockerfile
-#     container_name: dashboard
-#     ports:
-#       - "8501:8501"
-#     depends_on:
-#       - kafka
-#     environment:
-#       - PYTHONUNBUFFERED=1
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: dashboard
+    ports:
+      - "8501:8501"
+    depends_on:
+      - kafka
+    environment:
+      - PYTHONUNBUFFERED=1
 
 # ## CLEANER MINIO
 
@@ -486,78 +504,78 @@ services:
 
 # Historical producer
 
-  kp_h_macrodata:
-    build: ./kp_historical_macrodata
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-      API_KEY_FRED: ${API_KEY_FRED}
-    depends_on:
-      - kafka
+#   kp_h_macrodata:
+#     build: ./kp_historical_macrodata
+#     environment:
+#       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+#       API_KEY_FRED: ${API_KEY_FRED}
+#     depends_on:
+#       - kafka
 
-  kp_h_alpaca:
-    build: ./kp_historical_alpaca
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-      API_KEY_ALPACA: ${API_KEY_ALPACA}
-      API_SECRET_ALPACA: ${API_SECRET_ALPACA}
-      POSTGRES_HOST: ${POSTGRES_HOST} 
-      POSTGRES_PORT: ${POSTGRES_PORT} 
-      POSTGRES_DB: ${POSTGRES_DB}   
-      POSTGRES_USER: ${POSTGRES_USER} 
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} 
-    depends_on:
-      - kafka
-      - postgre
+#   kp_h_alpaca:
+#     build: ./kp_historical_alpaca
+#     environment:
+#       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+#       API_KEY_ALPACA: ${API_KEY_ALPACA}
+#       API_SECRET_ALPACA: ${API_SECRET_ALPACA}
+#       POSTGRES_HOST: ${POSTGRES_HOST} 
+#       POSTGRES_PORT: ${POSTGRES_PORT} 
+#       POSTGRES_DB: ${POSTGRES_DB}   
+#       POSTGRES_USER: ${POSTGRES_USER} 
+#       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} 
+#     depends_on:
+#       - kafka
+#       - postgre
 
-  kp_h_company:
-    build:
-      context: ./kp_historical_company
-    container_name: kp_h_company
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-    depends_on:
-      - kafka
+#   kp_h_company:
+#     build:
+#       context: ./kp_historical_company
+#     container_name: kp_h_company
+#     environment:
+#       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+#     depends_on:
+#       - kafka
 
-# # historical consumer
-  kc_h_company:
-    build:
-      context: ./kc_historical_company
-    container_name: kc_h_company
-    depends_on:
-      - kafka
-      - minio
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
-      S3_SECRET_KEY: ${S3_SECRET_KEY}
+# # # historical consumer
+#   kc_h_company:
+#     build:
+#       context: ./kc_historical_company
+#     container_name: kc_h_company
+#     depends_on:
+#       - kafka
+#       - minio
+#     environment:
+#       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+#       S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+#       S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
+#       S3_SECRET_KEY: ${S3_SECRET_KEY}
       
-  kc_h_alpaca:
-    build:
-      context: ./kc_historical_alpaca
-    container_name: kc_h_alpaca
-    depends_on:
-      - kafka
-      - minio
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
-      S3_SECRET_KEY: ${S3_SECRET_KEY}
+#   kc_h_alpaca:
+#     build:
+#       context: ./kc_historical_alpaca
+#     container_name: kc_h_alpaca
+#     depends_on:
+#       - kafka
+#       - minio
+#     environment:
+#       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+#       S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+#       S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
+#       S3_SECRET_KEY: ${S3_SECRET_KEY}
 
-  kc_h_macrodata:
-    build:
-      context: ./kc_historical_macrodata
-    container_name: kc_h_macrodata
-    depends_on:
-      - kafka
-      - minio
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-      S3_ENDPOINT: ${S3_ENDPOINT} 
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
-      S3_SECRET_KEY: ${S3_SECRET_KEY}
-      SPARK_SUBMIT_OPTIONS: --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
+#   kc_h_macrodata:
+#     build:
+#       context: ./kc_historical_macrodata
+#     container_name: kc_h_macrodata
+#     depends_on:
+#       - kafka
+#       - minio
+#     environment:
+#       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+#       S3_ENDPOINT: ${S3_ENDPOINT} 
+#       S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
+#       S3_SECRET_KEY: ${S3_SECRET_KEY}
+#       SPARK_SUBMIT_OPTIONS: --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
 
   # flink_historical:
   #     build:
