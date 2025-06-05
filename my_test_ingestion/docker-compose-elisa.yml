@@ -61,18 +61,29 @@ services:
      - ./data/minio:/data
     command: server /data --console-address ":9001"
 
-  # postgre:
-  #   image: postgres:16-alpine
-  #   container_name: postgre
+  postgre:
+    image: postgres:16-alpine
+    container_name: postgre
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: always
+
+  # db:
+  #   build:
+  #     context: ./postgresql
+  #   restart: no
+  #   shm_size: 128mb
   #   environment:
-  #     POSTGRES_DB: ${DB_NAME}
-  #     POSTGRES_USER: ${DB_USER}
   #     POSTGRES_PASSWORD: ${DB_PASSWORD}
+  #     POSTGRES_DB: ${DB_NAME}
   #   ports:
-  #     - "5432:5432"
-  #   volumes:
-  #     - pgdata:/var/lib/postgresql/data
-  #   restart: always
+  #     - "5433:5432"
 
 
 ### PRODUCER STREAM
@@ -89,47 +100,52 @@ services:
   #     - kafka
   #   restart: always
   
-  # Kafka producer data_finnhubnews
-  kp_finnhubnews:
-    build: ./producer_finnhubnews
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-      FINNHUB_API_KEY: ${FINNHUB_API_KEY}
-    depends_on:
-      - kafka
-    restart: always
+#   # Kafka producer data_finnhubnews
+#   kp_finnhubnews:
+#     build: ./producer_finnhubnews
+#     environment:
+#       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+#       FINNHUB_API_KEY: ${FINNHUB_API_KEY}
+#     depends_on:
+#       - kafka
+#     restart: always
 
- # Kafka producer data_alpaca
-  kp_alpaca:
-    build: ./producer_alpaca
-    environment:
-      API_KEY_ALPACA: ${API_KEY_ALPACA}
-      API_SECRET_ALPACA: ${API_SECRET_ALPACA}
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-    depends_on:
-      - kafka
-    restart: always
+#  # Kafka producer data_alpaca
+  # kp_alpaca:
+  #   build: ./producer_alpaca
+  #   environment:
+  #     API_KEY_ALPACA: ${API_KEY_ALPACA}
+  #     API_SECRET_ALPACA: ${API_SECRET_ALPACA}
+  #     KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+  #     POSTGRES_HOST: ${DB_HOST} 
+  #     POSTGRES_PORT: ${DB_PORT} 
+  #     POSTGRES_DB: ${DB_NAME}   
+  #     POSTGRES_USER: ${DB_USER} 
+  #     POSTGRES_PASSWORD: ${DB_PASSWORD} 
+  #   depends_on:
+  #     - kafka
+  #   restart: always
 
-  # Kafka producer bluesky
-  kp_bluesky:
-    build: ./producer_bluesky
-    environment:
-      BLUESKY_IDENTIFIER: ${BLUESKY_IDENTIFIER}
-      BLUESKY_PASSWORD: ${BLUESKY_PASSWORD}
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-    depends_on:
-      - kafka
-    restart: always
+#   # Kafka producer bluesky
+#   kp_bluesky:
+#     build: ./producer_bluesky
+#     environment:
+#       BLUESKY_IDENTIFIER: ${BLUESKY_IDENTIFIER}
+#       BLUESKY_PASSWORD: ${BLUESKY_PASSWORD}
+#       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+#     depends_on:
+#       - kafka
+#     restart: always
     
-  # Kafka producer macrodata
-  kp_macrodata:
-    build: ./producer_macrodata
-    environment:
-      API_KEY_FRED: ${API_KEY_FRED}
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-    depends_on:
-      - kafka
-    restart: always
+#   # Kafka producer macrodata
+#   kp_macrodata:
+#     build: ./producer_macrodata
+#     environment:
+#       API_KEY_FRED: ${API_KEY_FRED}
+#       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+#     depends_on:
+#       - kafka
+#     restart: always
 
 # ### CONSUMER STREAM
 
@@ -318,32 +334,32 @@ services:
   #     - kafka
   #   restart: always
 
-  flink_main_job:
-    build:
-      context: ./preprocessing_stream2 
-      dockerfile: ./main_job.Dockerfile
-    container_name: flink_main_job
-    depends_on:
-      - kafka
-    restart: always
+  # flink_main_job:
+  #   build:
+  #     context: ./preprocessing_stream2 
+  #     dockerfile: ./main_job.Dockerfile
+  #   container_name: flink_main_job
+  #   depends_on:
+  #     - kafka
+  #   restart: always
 
-  flink-global-job:
-    build:
-      context: ./preprocessing_stream2
-      dockerfile: ./global_job.Dockerfile
-    container_name: flink-global-job
-    depends_on:
-      - kafka
-    restart: always
+  # flink-global-job:
+  #   build:
+  #     context: ./preprocessing_stream2
+  #     dockerfile: ./global_job.Dockerfile
+  #   container_name: flink-global-job
+  #   depends_on:
+  #     - kafka
+  #   restart: always
 
-  flink-aggregated-job:
-    build:
-      context: ./preprocessing_stream2
-      dockerfile: ./aggregated_job.Dockerfile
-    container_name: flink-aggregated-job
-    depends_on:
-      - kafka
-    restart: always
+  # flink-aggregated-job:
+  #   build:
+  #     context: ./preprocessing_stream2
+  #     dockerfile: ./aggregated_job.Dockerfile
+  #   container_name: flink-aggregated-job
+  #   depends_on:
+  #     - kafka
+  #   restart: always
 
     # aggregated_storage:
     #   build: ./consumer_aggregated
@@ -381,10 +397,10 @@ services:
   #     resources:
   #       limits:
   #         memory: 4G # Aumenta la memoria disponibile, ad esempio a 4GB o più
-  #         cpus: '2.0' # Alloca 2 core CPU, puoi aumentare o diminuire a seconda delle tue risorse
+  #         cpus: '3.0' # Alloca 2 core CPU, puoi aumentare o diminuire a seconda delle tue risorse
   #       reservations:
-  #         memory: 2G # Riserva 2GB di memoria
-  #         cpus: '1.0' # Riserva 1 core CPU
+  #         memory: 4G # Riserva 2GB di memoria
+  #         cpus: '3.0' # Riserva 1 core CPU
     # deploy:
     #   resources:
     #     limits:
@@ -419,40 +435,40 @@ services:
   #     # - ./your_prediction_script_name.py:/app/your_prediction_script_name.py
   #   restart: on-failure # Riavvia il container se fallisce
 
-  prediction_layer:
-    build:
-      context: .
-      dockerfile: ./prediction_layer/Dockerfile
-    container_name: prediction_layer
-    depends_on:
-      - kafka
-    environment:
-      KAFKA_BROKER: kafka:9092
-      KAFKA_TOPIC_AGGREGATED: aggregated_data
-      KAFKA_TOPIC_DASHBOARD: prediction
-      PYFLINK_CLASSPATH:  /opt/flink/lib/*:/opt/flink/opt/*  
-    mem_limit: 4g
-    volumes:
-      - ./create_model_lstm:/app/create_model_lstm
-    restart: unless-stopped
-    cpus: 1 
+#   prediction_layer:
+#     build:
+#       context: .
+#       dockerfile: ./prediction_layer/Dockerfile
+#     container_name: prediction_layer
+#     depends_on:
+#       - kafka
+#     environment:
+#       KAFKA_BROKER: kafka:9092
+#       KAFKA_TOPIC_AGGREGATED: aggregated_data
+#       KAFKA_TOPIC_DASHBOARD: prediction
+#       PYFLINK_CLASSPATH:  /opt/flink/lib/*:/opt/flink/opt/*  
+#     mem_limit: 4g
+#     volumes:
+#       - ./create_model_lstm:/app/create_model_lstm
+#     restart: unless-stopped
+#     cpus: 1 
 
 
 
 
-### DASHBOARD 
+# ### DASHBOARD 
 
-  dashboard:
-    build:
-      context: ./dashboard
-      dockerfile: Dockerfile
-    container_name: dashboard
-    ports:
-      - "8501:8501"
-    depends_on:
-      - kafka
-    environment:
-      - PYTHONUNBUFFERED=1
+#   dashboard:
+#     build:
+#       context: ./dashboard
+#       dockerfile: Dockerfile
+#     container_name: dashboard
+#     ports:
+#       - "8501:8501"
+#     depends_on:
+#       - kafka
+#     environment:
+#       - PYTHONUNBUFFERED=1
 
 # ## CLEANER MINIO
 
@@ -470,69 +486,78 @@ services:
 
 # Historical producer
 
-#   kp_h_macrodata:
-#     build: ./kp_historical_macrodata
-#     environment:
-#       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-#       API_KEY_FRED: ${API_KEY_FRED}
-#     depends_on:
-#       - kafka
+  kp_h_macrodata:
+    build: ./kp_historical_macrodata
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      API_KEY_FRED: ${API_KEY_FRED}
+    depends_on:
+      - kafka
 
-#   kp_h_alpaca:
-#     build: ./kp_historical_alpaca
-#     environment:
-#       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-#       API_KEY_ALPACA: ${API_KEY_ALPACA}
-#       API_SECRET_ALPACA: ${API_SECRET_ALPACA}
-#     depends_on:
-#       - kafka
+  kp_h_alpaca:
+    build: ./kp_historical_alpaca
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      API_KEY_ALPACA: ${API_KEY_ALPACA}
+      API_SECRET_ALPACA: ${API_SECRET_ALPACA}
+      POSTGRES_HOST: ${POSTGRES_HOST} 
+      POSTGRES_PORT: ${POSTGRES_PORT} 
+      POSTGRES_DB: ${POSTGRES_DB}   
+      POSTGRES_USER: ${POSTGRES_USER} 
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} 
+    depends_on:
+      - kafka
+      - postgre
 
-#   kp_h_company:
-#     build:
-#       context: ./kp_historical_company
-#     container_name: kp_h_company
-#     environment:
-#       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-#     depends_on:
-#       - kafka
+  kp_h_company:
+    build:
+      context: ./kp_historical_company
+    container_name: kp_h_company
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+    depends_on:
+      - kafka
 
 # # historical consumer
-#   kc_h_company:
-#     build:
-#       context: ./kc_historical_company
-#     container_name: kc_h_company
-#     depends_on:
-#       - kafka
-#       - minio
-#     environment:
-#       S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
-#       S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
-#       S3_SECRET_KEY: ${S3_SECRET_KEY}
+  kc_h_company:
+    build:
+      context: ./kc_historical_company
+    container_name: kc_h_company
+    depends_on:
+      - kafka
+      - minio
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
       
-#   kc_h_alpaca:
-#     build:
-#       context: ./kc_historical_alpaca
-#     container_name: kc_h_alpaca
-#     depends_on:
-#       - kafka
-#       - minio
-#     environment:
-#       S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
-#       S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
-#       S3_SECRET_KEY: ${S3_SECRET_KEY}
+  kc_h_alpaca:
+    build:
+      context: ./kc_historical_alpaca
+    container_name: kc_h_alpaca
+    depends_on:
+      - kafka
+      - minio
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
 
-#   kc_h_macrodata:
-#     build:
-#       context: ./kc_historical_macrodata
-#     container_name: kc_h_macrodata
-#     depends_on:
-#       - kafka
-#       - minio
-#     environment:
-#       S3_ENDPOINT: ${S3_ENDPOINT} 
-#       S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
-#       S3_SECRET_KEY: ${S3_SECRET_KEY}
-#       SPARK_SUBMIT_OPTIONS: --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
+  kc_h_macrodata:
+    build:
+      context: ./kc_historical_macrodata
+    container_name: kc_h_macrodata
+    depends_on:
+      - kafka
+      - minio
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      S3_ENDPOINT: ${S3_ENDPOINT} 
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      SPARK_SUBMIT_OPTIONS: --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
 
   # flink_historical:
   #     build:

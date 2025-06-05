@@ -3,9 +3,13 @@
 FROM bitnami/spark:latest
 
 USER root
-RUN pip install --no-cache-dir boto3 pandas kafka-python s3fs pyarrow
 
-COPY . /app
 WORKDIR /app
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
 
 CMD ["spark-submit", "--master", "spark://spark-master:7077", "kc_historical_macrodata.py"]
