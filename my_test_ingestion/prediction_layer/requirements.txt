@@ -1,8 +1,5 @@
-tensorflow==2.15.0 # Sostituisci con la tua versione esatta di TensorFlow
+tensorflow
 numpy
-confluent-kafka
 joblib
-apache-flink==1.17.2
-#pandas #leva per flink
+apache-flink
 scikit-learn 
-#pyspark

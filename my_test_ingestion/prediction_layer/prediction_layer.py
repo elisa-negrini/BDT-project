@@ -761,299 +761,785 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# import os
+# import json
+# import numpy as np
+# import tensorflow as tf
+# import pickle
+# from datetime import datetime, timedelta
+# import logging
+# import time
+# import sys # Importa sys per print a stderr
+
+# # Importa KafkaAdminClient e le eccezioni necessarie
+# from kafka import KafkaAdminClient, KafkaConsumer
+# from kafka.errors import NoBrokersAvailable, KafkaError, UnknownTopicOrPartitionError
+
+# from pyflink.common import WatermarkStrategy, Duration, Row, RestartStrategies
+# from pyflink.datastream import StreamExecutionEnvironment
+# from pyflink.datastream.connectors.kafka import KafkaSource, KafkaOffsetsInitializer
+# from pyflink.datastream.connectors import FlinkKafkaProducer
+# from pyflink.datastream.formats.json import JsonRowSerializationSchema, JsonRowDeserializationSchema
+# from pyflink.datastream.functions import KeyedProcessFunction, RuntimeContext
+# from pyflink.common.typeinfo import Types
+# from pyflink.datastream.checkpointing_mode import CheckpointingMode
+# import joblib
+# from pyflink.datastream.execution_mode import RuntimeExecutionMode
+# from pyflink.datastream.state import MapStateDescriptor
+
+
+# logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# logger = logging.getLogger(__name__)
+
+# # Base paths for models and scalers inside the Flink container
+# MODELS_BASE_PATH = "/opt/flink/models"
+# SCALERS_BASE_PATH = "/opt/flink/scalers"
+
+# # N_STEPS must match the N_STEPS used in training (e.g., 5 for 5 aggregated 10-second points)
+# N_STEPS = 5
+
+# FEATURE_COLUMNS_ORDERED = [
+#     "price_mean_1min", "price_mean_5min", "price_cv_5min", "price_mean_30min", "price_cv_30min",
+#     "size_tot_1min", "size_tot_5min", "size_tot_30min",
+#     "sentiment_bluesky_mean_2hours", "sentiment_bluesky_mean_1day",
+#     "sentiment_news_mean_1day", "sentiment_news_mean_3days",
+#     "sentiment_general_bluesky_mean_2hours", "sentiment_general_bluesky_mean_1day",
+#     "minutes_since_open", "day_of_week", "day_of_month", "week_of_year", "month_of_year",
+#     "market_open_spike_flag", "market_close_spike_flag", "eps", "free_cash_flow",
+#     "profit_margin", "debt_to_equity", "gdp_real", "cpi", "ffr", "t10y", "t2y", "spread_10y_2y", "unemployment"
+# ]
+
+# def safe_float(x):
+#     """Safely converts a value to float, defaulting to 0.0 on error."""
+#     try:
+#         return float(x)
+#     except (ValueError, TypeError):
+#         return 0.0
+
+# class LSTMPredictionFunction(KeyedProcessFunction):
+#     """
+#     KeyedProcessFunction to handle real-time stock price predictions using
+#     per-ticker LSTM models loaded dynamically.
+#     """
+#     def open(self, runtime_context: RuntimeContext):
+#         descriptor = MapStateDescriptor(
+#             "buffer",
+#             Types.LONG(), # La chiave della mappa di stato interna sarà il timestamp
+#             Types.PICKLED_BYTE_ARRAY() # Il valore sarà la lista di feature serializzata
+#         )
+#         self.buffer_state = runtime_context.get_map_state(descriptor)
+#         logger.info("LSTMPredictionFunction opened successfully.")
+#         self.loaded_models = {}
+#         self.loaded_scalers = {}
+#         self.num_features_per_ticker = {}
+
+#     def _get_model_path(self, ticker_name):
+#         return os.path.join(MODELS_BASE_PATH, f"lstm_model_{ticker_name}.h5")
+
+#     def _get_scaler_path(self, ticker_name):
+#         return os.path.join(SCALERS_BASE_PATH, f"scaler_{ticker_name}.pkl")
+
+#     def _load_model_and_scaler_for_ticker(self, ticker_name):
+#         """
+#         Loads model and scaler for a given ticker, with caching.
+#         Returns (model, scaler, num_features) or (None, None, None) on failure.
+#         """
+#         if ticker_name not in self.loaded_models:
+#             model_path = self._get_model_path(ticker_name)
+#             scaler_path = self._get_scaler_path(ticker_name)
+#             try:
+#                 model = tf.keras.models.load_model(model_path)
+#                 with open(scaler_path, 'rb') as f:
+#                     scaler = joblib.load(f)
+                
+#                 self.loaded_models[ticker_name] = model
+#                 self.loaded_scalers[ticker_name] = scaler
+#                 self.num_features_per_ticker[ticker_name] = scaler.n_features_in_ if hasattr(scaler, 'n_features_in_') else len(FEATURE_COLUMNS_ORDERED)
+#                 logger.info(f"\u2705 Loaded model and scaler for {ticker_name} from {model_path} and {scaler_path}. Features: {self.num_features_per_ticker[ticker_name]}")
+#             except Exception as e:
+#                 logger.error(f"\u274C Error loading artifacts for {ticker_name}: {e}", exc_info=True)
+#                 return None, None, None
+        
+#         return (self.loaded_models.get(ticker_name), 
+#                 self.loaded_scalers.get(ticker_name), 
+#                 self.num_features_per_ticker.get(ticker_name))
+
+#     def process_element(self, value: Row, ctx: 'KeyedProcessFunction.Context'):
+#         try:
+#             ticker_name = value["ticker"]
+#             timestamp_str = value["timestamp"]
+#             timestamp_dt = datetime.fromisoformat(timestamp_str) 
+
+#             logger.debug(f"Processing element for ticker: {ticker_name}, timestamp: {timestamp_str}")
+
+#             model, scaler, num_features = self._load_model_and_scaler_for_ticker(ticker_name)
+#             if model is None or scaler is None:
+#                 logger.warning(f"Skipping prediction for {ticker_name} due to missing model/scaler or loading error.")
+#                 return
+
+#             current_features_for_scaling = []
+#             for col in FEATURE_COLUMNS_ORDERED:
+#                 current_features_for_scaling.append(safe_float(value.get(col, 0.0)))
+            
+#             current_features_np = np.array(current_features_for_scaling, dtype=np.float32)
+
+#             if current_features_np.shape[0] != num_features:
+#                 logger.error(f"Feature count mismatch for {ticker_name} at {timestamp_str}. "
+#                              f"Expected {num_features}, got {current_features_np.shape[0]}. Skipping.")
+#                 return
+
+#             # Retrieve the current state for the ticker
+#             # The key for MapState is implicitly the key_by value (ticker_name for this function).
+#             # The internal map within the state stores timestamp_str -> features_list.
+#             # State value is pickled, so load it
+#             current_ticker_buffer_map_bytes = self.buffer_state.get() # No key needed for MapState for keyed functions
+#             current_ticker_buffer_map = pickle.loads(current_ticker_buffer_map_bytes) if current_ticker_buffer_map_bytes else {}
+            
+#             # Store the current unscaled feature list with its timestamp
+#             current_ticker_buffer_map[timestamp_str] = current_features_for_scaling
+            
+#             # Sort the buffer by timestamp and keep only the latest N_STEPS elements
+#             sorted_buffer_items = sorted(current_ticker_buffer_map.items(), key=lambda item: item[0], reverse=True)[:N_STEPS]
+            
+#             # Update the state with the pruned buffer. Convert back to dict if sorted_buffer_items is a list of tuples.
+#             # State value is pickled, so dump it
+#             self.buffer_state.put(pickle.dumps(dict(sorted_buffer_items))) # No key needed for MapState for keyed functions
+            
+#             if len(sorted_buffer_items) == N_STEPS:
+#                 logger.info(f"Buffer full ({N_STEPS} points) for ticker {ticker_name}. Performing prediction.")
+                
+#                 sequence_for_scaling = []
+#                 # Re-sort in ascending order by timestamp for correct sequence for LSTM
+#                 for ts_key, features_list in sorted(sorted_buffer_items, key=lambda item: item[0]):
+#                     sequence_for_scaling.append(features_list)
+                
+#                 features_np_sequence = np.array(sequence_for_scaling, dtype=np.float32)
+                
+#                 # Check if the number of features matches the scaler's expectation
+#                 if features_np_sequence.shape[1] != num_features:
+#                     logger.error(f"Shape mismatch for scaling {ticker_name}. Expected {num_features} features per step, got {features_np_sequence.shape[1]}. Skipping prediction.")
+#                     return
+
+#                 scaled_2d = scaler.transform(features_np_sequence.reshape(-1, num_features))
+                
+#                 scaled_input_lstm = scaled_2d.reshape(1, N_STEPS, num_features)
+                
+#                 logger.debug(f"Scaled LSTM input shape for {ticker_name}: {scaled_input_lstm.shape}")
+
+#                 prediction = model.predict(scaled_input_lstm, verbose=0)[0][0]
+#                 logger.info(f"Prediction for {ticker_name} (based on {timestamp_str}): {prediction}")
+
+#                 predicted_for_timestamp = timestamp_dt + timedelta(seconds=60)
+                
+#                 prediction_output = {
+#                     "ticker": ticker_name,
+#                     "timestamp": predicted_for_timestamp.isoformat(timespec='seconds'),
+#                     "prediction": float(prediction)
+#                 }
+
+#                 yield Row(**prediction_output)
+                
+#                 # Clear the buffer state for this ticker after a prediction
+#                 self.buffer_state.clear() # No key needed for MapState for keyed functions
+#                 logger.debug(f"Buffer reset for ticker: {ticker_name}")
+
+#         except Exception as e:
+#             logger.error(f"Error processing element for key {ctx.get_current_key()}: {e}", exc_info=True)
+
+
+# # === 🔄 Funzioni di attesa Kafka migliorate ===
+# def wait_for_kafka_topics(required_topics, kafka_broker, timeout=5, max_retries=60):
+#     """
+#     Attende che il broker Kafka sia disponibile e che tutti i topic necessari esistano.
+#     """
+#     retry_count = 0
+#     admin = None
+    
+#     while retry_count < max_retries:
+#         try:
+#             # KafkaAdminClient per controllare i topic
+#             admin = KafkaAdminClient(
+#                 bootstrap_servers=kafka_broker, 
+#                 request_timeout_ms=10000,
+#                 api_version=(0, 10, 2)  # Specifica una versione API compatibile
+#             )
+            
+#             # Ottieni i metadati dei topic
+#             topics_metadata = admin.list_topics()
+            
+#             # Gestisci diversi formati di risposta
+#             if isinstance(topics_metadata, dict):
+#                 available_topics = list(topics_metadata.keys())
+#             elif hasattr(topics_metadata, 'topics'):
+#                 available_topics = list(topics_metadata.topics.keys())
+#             else:
+#                 available_topics = list(topics_metadata)
+            
+#             logger.info(f"📋 Topic disponibili: {sorted(available_topics)}")
+            
+#             # Verifica se tutti i topic richiesti sono presenti
+#             missing_topics = [t for t in required_topics if t not in available_topics]
+            
+#             if not missing_topics:
+#                 logger.info(f"✅ Kafka è pronto con tutti i topic richiesti: {required_topics}.")
+#                 admin.close()
+#                 return True
+#             else:
+#                 logger.warning(f"⏳ Tentativo {retry_count + 1}/{max_retries} - Topic mancanti: {missing_topics}")
+                
+#         except NoBrokersAvailable:
+#             logger.warning(f"⏳ Tentativo {retry_count + 1}/{max_retries} - Nessun Kafka broker disponibile a {kafka_broker}")
+#         except Exception as e:
+#             logger.warning(f"⏳ Tentativo {retry_count + 1}/{max_retries} - Errore: {str(e)}")
+#         finally:
+#             if admin:
+#                 try:
+#                     admin.close()
+#                 except Exception:
+#                     pass
+#                 admin = None
+        
+#         retry_count += 1
+#         if retry_count < max_retries:
+#             time.sleep(timeout)
+#         else:
+#             logger.error(f"❌ Raggiunto il numero massimo di tentativi ({max_retries}). Impossibile trovare tutti i topic richiesti.")
+#             return False
+    
+#     return False
+
+
+# def wait_for_kafka_topics_with_fallback(required_topics, kafka_broker, timeout=5, max_retries=12):
+#     """
+#     Versione con fallback che procede comunque dopo un certo numero di tentativi.
+#     """
+#     if wait_for_kafka_topics(required_topics, kafka_broker, timeout, max_retries):
+#         return True
+    
+#     logger.warning(f"⚠️  Procedo comunque senza conferma della disponibilità dei topic: {required_topics}")
+#     logger.warning(f"⚠️  Se il topic non esiste, il job Flink potrebbe fallire durante l'esecuzione.")
+#     return False
+
+
+# def verify_topic_with_consumer(topic_name, kafka_broker):
+#     """
+#     Verifica l'esistenza di un topic usando un consumer Kafka.
+#     """
+#     consumer = None
+#     try:
+#         consumer = KafkaConsumer(
+#             bootstrap_servers=kafka_broker,
+#             consumer_timeout_ms=5000,
+#             auto_offset_reset='latest'
+#         )
+        
+#         # Prova a ottenere i metadati del topic
+#         partitions = consumer.partitions_for_topic(topic_name)
+        
+#         if partitions:
+#             logger.info(f"✅ Topic '{topic_name}' verificato con consumer. Partizioni: {len(partitions)}")
+#             return True
+#         else:
+#             logger.warning(f"⚠️  Topic '{topic_name}' non trovato o senza partizioni.")
+#             return False
+            
+#     except UnknownTopicOrPartitionError:
+#         logger.warning(f"⚠️  Topic '{topic_name}' non esiste.")
+#         return False
+#     except Exception as e:
+#         logger.error(f"❌ Errore durante la verifica del topic '{topic_name}': {e}")
+#         return False
+#     finally:
+#         if consumer:
+#             try:
+#                 consumer.close()
+#             except Exception:
+#                 pass
+
+
+# def debug_kafka_topics(kafka_broker):
+#     """
+#     Debug dettagliato dei topic Kafka disponibili.
+#     """
+#     logger.info("🔍 Iniziando debug dettagliato dei topic Kafka...")
+    
+#     # Metodo 1: AdminClient
+#     try:
+#         admin = KafkaAdminClient(bootstrap_servers=kafka_broker, request_timeout_ms=10000)
+#         topics_metadata = admin.list_topics()
+        
+#         if isinstance(topics_metadata, dict):
+#             admin_topics = list(topics_metadata.keys())
+#         elif hasattr(topics_metadata, 'topics'):
+#             admin_topics = list(topics_metadata.topics.keys())
+#         else:
+#             admin_topics = list(topics_metadata)
+            
+#         logger.info(f"🔍 AdminClient - Topic trovati: {sorted(admin_topics)}")
+#         admin.close()
+#     except Exception as e:
+#         logger.error(f"🔍 AdminClient fallito: {e}")
+    
+#     # Metodo 2: Consumer
+#     try:
+#         consumer = KafkaConsumer(bootstrap_servers=kafka_broker, consumer_timeout_ms=5000)
+#         consumer_topics = consumer.topics()
+#         logger.info(f"🔍 Consumer - Topic trovati: {sorted(consumer_topics)}")
+#         consumer.close()
+#     except Exception as e:
+#         logger.error(f"🔍 Consumer fallito: {e}")
+
+
+# def main():
+#     env = StreamExecutionEnvironment.get_execution_environment()
+#     env.set_runtime_mode(RuntimeExecutionMode.STREAMING)
+#     env.enable_checkpointing(60000, CheckpointingMode.EXACTLY_ONCE)
+#     env.get_checkpoint_config().set_checkpoint_timeout(300000)
+#     env.get_checkpoint_config().set_min_pause_between_checkpoints(5000)
+#     env.get_checkpoint_config().set_max_concurrent_checkpoints(1)
+    
+#     env.set_restart_strategy(RestartStrategies.fixed_delay_restart(
+#         restart_attempts=3,
+#         delay_between_attempts=timedelta(seconds=10)
+#     ))
+    
+#     env.set_parallelism(1)
+
+#     KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:9092")
+#     KAFKA_TOPIC_AGGREGATED = os.getenv("KAFKA_TOPIC_AGGREGATED", "prova")
+#     KAFKA_TOPIC_DASHBOARD = os.getenv("KAFKA_TOPIC_DASHBOARD", "prediction")
+
+#     logger.info(f"Kafka Broker: {KAFKA_BROKER}")
+#     logger.info(f"Kafka Input Topic: {KAFKA_TOPIC_AGGREGATED}")
+#     logger.info(f"Kafka Output Topic: {KAFKA_TOPIC_DASHBOARD}")
+
+#     # === Verifica connessione Kafka (opzionale) ===
+#     logger.info("🔄 Verifico solo la connessione al broker Kafka...")
+    
+#     try:
+#         # Verifica solo che il broker sia raggiungibile
+#         admin = KafkaAdminClient(
+#             bootstrap_servers=KAFKA_BROKER, 
+#             request_timeout_ms=5000
+#         )
+#         admin.list_topics()  # Chiamata veloce per testare la connessione
+#         admin.close()
+#         logger.info("✅ Connessione a Kafka stabilita con successo.")
+#     except Exception as e:
+#         logger.warning(f"⚠️  Problemi di connessione a Kafka: {e}")
+#         logger.warning("⚠️  Procedo comunque - Flink ritenterà automaticamente.")
+    
+#     logger.info("🚀 Configurando il job Flink...")
+#     logger.info("ℹ️  Flink attenderà automaticamente che i topic siano disponibili.")
+
+#     input_column_names = ["ticker", "timestamp"] + FEATURE_COLUMNS_ORDERED
+#     input_column_types = [Types.STRING(), Types.STRING()] + [Types.FLOAT()] * len(FEATURE_COLUMNS_ORDERED)
+
+#     kafka_deserialization_schema = JsonRowDeserializationSchema.builder() \
+#         .type_info(Types.ROW_NAMED(input_column_names, input_column_types)).build()
+
+#     kafka_source = KafkaSource.builder() \
+#         .set_bootstrap_servers(KAFKA_BROKER) \
+#         .set_topics(KAFKA_TOPIC_AGGREGATED) \
+#         .set_group_id("lstm_prediction_flink_group") \
+#         .set_starting_offsets(KafkaOffsetsInitializer.latest()) \
+#         .set_value_only_deserializer(kafka_deserialization_schema) \
+#         .build()
+
+#     data_stream = env.from_source(
+#         source=kafka_source,
+#         watermark_strategy=WatermarkStrategy.for_bounded_out_of_orderness(Duration.of_seconds(5)),
+#         source_name="Kafka_Aggregated_Source"
+#     )
+
+#     producer_serialization_schema = JsonRowSerializationSchema.builder() \
+#         .with_type_info(
+#             Types.ROW_NAMED(
+#                 ["ticker", "timestamp", "prediction"],
+#                 [Types.STRING(), Types.STRING(), Types.FLOAT()]
+#             )
+#         ).build()
+
+#     kafka_producer = FlinkKafkaProducer(
+#         KAFKA_TOPIC_DASHBOARD,
+#         producer_serialization_schema,
+#         {'bootstrap.servers': KAFKA_BROKER}
+#     )
+
+#     predicted_stream = data_stream.key_by(lambda x: x["ticker"]).process(LSTMPredictionFunction())
+    
+#     predicted_stream.print("Predictions Output")
+    
+#     predicted_stream.add_sink(kafka_producer).name("Kafka_Dashboard_Sink")
+
+#     logger.info("🚀 Starting Flink job...")
+#     env.execute("LSTM Stock Price Prediction Job (Per-Ticker Models)")
+
+# if __name__ == "__main__":
+#     main()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import os
 import json
-import numpy as np
-import tensorflow as tf
-import pickle
-from datetime import datetime, timedelta
 import logging
-import time
+from datetime import datetime, timedelta
 
-# Importa KafkaConsumer dalla libreria kafka-python (è più adatta per ottenere i metadati dei topic)
-# KafkaClient è di basso livello e non espone direttamente 'topics'
-from kafka import KafkaConsumer, KafkaClient # Mantengo KafkaClient per il ping iniziale, ma useremo Consumer per i topics
-from kafka.errors import NoBrokersAvailable, KafkaError # TopicError per errori specifici del topic
-
-from pyflink.common import WatermarkStrategy, Duration, Row, RestartStrategies
+from pyflink.common import Row
 from pyflink.datastream import StreamExecutionEnvironment
-from pyflink.datastream.connectors.kafka import KafkaSource, KafkaOffsetsInitializer, KafkaSink
-from pyflink.datastream.connectors import FlinkKafkaProducer
+from pyflink.datastream.connectors.kafka import KafkaSource, KafkaSink, KafkaOffsetsInitializer
 from pyflink.datastream.formats.json import JsonRowSerializationSchema, JsonRowDeserializationSchema
-from pyflink.datastream.functions import KeyedProcessFunction, RuntimeContext
+from pyflink.datastream.functions import KeyedProcessFunction
 from pyflink.common.typeinfo import Types
-from pyflink.datastream.checkpointing_mode import CheckpointingMode
-import joblib
-from pyflink.datastream.execution_mode import RuntimeExecutionMode
 from pyflink.datastream.state import MapStateDescriptor
-from pyflink.common import Types
 
+# Suppress TensorFlow logging warnings (optional, useful for cleaner console output)
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+import tensorflow as tf
+from tensorflow.keras.models import load_model
+import joblib
+import numpy as np
 
+# Configure logging for better visibility in Flink logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Base paths for models and scalers inside the Flink container
-MODELS_BASE_PATH = "/opt/flink/models"
-SCALERS_BASE_PATH = "/opt/flink/scalers"
+# --- Configurazione ---
+# Sostituisci con i tuoi broker Kafka effettivi
+KAFKA_BROKERS = 'localhost:9092'
+INPUT_TOPIC = 'aggregated_data'
+OUTPUT_TOPIC = 'predicted_prices'
 
-# N_STEPS must match the N_STEPS used in training (e.g., 5 for 5 aggregated 10-second points)
-N_STEPS = 5
+# Percorsi base per modelli e scaler. Assicurati che queste cartelle siano
+# accessibili all'interno del container Docker o tramite la cache distribuita di Flink.
+MODEL_BASE_PATH = '/opt/flink/models'
+SCALER_BASE_PATH = '/opt/flink/scalers'
 
-FEATURE_COLUMNS_ORDERED = [
-    "price_mean_1min", "price_mean_5min", "price_cv_5min", "price_mean_30min", "price_cv_30min",
-    "size_tot_1min", "size_tot_5min", "size_tot_30min",
-    "sentiment_bluesky_mean_2hours", "sentiment_bluesky_mean_1day",
-    "sentiment_news_mean_1day", "sentiment_news_mean_3days",
-    "sentiment_general_bluesky_mean_2hours", "sentiment_general_bluesky_mean_1day",
-    "minutes_since_open", "day_of_week", "day_of_month", "week_of_year", "month_of_year",
-    "market_open_spike_flag", "market_close_spike_flag", "eps", "free_cash_flow",
-    "profit_margin", "debt_to_equity", "gdp_real", "cpi", "ffr", "t10y", "t2y", "spread_10y_2y", "unemployment"
-]
+# Numero di lag richiesti dal modello LSTM (5 minuti precedenti)
+N_LAG_STEPS = 5
 
-def safe_float(x):
-    """Safely converts a value to float, defaulting to 0.0 on error."""
-    try:
-        return float(x)
-    except (ValueError, TypeError):
-        return 0.0
+# Definizione dello schema dei dati in ingresso da Kafka
+# 'timestamp' è un timestamp Unix in millisecondi
+INPUT_SCHEMA = Types.ROW([
+    ("ticker", Types.STRING()),
+    ("timestamp", Types.LONG()),
+    ("price", Types.FLOAT())
+])
 
-class LSTMPredictionFunction(KeyedProcessFunction):
+# Definizione dello schema dei dati in uscita per Kafka
+OUTPUT_SCHEMA = Types.ROW([
+    ("target_timestamp", Types.LONG()), # Timestamp Unix in millisecondi
+    ("predicted_price", Types.FLOAT()),
+    ("ticker", Types.STRING())
+])
+
+class PredictionProcessFunction(KeyedProcessFunction):
     """
-    KeyedProcessFunction to handle real-time stock price predictions using
-    per-ticker LSTM models loaded dynamically.
+    Una KeyedProcessFunction per gestire lo stato per ticker, caricare modelli
+    e scaler, e fare predizioni in tempo reale.
     """
-    def open(self, runtime_context: RuntimeContext):
-        descriptor = MapStateDescriptor(
-            "buffer",
-            Types.LONG(),
-            Types.PICKLED_BYTE_ARRAY()
-        )
-        self.buffer_state = runtime_context.get_map_state(descriptor)
-        logger.info("LSTMPredictionFunction opened successfully.")
-        self.loaded_models = {}
-        self.loaded_scalers = {}
-        self.num_features_per_ticker = {}
 
-    def _get_model_path(self, ticker_name):
-        return os.path.join(MODELS_BASE_PATH, f"lstm_model_{ticker_name}.h5")
-
-    def _get_scaler_path(self, ticker_name):
-        return os.path.join(SCALERS_BASE_PATH, f"scaler_{ticker_name}.pkl")
-
-    def _load_model_and_scaler_for_ticker(self, ticker_name):
+    def open(self, runtime_context):
         """
-        Loads model and scaler for a given ticker, with caching.
-        Returns (model, scaler, num_features) or (None, None, None) on failure.
+        Inizializza lo stato e carica il modello/scaler per il ticker corrente.
+        Questo metodo viene chiamato una volta per task Flink per ogni chiave unica (ticker).
         """
-        if ticker_name not in self.loaded_models:
-            model_path = self._get_model_path(ticker_name)
-            scaler_path = self._get_scaler_path(ticker_name)
-            try:
-                model = tf.keras.models.load_model(model_path)
-                with open(scaler_path, 'rb') as f:
-                    scaler = joblib.load(f)
-                
-                self.loaded_models[ticker_name] = model
-                self.loaded_scalers[ticker_name] = scaler
-                self.num_features_per_ticker[ticker_name] = scaler.n_features_in_
-                logger.info(f"\u2705 Loaded model and scaler for {ticker_name} from {model_path} and {scaler_path}. Features: {scaler.n_features_in_}")
-            except Exception as e:
-                logger.error(f"\u274C Error loading artifacts for {ticker_name}: {e}", exc_info=True)
-                return None, None, None
-        
-        return (self.loaded_models.get(ticker_name), 
-                self.loaded_scalers.get(ticker_name), 
-                self.num_features_per_ticker.get(ticker_name))
+        self.ticker = runtime_context.get_current_key()
+        logger.info(f"Inizializzazione PredictionProcessFunction per il ticker: {self.ticker}")
 
-    def process_element(self, value: Row, ctx: 'KeyedProcessFunction.Context'):
-        try:
-            ticker_name = value["ticker"]
-            timestamp_str = value["timestamp"]
-            timestamp_dt = datetime.fromisoformat(timestamp_str) 
-
-            logger.debug(f"Processing element for ticker: {ticker_name}, timestamp: {timestamp_str}")
-
-            model, scaler, num_features = self._load_model_and_scaler_for_ticker(ticker_name)
-            if model is None or scaler is None:
-                logger.warning(f"Skipping prediction for {ticker_name} due to missing model/scaler.")
-                return
-
-            current_features_for_scaling = []
-            for col in FEATURE_COLUMNS_ORDERED:
-                current_features_for_scaling.append(safe_float(value.get(col, 0.0)))
-            
-            current_features_np = np.array(current_features_for_scaling, dtype=np.float32)
-
-            if current_features_np.shape[0] != num_features:
-                logger.error(f"Feature count mismatch for {ticker_name} at {timestamp_str}. "
-                             f"Expected {num_features}, got {current_features_np.shape[0]}. Skipping.")
-                return
-
-            # Note: For PyFlink MapState, the "key" of the MapState is implicitly the key_by value (ticker_name).
-            # The map itself then stores your internal key-value pairs (timestamp_str -> features_list).
-            # So, self.buffer_state.get() gets the map for the current ticker.
-            current_ticker_buffer_map = self.buffer_state.get() or {}
-            
-            # Store the current unscaled feature list with its timestamp
-            current_ticker_buffer_map[timestamp_str] = current_features_for_scaling
-            
-            # Sort the buffer by timestamp and keep only the latest N_STEPS elements
-            sorted_buffer_items = sorted(current_ticker_buffer_map.items(), key=lambda item: item[0], reverse=True)[:N_STEPS]
-            
-            # Update the state with the pruned buffer. Convert back to dict if sorted_buffer_items is a list of tuples.
-            self.buffer_state.put(dict(sorted_buffer_items))
-            
-            if len(sorted_buffer_items) == N_STEPS:
-                logger.info(f"Buffer full ({N_STEPS} points) for ticker {ticker_name}. Performing prediction.")
-                
-                sequence_for_scaling = []
-                # Re-sort in ascending order by timestamp for correct sequence for LSTM
-                for ts_key, features_list in sorted(sorted_buffer_items, key=lambda item: item[0]):
-                    sequence_for_scaling.append(features_list)
-                
-                features_np_sequence = np.array(sequence_for_scaling, dtype=np.float32)
-                
-                scaled_2d = scaler.transform(features_np_sequence.reshape(-1, num_features))
-                
-                scaled_input_lstm = scaled_2d.reshape(1, N_STEPS, num_features)
-                
-                logger.debug(f"Scaled LSTM input shape for {ticker_name}: {scaled_input_lstm.shape}")
-
-                prediction = model.predict(scaled_input_lstm, verbose=0)[0][0]
-                logger.info(f"Prediction for {ticker_name} (based on {timestamp_str}): {prediction}")
-
-                predicted_for_timestamp = timestamp_dt + timedelta(seconds=60)
-                
-                prediction_output = {
-                    "ticker": ticker_name,
-                    "timestamp": predicted_for_timestamp.isoformat(timespec='seconds'),
-                    "prediction": float(prediction)
-                }
-
-                yield Row(**prediction_output)
-                
-                self.buffer_state.clear()
-                logger.debug(f"Buffer reset for ticker: {ticker_name}")
-
-        except Exception as e:
-            logger.error(f"Error processing element for key {ctx.current_key()}: {e}", exc_info=True)
-
-
-def wait_for_kafka_topic(broker: str, topic: str, max_retries: int = 30, retry_delay: int = 5):
-    """
-    Attende che un topic Kafka sia disponibile e accessibile.
-    """
-    logger.info(f"⚙️  Tentativo di connessione a Kafka broker: {broker}")
-    for i in range(1, max_retries + 1):
-        try:
-            # Usiamo KafkaConsumer perché ha un modo più diretto per ottenere i topic.
-            # Il group_id non è strettamente necessario qui ma è richiesto dal costruttore.
-            consumer = KafkaConsumer(
-                bootstrap_servers=broker,
-                client_id='flink-topic-checker',
-                group_id=None, # Nessun gruppo consumer reale
-                request_timeout_ms=5000, # Timeout per le richieste (e.g., fetching metadata)
+        # Stato per memorizzare la cronologia dei prezzi per ogni intervallo di 10 secondi.
+        # La chiave è il secondo (0, 10, 20, 30, 40, 50).
+        # Il valore è una lista di float (i prezzi storici), serializzata come stringa JSON.
+        self.price_history_by_second = runtime_context.get_map_state(
+            MapStateDescriptor(
+                "price_history_by_second",
+                Types.INT(), # Chiave: il secondo (0, 10, 20, ...)
+                Types.STRING() # Valore: lista di float serializzata come JSON
             )
-            
-            # Forziamo un aggiornamento dei metadati
-            consumer.poll(timeout_ms=1000)
-            
-            # Otteniamo i nomi dei topic dal consumer
-            available_topics = consumer.topics() # Questo è il metodo corretto
-            
-            if topic in available_topics:
-                logger.info(f"✅ Topic '{topic}' trovato su Kafka. Procedo.")
-                consumer.close()
-                return True
-            else:
-                logger.warning(f"⏳ Tentativo {i}/{max_retries}: Topic '{topic}' non ancora disponibile. Riprovo tra {retry_delay} secondi. Topics disponibili: {available_topics}")
-                consumer.close()
-                time.sleep(retry_delay)
-        except NoBrokersAvailable:
-            logger.warning(f"⏳ Tentativo {i}/{max_retries}: Nessun Kafka broker disponibile a {broker}. Riprovo tra {retry_delay} secondi...")
-            time.sleep(retry_delay)
-        except KafkaError as e:
-            logger.warning(f"⏳ Tentativo {i}/{max_retries}: Errore Kafka generico ({e}). Riprovo tra {retry_delay} secondi...")
-            time.sleep(retry_delay)
+        )
+
+        # Carica il modello e lo scaler specifici per questo ticker
+        try:
+            model_path = os.path.join(MODEL_BASE_PATH, f"lstm_model_par2_{self.ticker}.h5")
+            scaler_path = os.path.join(SCALER_BASE_PATH, f"scaler_par2_{self.ticker}.pkl")
+
+            # Assicurati che i percorsi siano validi
+            if not os.path.exists(model_path):
+                raise FileNotFoundError(f"Modello non trovato: {model_path}")
+            if not os.exists(scaler_path):
+                raise FileNotFoundError(f"Scaler non trovato: {scaler_path}")
+
+            self.model = load_model(model_path)
+            self.scaler = joblib.load(scaler_path)
+            logger.info(f"Modello e scaler caricati con successo per {self.ticker}")
         except Exception as e:
-            logger.error(f"❌ Errore inatteso durante l'attesa del topic: {e}. Riprovo tra {retry_delay} secondi...", exc_info=True)
-            time.sleep(retry_delay)
+            logger.error(f"Errore durante il caricamento del modello/scaler per {self.ticker}: {e}")
+            self.model = None
+            self.scaler = None # Assicurati che siano None se il caricamento fallisce
+
+    def process_element(self, value, ctx: 'KeyedProcessFunction.Context'):
+        """
+        Elabora ogni record in ingresso dal topic Kafka.
+        """
+        # Se il modello o lo scaler non sono stati caricati, salta la predizione
+        if self.model is None or self.scaler is None:
+            logger.warning(f"Modello o scaler non caricati per {self.ticker}. Saltando la predizione.")
+            return
+
+        original_timestamp_ms = value['timestamp']
+        current_price = value['price'] # Questo è il prezzo aggregato per l'ultimo minuto
+
+        # Converti il timestamp Unix (ms) in un oggetto datetime
+        current_dt = datetime.fromtimestamp(original_timestamp_ms / 1000)
+        current_second = current_dt.second # Estrai il secondo (0, 10, 20, 30, 40, 50)
+
+        # --- Gestione della cronologia dei prezzi per il secondo specifico ---
+        # Recupera la cronologia esistente per questo specifico secondo
+        history_json = self.price_history_by_second.get(current_second)
+        if history_json:
+            price_history = json.loads(history_json)
+        else:
+            price_history = []
+
+        # Aggiungi il prezzo corrente alla cronologia
+        price_history.append(current_price)
+
+        # Mantieni solo gli ultimi N_LAG_STEPS valori
+        if len(price_history) > N_LAG_STEPS:
+            price_history = price_history[-N_LAG_STEPS:] # Prendi gli ultimi N_LAG_STEPS
+
+        # Aggiorna lo stato con la nuova cronologia
+        self.price_history_by_second.put(current_second, json.dumps(price_history))
+        logger.debug(f"Ticker {self.ticker}, Secondo {current_second}: Cronologia aggiornata. Dimensione: {len(price_history)}")
+
+        # --- Logica di Predizione ---
+        # Esegui una predizione solo se abbiamo N_LAG_STEPS valori nella cronologia
+        if len(price_history) == N_LAG_STEPS:
+            # Prepara i dati per il modello LSTM (reshape a (1, N_LAG_STEPS, 1))
+            # Il modello si aspetta (batch_size, timesteps, features)
+            # Qui abbiamo 1 sample, N_LAG_STEPS timesteps, 1 feature (il prezzo)
+            features = np.array(price_history).reshape(1, N_LAG_STEPS, 1)
             
-    logger.error(f"❌ ERRORE: Il topic '{topic}' non è stato trovato o il broker non è disponibile dopo {max_retries} tentativi.")
-    return False
+            # Scala le feature usando lo scaler caricato
+            # Lo scaler è stato addestrato su dati con una singola feature, quindi reshape a (n_samples, n_features) per transform
+            scaled_features = self.scaler.transform(features.reshape(-1, 1)).reshape(1, N_LAG_STEPS, 1)
+
+            try:
+                # Esegui la predizione
+                predicted_scaled_price = self.model.predict(scaled_features, verbose=0) # verbose=0 per sopprimere output di Keras
+                # Inverti la trasformazione per ottenere il prezzo reale
+                # Lo scaler è stato addestrato per de-scalare una singola feature
+                predicted_price = self.scaler.inverse_transform(predicted_scaled_price).flatten()[0]
+
+                # Calcola il target_timestamp (timestamp originale + 1 minuto)
+                target_timestamp_dt = current_dt + timedelta(minutes=1)
+                target_timestamp_ms = int(target_timestamp_dt.timestamp() * 1000)
+
+                # Crea la riga di output
+                output_row = Row(
+                    target_timestamp=target_timestamp_ms,
+                    predicted_price=float(predicted_price), # Assicurati che sia di tipo float
+                    ticker=self.ticker
+                )
+                # Emetti la riga al topic di output
+                ctx.output(output_row)
+                logger.info(f"Ticker {self.ticker}, Secondo {current_second}: Prezzo previsto {predicted_price:.2f} per il target {target_timestamp_dt.strftime('%H:%M:%S')}")
+
+            except Exception as e:
+                logger.error(f"Errore durante la predizione per {self.ticker}, Secondo {current_second}: {e}")
+        else:
+            logger.debug(f"Ticker {self.ticker}, Secondo {current_second}: Cronologia incompleta ({len(price_history)}/{N_LAG_STEPS}) per la predizione a {current_dt.strftime('%H:%M:%S')}.")
+
 
 def main():
+    """
+    Funzione principale per configurare ed eseguire il job Flink.
+    """
+    # Ottieni l'ambiente di esecuzione dello stream
     env = StreamExecutionEnvironment.get_execution_environment()
-    env.set_runtime_mode(RuntimeExecutionMode.STREAMING)
+    # Imposta il parallelismo. Può essere sovrascritto durante l'invio del job.
+    env.set_parallelism(1) # Esempio: 1 per test locale, aumenta per produzione
+    # Abilita il checkpointing per la tolleranza ai guasti (ogni 60 secondi)
     env.enable_checkpointing(60000)
-    env.get_checkpoint_config().set_checkpoint_timeout(300000)
-    env.get_checkpoint_config().set_min_pause_between_checkpoints(5000)
-    env.get_checkpoint_config().set_max_concurrent_checkpoints(1)
-    
-    env.set_restart_strategy(RestartStrategies.fixed_delay_restart(
-        restart_attempts=3,
-        delay_between_attempts=timedelta(seconds=10)
-    ))
-    
-    env.set_parallelism(1)
 
-    KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:9092")
-    KAFKA_TOPIC_AGGREGATED = os.getenv("KAFKA_TOPIC_AGGREGATED", "aggregated_data")
-    KAFKA_TOPIC_DASHBOARD = os.getenv("KAFKA_TOPIC_DASHBOARD", "prediction")
-
-    logger.info(f"Kafka Broker: {KAFKA_BROKER}")
-    logger.info(f"Kafka Input Topic: {KAFKA_TOPIC_AGGREGATED}")
-    logger.info(f"Kafka Output Topic: {KAFKA_TOPIC_DASHBOARD}")
-
-    # --- AGGIUNTA LOGICA DI RETRY QUI ---
-    if not wait_for_kafka_topic(KAFKA_BROKER, KAFKA_TOPIC_AGGREGATED, max_retries=60, retry_delay=5):
-        logger.error("Impossibile avviare il job Flink: il topic Kafka non è diventato disponibile.")
-        # Potresti voler lanciare un'eccezione o uscire dal programma qui
-        raise SystemExit("Topic Kafka non disponibile. Uscita.")
-    # --- FINE LOGICA DI RETRY ---
-
-    input_column_names = ["ticker", "timestamp"] + FEATURE_COLUMNS_ORDERED
-    input_column_types = [Types.STRING(), Types.STRING()] + [Types.FLOAT()] * len(FEATURE_COLUMNS_ORDERED)
-
-    kafka_deserialization_schema = JsonRowDeserializationSchema.builder() \
-        .type_info(Types.ROW_NAMED(input_column_names, input_column_types)).build()
-
+    # --- Configurazione della Sorgente Kafka ---
     kafka_source = KafkaSource.builder() \
-        .set_bootstrap_servers(KAFKA_BROKER) \
-        .set_topics(KAFKA_TOPIC_AGGREGATED) \
-        .set_group_id("lstm_prediction_flink_group") \
+        .set_bootstrap_servers(KAFKA_BROKERS) \
+        .set_topics(INPUT_TOPIC) \
+        .set_group_id("flink-prediction-consumer-group") \
         .set_starting_offsets(KafkaOffsetsInitializer.latest()) \
-        .set_value_only_deserializer(kafka_deserialization_schema) \
+        .set_value_deserializer(
+            JsonRowDeserializationSchema.builder()
+            .type_info(INPUT_SCHEMA)
+            .build()
+        ) \
         .build()
 
-    data_stream = env.from_source(
-        source=kafka_source,
-        watermark_strategy=WatermarkStrategy.for_bounded_out_of_orderness(Duration.of_seconds(5)),
-        source_name="Kafka_Aggregated_Source"
-    )
+    # Crea un DataStream dalla sorgente Kafka
+    ds = env.from_source(kafka_source)
 
-    producer_serialization_schema = JsonRowSerializationSchema.builder() \
-        .with_type_info(
-            Types.ROW_NAMED(
-                ["ticker", "timestamp", "prediction"],
-                [Types.STRING(), Types.STRING(), Types.FLOAT()]
-            )
-        ).build()
+    # --- Chiave per Ticker e Applica la Logica di Predizione ---
+    # `key_by` assicura che tutti i dati per un ticker specifico vadano allo stesso task Flink,
+    # permettendo la gestione dello stato per ticker.
+    predicted_stream = ds \
+        .key_by(lambda x: x['ticker']) \
+        .process(PredictionProcessFunction(), output_type=OUTPUT_SCHEMA)
 
-    kafka_producer = FlinkKafkaProducer(
-        KAFKA_TOPIC_DASHBOARD,
-        producer_serialization_schema,
-        {'bootstrap.servers': KAFKA_BROKER}
-    )
+    # --- Configurazione del Sink Kafka ---
+    kafka_sink = KafkaSink.builder() \
+        .set_bootstrap_servers(KAFKA_BROKERS) \
+        .set_topic(OUTPUT_TOPIC) \
+        .set_value_serialization_schema(
+            JsonRowSerializationSchema.builder()
+            .type_info(OUTPUT_SCHEMA)
+            .build()
+        ) \
+        .build()
 
-    predicted_stream = data_stream.key_by(lambda x: x["ticker"]).process(LSTMPredictionFunction())
-    
-    predicted_stream.print("Predictions Output")
-    
-    predicted_stream.add_sink(kafka_producer).name("Kafka_Dashboard_Sink")
+    # Invia lo stream delle predizioni al sink Kafka
+    predicted_stream.sink_to(kafka_sink)
 
-    logger.info("Starting Flink job...")
-    env.execute("LSTM Stock Price Prediction Job (Per-Ticker Models)")
+    logger.info("Avvio del job Flink di predizione in tempo reale...")
+    # Esegui il job Flink
+    env.execute("Real-time ML Prediction Job")
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

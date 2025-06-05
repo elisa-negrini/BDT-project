@@ -38,9 +38,11 @@ producer = connect_kafka()
 
 # List of 30 main tickers of S&P 500
 top_30_tickers = [
-    "AAPL", "MSFT", "NVDA", "AMZN", "META", "ORCL", "GOOGL", "AVGO", "TSLA", "IBM",
+    "AAPL", "MSFT", #"NVDA",
+      "AMZN", "META", "ORCL", "GOOGL", "AVGO", "TSLA", "IBM",
     "LLY", "JPM", "V", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA",
-    "CVX", "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO"
+    "CVX", #"MRK", "PEP","ABBV", 
+    "ADBE", "WMT", "BAC", "HD", "KO", "TMO"
 ]
 
 # New York timezone for market hours

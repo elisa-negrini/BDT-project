@@ -295,7 +295,7 @@ class SlidingAggregator(KeyedProcessFunction):
 
             # Usa il timestamp del timer per i calcoli orari, convertito in NY_TZ
             now_ny = ts_prediction.astimezone(NY_TZ) # Usa ts_prediction per ora NY
-            market_open_time = now_ny.replace(hour=15, minute=30, second=0, microsecond=0)
+            market_open_time = now_ny.replace(hour=9, minute=30, second=0, microsecond=0)
             market_close_time = now_ny.replace(hour=16, minute=0, second=0, microsecond=0)
             
             is_market_hours = market_open_time <= now_ny < market_close_time and now_ny.weekday() < 5 # Lun-Ven
