@@ -1,5 +1,0 @@
-pandas
-neuralprophet
-minio
-pyarrow
-pyspark
