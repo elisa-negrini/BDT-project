@@ -1,5 +1,8 @@
-tensorflow
+tensorflow==2.15.0
 numpy
 joblib
-apache-flink
+#apache-flink
 scikit-learn 
+pandas
+confluent-kafka
+kafka-python

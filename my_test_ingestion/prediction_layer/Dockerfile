@@ -1,28 +1,28 @@
-# FROM python:3.9-slim-buster
+FROM python:3.10
 
-# # Imposta la directory di lavoro all'interno del container
-# WORKDIR /app
+# Imposta la directory di lavoro all'interno del container
+WORKDIR /app
 
-# # Copia il file requirements.txt e installa le dipendenze
-# COPY requirements.txt .
-# RUN pip install --no-cache-dir -r requirements.txt
+# Copia il file requirements.txt e installa le dipendenze
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# # Crea la directory 'model' all'interno di /app
-# RUN mkdir -p model 
+# Crea la directory 'model' all'interno di /app
+RUN mkdir -p model 
 
-# # Copia gli artefatti del modello nella directory 'model' all'interno del container
-# # Il percorso di origine (il primo argomento di COPY) è relativo al CONTESTO DI BUILD
-# COPY create_model_lstm/ create_model_lstm/
+# Copia gli artefatti del modello nella directory 'model' all'interno del container
+# Il percorso di origine (il primo argomento di COPY) è relativo al CONTESTO DI BUILD
+COPY create_model_lstm/ create_model_lstm/
 
-# # Copia lo script dell'applicazione dalla sua posizione relativa al contesto di build
-# COPY prediction_layer.py /app
+# Copia lo script dell'applicazione dalla sua posizione relativa al contesto di build
+COPY prediction_layer.py /app
 
-# # Definisci le variabili d'ambiente (opzionale, ma utile per configurare Kafka)
-# ENV KAFKA_BROKER=localhost:9092
-# ENV KAFKA_TOPIC=aggregated_data
+# Definisci le variabili d'ambiente (opzionale, ma utile per configurare Kafka)
+ENV KAFKA_BROKER=localhost:9092
+ENV KAFKA_TOPIC=aggregated_data
 
-# # Comando per avviare l'applicazione quando il container viene eseguito
-# CMD ["python", "prediction_layer.py"]
+# Comando per avviare l'applicazione quando il container viene eseguito
+CMD ["python", "prediction_layer.py"]
 
 
 
@@ -119,53 +119,53 @@
 
 
 
-FROM flink:1.17-scala_2.12
+# FROM flink:1.17-scala_2.12
 
-# Imposta la directory di lavoro nel container
-WORKDIR /app
+# # Imposta la directory di lavoro nel container
+# WORKDIR /app
 
-# Installa Python e pip
-RUN apt-get update && apt-get install -y python3 python3-pip --no-install-recommends && \
-    rm -rf /var/lib/apt/lists/* && \
-    ln -s /usr/bin/python3 /usr/bin/python
+# # Installa Python e pip
+# RUN apt-get update && apt-get install -y python3 python3-pip --no-install-recommends && \
+#     rm -rf /var/lib/apt/lists/* && \
+#     ln -s /usr/bin/python3 /usr/bin/python
 
-# Copia e installa i requirements
-COPY ./prediction_layer/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# # Copia e installa i requirements
+# COPY ./prediction_layer/requirements.txt .
+# RUN pip install --no-cache-dir -r requirements.txt
 
-# --- PUNTO CRITICO: CREA E COPIA NEI PERCORSI CORRETTI ---
+# # --- PUNTO CRITICO: CREA E COPIA NEI PERCORSI CORRETTI ---
 
-# Crea le directory /opt/flink/models e /opt/flink/scalers
-# Queste sono le directory che il tuo script Python si aspetta.
-RUN mkdir -p /opt/flink/models && \
-    mkdir -p /opt/flink/scalers
+# # Crea le directory /opt/flink/models e /opt/flink/scalers
+# # Queste sono le directory che il tuo script Python si aspetta.
+# RUN mkdir -p /opt/flink/models && \
+#     mkdir -p /opt/flink/scalers
 
-RUN pip install kafka-python
+# RUN pip install kafka-python
 
-# Copia i modelli e gli scaler nelle rispettive directory
-# Assicurati che i nomi dei file siano consistenti (es. lstm_model_AAPL.h5, scaler_AAPL.pkl)
-# Se hai più ticker, userai wildcard come *.h5 e *.pkl
-COPY create_model_lstm/model/lstm_model_*.h5 /opt/flink/models/
-COPY create_model_lstm/model/scaler_*.pkl /opt/flink/scalers/
-# Se il tuo modello ha un input per il ticker_code e usi ticker_map.json, copialo qui:
-COPY create_model_lstm/model/ticker_map.json /opt/flink/models/ 
+# # Copia i modelli e gli scaler nelle rispettive directory
+# # Assicurati che i nomi dei file siano consistenti (es. lstm_model_AAPL.h5, scaler_AAPL.pkl)
+# # Se hai più ticker, userai wildcard come *.h5 e *.pkl
+# COPY create_model_lstm/model/lstm_model_*.h5 /opt/flink/models/
+# COPY create_model_lstm/model/scaler_*.pkl /opt/flink/scalers/
+# # Se il tuo modello ha un input per il ticker_code e usi ticker_map.json, copialo qui:
+# COPY create_model_lstm/model/ticker_map.json /opt/flink/models/ 
 
-# --- FINE DELLE MODIFICHE CRITICHE ---
+# # --- FINE DELLE MODIFICHE CRITICHE ---
 
-# Copia i jar necessari in Flink (es. flink-connector-kafka)
-# Assicurati che i JARs siano compatibili con Flink 1.17
-COPY jar_flink/*.jar /opt/flink/lib/
+# # Copia i jar necessari in Flink (es. flink-connector-kafka)
+# # Assicurati che i JARs siano compatibili con Flink 1.17
+# COPY jar_flink/*.jar /opt/flink/lib/
 
-# Copia lo script PyFlink
-COPY ./prediction_layer/prediction_layer.py .
+# # Copia lo script PyFlink
+# COPY ./prediction_layer/prediction_layer.py .
 
-# Variabili d'ambiente per la connessione Kafka
-ENV KAFKA_BROKER=kafka:9092
-ENV KAFKA_TOPIC_AGGREGATED=aggregated_data
-ENV KAFKA_TOPIC_DASHBOARD=prediction
+# # Variabili d'ambiente per la connessione Kafka
+# ENV KAFKA_BROKER=kafka:9092
+# ENV KAFKA_TOPIC_AGGREGATED=aggregated_data
+# ENV KAFKA_TOPIC_DASHBOARD=prediction
 
-# Comando per eseguire lo script di predizione
-CMD ["python3", "prediction_layer.py"]
+# # Comando per eseguire lo script di predizione
+# CMD ["python3", "prediction_layer.py"]
 
 
 
