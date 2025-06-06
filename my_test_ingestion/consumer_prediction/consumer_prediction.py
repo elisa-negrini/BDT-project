@@ -73,24 +73,27 @@ try:
         prediction = data.get("prediction")
         is_simulated_prediction = data.get("is_simulated_prediction")
 
+        # === Aggiunta della condizione per escludere le previsioni simulate ===
+        if is_simulated_prediction:
+            print(f"🔍 Previsione simulata per {ticker} a {timestamp}, saltato il salvataggio.")
+            continue # Salta il resto del ciclo per questo messaggio
+        # ====================================================================
+
         if not timestamp or not prediction or not ticker:
             print("⚠️ Messaggio incompleto, saltato. Dump:")
             print(json.dumps(data, indent=2))
             continue
-
 
         try:
             ts = pd.to_datetime(timestamp, utc=True)
         except Exception as e:
             print(f"⚠️ Errore parsing timestamp: {e}, saltato.")
             continue
-
-
+            
         row = {
                 "Ticker": ticker,
                 "Timestamp": ts.isoformat(),
                 "Prediction": prediction,
-                "is_simulated_prediction" : is_simulated_prediction
                 }
         
         df = pd.DataFrame([row])
