@@ -9,9 +9,8 @@ from botocore.exceptions import ClientError
 from pyarrow.fs import S3FileSystem
 from datetime import datetime
 
-
-# === Parametri configurabili ===
-KAFKA_BROKER = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+# === Configurable parameters ===
+KAFKA_BROKER = "kafka:9092"
 TOPIC_NAME = 'macrodata'
 
 S3_ENDPOINT_URL = os.getenv('S3_ENDPOINT_URL')
@@ -19,7 +18,7 @@ S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY')
 S3_SECRET_KEY = os.getenv('S3_SECRET_KEY')
 S3_BUCKET = 'macro-data'
 
-# === Connessione a Kafka ===
+# === Kafka connection ===
 def connect_kafka_consumer():
     while True:
         try:
@@ -31,13 +30,13 @@ def connect_kafka_consumer():
                 enable_auto_commit=True,
                 group_id='macrodata_saver_group'
             )
-            print("✅ Connessione a Kafka riuscita (consumer).")
+            print("Kafka consumer connection established successfully.")
             return consumer
         except Exception as e:
-            print(f"⏳ Kafka non disponibile (consumer), ritento tra 5 secondi... ({e})")
+            print(f"Kafka not available, retrying in 5 seconds... ({e})")
             time.sleep(5)
 
-# === Crea bucket se non esiste ===
+# === Create bucket if it does not exist ===
 def ensure_bucket_exists():
     s3 = boto3.resource(
         's3',
@@ -48,11 +47,11 @@ def ensure_bucket_exists():
     try:
         s3.meta.client.head_bucket(Bucket=S3_BUCKET)
     except ClientError:
-        print(f"⚠️ Bucket '{S3_BUCKET}' non trovato, lo creo...")
+        print(f"Bucket '{S3_BUCKET}' not found. Creating it...")
         s3.create_bucket(Bucket=S3_BUCKET)
-        print(f"✅ Bucket '{S3_BUCKET}' creato.")
+        print(f"Bucket '{S3_BUCKET}' created successfully.")
 
-# === Filesystem S3 ===
+# === S3 filesystem ===
 fs = s3fs.S3FileSystem(
     anon=False,
     key=S3_ACCESS_KEY,
@@ -60,10 +59,10 @@ fs = s3fs.S3FileSystem(
     client_kwargs={'endpoint_url': S3_ENDPOINT_URL}
 )
 
-# === Avvia Consumer ===
+# === Start Kafka consumer ===
 ensure_bucket_exists()
 consumer = connect_kafka_consumer()
-print(f"📡 In ascolto sul topic '{TOPIC_NAME}'...")
+print(f"Listening to topic '{TOPIC_NAME}'...")
 
 for message in consumer:
     data = message.value
@@ -73,7 +72,7 @@ for message in consumer:
     value = data.get("value")
 
     if not alias or not date or value is None:
-        print("⚠️ Messaggio incompleto, saltato:", data)
+        print("Incomplete message received, skipping:", data)
         continue
 
     try:
@@ -81,7 +80,7 @@ for message in consumer:
         date_str = dt.strftime("%Y-%m-%d")
         year = dt.year
     except Exception as e:
-        print(f"⚠️ Errore parsing data: {e}, saltato.")
+        print(f"Error parsing date: {e}, skipping.")
         continue
 
     row = {
@@ -91,23 +90,21 @@ for message in consumer:
 
     df = pd.DataFrame([row])
     
-    # Path compatibile con lo storico
+    # Path structure compatible with historical data
     filename = f"{alias}_{date_str}.parquet"
     path = f"{S3_BUCKET}/{alias}/{year}/{filename}"
 
     try:
         df.to_parquet(f"s3://{path}", engine="pyarrow", filesystem=fs, index=False)
-        print(f"✓ Salvato: {path}")
+        print(f"File saved: {path}")
     except Exception as e:
-        print(f"❌ Errore nel salvataggio del file {filename}: {e}")
+        print(f"Error saving file {filename}: {e}")
 
-import pandas as pd
-from pyarrow.fs import S3FileSystem
-from datetime import datetime
-
-# === Connessioni iniziali ===
-fs = S3FileSystem(endpoint_override="http://minio:9000", access_key="minioadmin", secret_key="minioadmin")  # Adatta se diverso
+# Optional init section (if used elsewhere)
+fs = S3FileSystem(
+    endpoint_override="http://minio:9000",
+    access_key="minioadmin",
+    secret_key="minioadmin"
+)
 ensure_bucket_exists()
 consumer = connect_kafka_consumer()
-
-

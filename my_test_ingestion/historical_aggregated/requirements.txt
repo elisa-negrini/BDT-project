@@ -1,6 +1,7 @@
-apache-flink==1.17.2
+apache-flink==1.17.0
 numpy
 pandas
-psycopg2-binary
 python-dateutil
-tzdata
+pytz
+sqlalchemy
+psycopg2-binary

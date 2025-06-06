@@ -1,0 +1,7 @@
+apache-flink==1.17.0
+numpy
+transformers
+onnxruntime
+scipy
+psycopg2-binary
+pandas 

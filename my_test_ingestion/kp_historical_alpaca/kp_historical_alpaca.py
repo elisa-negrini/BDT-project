@@ -14,13 +14,13 @@ import pytz
 from threading import Timer
 import psycopg2
 
-# === CONFIGURATION ===
+# === CONFIGURATION === 
 # Alpaca API credentials - MUST be set as environment variables
 API_KEY_ALPACA = os.getenv("API_KEY_ALPACA") 
 API_SECRET_ALPACA = os.getenv("API_SECRET_ALPACA")
 
 # Kafka broker configuration - MUST be set as an environment variable
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
+KAFKA_BOOTSTRAP_SERVERS = "kafka:9092"
 KAFKA_TOPIC = "h_alpaca" # Kafka topic for historical data
 
 # Database connection details for fetching tickers - MUST be set as environment variables
@@ -124,7 +124,7 @@ def fetch_tickers_from_db():
             
             # Attempt to select active tickers; fallback if 'is_active' column doesn't exist
             try:
-                cursor.execute("SELECT ticker FROM companies_info WHERE is_active = TRUE;")
+                cursor.execute("SELECT DISTINCT ticker FROM companies_info WHERE is_active = TRUE;")
             except psycopg2.ProgrammingError:
                 logger.warning("Column 'is_active' not found in 'companies_info'. Falling back to fetching all distinct tickers.")
                 cursor.execute("SELECT DISTINCT ticker FROM companies_info;")

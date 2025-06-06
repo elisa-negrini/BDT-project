@@ -8,7 +8,7 @@ import s3fs
 import sys # Import sys for critical exits
 
 # === Kafka Configuration ===
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
+KAFKA_BOOTSTRAP_SERVERS = "kafka:9092"
 KAFKA_TOPIC = "h_macrodata"
 KAFKA_GROUP_ID = "macro-consumer-group"
 

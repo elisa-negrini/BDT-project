@@ -17,7 +17,7 @@
 # from minio import Minio
 # from minio.error import S3Error
 
-# TOP_30_TICKERS = [
+# TOP_TICKERS = [
 #     "AAPL", "MSFT", "NVDA", "AMZN", "META", "ORCL", "GOOGL", "AVGO", "TSLA", "IBM",
 #     "LLY", "JPM", "V", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA",
 #     "CVX", "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO"
@@ -642,20 +642,67 @@ from pyflink.common.typeinfo import Types
 from pyflink.datastream.state import MapStateDescriptor, ValueStateDescriptor
 from minio import Minio
 from minio.error import S3Error
+import psycopg2
+import time
 
-TOP_30_TICKERS = [
-    "AAPL", "MSFT", "NVDA", "AMZN", "META", "ORCL", "GOOGL", "AVGO", "TSLA", "IBM",
-    "LLY", "JPM", "V", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA",
-    "CVX", "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO"
-]
+
+# Database connection details for fetching tickers - MUST be set as environment variables
+POSTGRES_HOST = os.getenv("POSTGRES_HOST")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT")
+POSTGRES_DB = os.getenv("POSTGRES_DB")
+POSTGRES_USER = os.getenv("POSTGRES_USER")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
+
+
+def fetch_tickers_from_db():
+    max_retries = 10
+    delay = 5
+
+    for attempt in range(max_retries):
+        try:
+            conn = psycopg2.connect(
+                host=POSTGRES_HOST,
+                port=POSTGRES_PORT,
+                database=POSTGRES_DB,
+                user=POSTGRES_USER,
+                password=POSTGRES_PASSWORD
+            )
+            cursor = conn.cursor()
+            try:
+                cursor.execute("SELECT DISTINCT ticker FROM companies_info WHERE is_active = TRUE;")
+            except psycopg2.ProgrammingError:
+                print("Column 'is_active' not found. Falling back to all distinct tickers.")
+                cursor.execute("SELECT DISTINCT ticker FROM companies_info;")
+
+            result = cursor.fetchall()
+            tickers = [row[0] for row in result if row[0]]
+            cursor.close()
+            conn.close()
+
+            if not tickers:
+                print("No tickers found in the database.")
+            else:
+                print(f"Loaded {len(tickers)} tickers from DB.")
+            return tickers
+        except Exception as e:
+            print(f"Database not available, retrying in {delay * (attempt + 1)} seconds... ({e})")
+            time.sleep(delay * (attempt + 1))
+
+    print("Failed to connect to database after multiple attempts. Exiting.")
+    exit(1)
+
+TOP_TICKERS = fetch_tickers_from_db()
+if not TOP_TICKERS:
+    print("No tickers available from DB. Exiting.")
+    exit(1)
 
 fundamentals_data = {} 
 
 NY_TZ = pytz.timezone('America/New_York')
 
-MINIO_URL = "minio:9000"
-MINIO_ACCESS_KEY = "admin"
-MINIO_SECRET_KEY = "admin123"
+MINIO_URL = os.getenv("S3_ENDPOINT")
+MINIO_ACCESS_KEY = os.getenv("S3_ACCESS_KEY")
+MINIO_SECRET_KEY = os.getenv("S3_SECRET_KEY")
 MINIO_SECURE = False
 
 def load_fundamental_data():
@@ -675,7 +722,7 @@ def load_fundamental_data():
             print(f"[ERROR] MinIO bucket '{bucket_name}' does not exist. No fundamental data loaded.", file=sys.stderr)
             return
 
-        for ticker in TOP_30_TICKERS:
+        for ticker in TOP_TICKERS:
             object_name = f"{ticker}/2024.parquet"
             response = None
             try:
@@ -865,7 +912,7 @@ class SlidingAggregator(KeyedProcessFunction):
 
                 # Assumiamo che qui arrivino solo sentiment per ticker specifici
                 # o che "GENERAL" sia già stato filtrato/gestito prima di questo operatore keyed
-                if current_key in TOP_30_TICKERS:
+                if current_key in TOP_TICKERS:
                     if social_source == "bluesky":
                         self.sentiment_bluesky_2h.put(ts_str, sentiment_score)
                         self.sentiment_bluesky_1d.put(ts_str, sentiment_score)
@@ -881,7 +928,7 @@ class SlidingAggregator(KeyedProcessFunction):
             # --- Gestione dei dati di Stock Trade ---
             elif "price" in data and "size" in data and "exchange" in data:
                 ticker = data.get("ticker")
-                if ticker not in TOP_30_TICKERS:
+                if ticker not in TOP_TICKERS:
                     # Questo dovrebbe essere già filtrato dalla key_by, ma è un fallback
                     return []
                 
@@ -942,8 +989,8 @@ class SlidingAggregator(KeyedProcessFunction):
             
             ticker = ctx.get_current_key()
 
-            # Solo i ticker nella lista TOP_30_TICKERS dovrebbero attivare questo timer
-            if ticker not in TOP_30_TICKERS:
+            # Solo i ticker nella lista TOP_TICKERS dovrebbero attivare questo timer
+            if ticker not in TOP_TICKERS:
                 return [] # Non processare chiavi non pertinenti
 
             # Don't process if we haven't received any stock data yet
@@ -1134,7 +1181,7 @@ def expand_sentiment_data(json_str):
             
             for ticker_item in original_ticker_list:
                 # In questo job, processiamo SOLO i ticker specifici e non "GENERAL"
-                if ticker_item != "GENERAL" and ticker_item in TOP_30_TICKERS:
+                if ticker_item != "GENERAL" and ticker_item in TOP_TICKERS:
                     new_record = data.copy()
                     new_record["ticker"] = ticker_item
                     expanded_records.append(json.dumps(new_record))
@@ -1165,7 +1212,7 @@ def route_by_ticker(json_str):
         data = json.loads(json_str)
         # Questo job si occupa solo di dati con un campo 'ticker' specifico
         if "ticker" in data:
-            if data["ticker"] in TOP_30_TICKERS:
+            if data["ticker"] in TOP_TICKERS:
                 return data["ticker"]
             else:
                 # Messaggi con ticker non tracciati o "GENERAL" (già filtrato da expand_sentiment_data)

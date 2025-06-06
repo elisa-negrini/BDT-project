@@ -43,7 +43,8 @@ RUN pip3 install --no-cache-dir \
     pytz \
     pyarrow \
     minio \
-    pandas
+    pandas \
+    psycopg2-binary
 
 # Copia script Python e template
 COPY main_job.py /opt/main_job.py

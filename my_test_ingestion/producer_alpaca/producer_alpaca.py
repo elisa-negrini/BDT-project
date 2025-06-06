@@ -9,6 +9,7 @@ import asyncio
 import json
 import random
 import os
+import psycopg2
 
 # Patch for embedded environments (notebooks, PyCharm)
 nest_asyncio.apply()
@@ -18,8 +19,57 @@ API_KEY = os.getenv("API_KEY_ALPACA")
 API_SECRET = os.getenv("API_SECRET_ALPACA")
 
 # Kafka config
-KAFKA_BROKER = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+KAFKA_BROKER = "kafka:9092"
 KAFKA_TOPIC = 'stock_trades'
+
+# Database connection details for fetching tickers - MUST be set as environment variables
+POSTGRES_HOST = os.getenv("POSTGRES_HOST")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT")
+POSTGRES_DB = os.getenv("POSTGRES_DB")
+POSTGRES_USER = os.getenv("POSTGRES_USER")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
+
+def fetch_tickers_from_db():
+    max_retries = 10
+    delay = 5
+
+    for attempt in range(max_retries):
+        try:
+            conn = psycopg2.connect(
+                host=POSTGRES_HOST,
+                port=POSTGRES_PORT,
+                database=POSTGRES_DB,
+                user=POSTGRES_USER,
+                password=POSTGRES_PASSWORD
+            )
+            cursor = conn.cursor()
+            try:
+                cursor.execute("SELECT DISTINCT ticker FROM companies_info WHERE is_active = TRUE;")
+            except psycopg2.ProgrammingError:
+                print("Column 'is_active' not found. Falling back to all distinct tickers.")
+                cursor.execute("SELECT DISTINCT ticker FROM companies_info;")
+
+            result = cursor.fetchall()
+            tickers = [row[0] for row in result if row[0]]
+            cursor.close()
+            conn.close()
+
+            if not tickers:
+                print("No tickers found in the database.")
+            else:
+                print(f"Loaded {len(tickers)} tickers from DB.")
+            return tickers
+        except Exception as e:
+            print(f"Database not available, retrying in {delay * (attempt + 1)} seconds... ({e})")
+            time.sleep(delay * (attempt + 1))
+
+    print("Failed to connect to database after multiple attempts. Exiting.")
+    exit(1)
+
+top_tickers = fetch_tickers_from_db()
+if not top_tickers:
+    print("No tickers available from DB. Exiting.")
+    exit(1)
 
 def connect_kafka():
     while True:
@@ -36,20 +86,12 @@ def connect_kafka():
 
 producer = connect_kafka()
 
-# List of 30 main tickers of S&P 500
-top_30_tickers = [
-    "AAPL", "MSFT", #"NVDA",
-      "AMZN", "META", "ORCL", "GOOGL", "AVGO", "TSLA", "IBM",
-    "LLY", "JPM", "V", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA",
-    "CVX", #"MRK", "PEP","ABBV", 
-    "ADBE", "WMT", "BAC", "HD", "KO", "TMO"
-]
 
 # New York timezone for market hours
 ny_timezone = pytz.timezone("America/New_York")
 
 # Initialize the last price for each ticker for random data generation
-last_prices = {ticker: random.uniform(200, 300) for ticker in top_30_tickers}
+last_prices = {ticker: random.uniform(200, 300) for ticker in top_tickers}
 
 # Alpaca Stream
 stream = StockDataStream(API_KEY, API_SECRET)
@@ -75,9 +117,9 @@ async def generate_random_trade_data():
     global last_prices
     current_time_utc = datetime.now(pytz.utc).isoformat()
 
-    for ticker in top_30_tickers:
+    for ticker in top_tickers:
         # Calculate the new price
-        price_change = random.uniform(-1, 1)
+        price_change = random.uniform(-0.1, 0.1)
         new_price = last_prices[ticker] + price_change
 
         # Ensure the price never drops below 100
@@ -119,7 +161,7 @@ async def main():
     global stream_running
 
     # Subscribe to all tickers once
-    for symbol in top_30_tickers:
+    for symbol in top_tickers:
         stream.subscribe_trades(handle_trade_data, symbol)
 
     print("Script started in infinite mode.")

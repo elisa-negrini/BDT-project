@@ -14,7 +14,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("KafkaToMinio")
 
 # === CONFIGURATION ===
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
+KAFKA_BOOTSTRAP_SERVERS = "kafka:9092"
 KAFKA_TOPIC = "h_company"
 MINIO_ENDPOINT = os.getenv("S3_ENDPOINT_URL")
 MINIO_ACCESS_KEY = os.getenv("S3_ACCESS_KEY")

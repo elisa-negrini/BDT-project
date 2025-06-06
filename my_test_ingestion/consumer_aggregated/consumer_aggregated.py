@@ -1238,16 +1238,16 @@ from pyflink.datastream.functions import CoProcessFunction, RuntimeContext
 from pyflink.common.typeinfo import Types
 from pyflink.datastream.state import MapStateDescriptor, ValueStateDescriptor
 
-KAFKA_BOOTSTRAP_SERVERS = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'kafka:9092')
+KAFKA_BOOTSTRAP_SERVERS = 'kafka:9092'
 AGGREGATED_DATA_TOPIC = 'aggregated_data'
 STOCK_TRADES_TOPIC = 'stock_trades'
 KAFKA_GROUP_ID = 'flink_postgres_sink_group'
 
-POSTGRES_HOST = os.getenv('POSTGRES_HOST', 'postgre')
-POSTGRES_PORT = int(os.getenv('POSTGRES_PORT', 5432))
-POSTGRES_DB = os.getenv('POSTGRES_DB', 'aggregated-data')
-POSTGRES_USER = os.getenv('POSTGRES_USER', 'admin')
-POSTGRES_PASSWORD = os.getenv('POSTGRES_PASSWORD', 'admin123')
+POSTGRES_HOST = os.getenv('POSTGRES_HOST')
+POSTGRES_PORT = int(os.getenv('POSTGRES_PORT'))
+POSTGRES_DB = os.getenv('POSTGRES_DB')
+POSTGRES_USER = os.getenv('POSTGRES_USER')
+POSTGRES_PASSWORD = os.getenv('POSTGRES_PASSWORD')
 TABLE_STREAM1 = 'aggregated_data'
 TABLE_STREAM2 = 'aggregated_data2'
 

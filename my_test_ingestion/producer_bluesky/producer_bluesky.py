@@ -4,21 +4,22 @@ import json
 from datetime import datetime
 from kafka import KafkaProducer
 import os
+import psycopg2
 
-# Il tuo accessJwt (access token)
+# Your accessJwt (access token)
 access_jwt = ""
 refresh_jwt = ""
-identifier = os.getenv("BLUESKY_IDENTIFIER", "michelelovatomenin.bsky.social")
+identifier = os.getenv("BLUESKY_IDENTIFIER")
 password = os.getenv("BLUESKY_PASSWORD")
 
-# URL dell'API di Bluesky per cercare i post
+# Bluesky API URL to search posts
 url = "https://bsky.social/xrpc/app.bsky.feed.searchPosts"
 
 # Kafka config
-KAFKA_BROKER = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+KAFKA_BROKER = "kafka:9092"
 KAFKA_TOPIC = 'bluesky'
 
-# Kafka producer con retry finché il broker non è disponibile
+# Kafka producer with retry logic
 def connect_kafka():
     while True:
         try:
@@ -26,20 +27,58 @@ def connect_kafka():
                 bootstrap_servers=KAFKA_BROKER,
                 value_serializer=lambda v: json.dumps(v).encode('utf-8')
             )
-            print("✅ Connessione a Kafka riuscita.")
+            print("Kafka producer connection established.")
             return producer
         except Exception as e:
-            print(f"⏳ Kafka non disponibile, ritento in 5 secondi... ({e})")
+            print(f"Kafka not available, retrying in 5 seconds... ({e})")
             time.sleep(5)
 
 producer = connect_kafka()
 
-
-# Set per memorizzare gli ID dei post già processati
+# Set to track already processed post IDs
 processed_posts = set()
 
-# Lista delle parole chiave
-keywords = [
+# PostgreSQL config
+POSTGRES_HOST = os.getenv("POSTGRES_HOST")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT")
+POSTGRES_DB = os.getenv("POSTGRES_DB")
+POSTGRES_USER = os.getenv("POSTGRES_USER")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
+
+# Load keywords from PostgreSQL
+def load_keywords_from_db():
+    try:
+        conn = psycopg2.connect(
+            host=POSTGRES_HOST,
+            port=POSTGRES_PORT,
+            database=POSTGRES_DB,
+            user=POSTGRES_USER,
+            password=POSTGRES_PASSWORD
+        )
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT DISTINCT ticker, company_name, related_words
+            FROM companies_info WHERE is_active = TRUE
+        """)
+        rows = cursor.fetchall()
+        conn.close()
+
+        db_keywords = set()
+        for row in rows:
+            for field in row:
+                if field and isinstance(field, str):
+                    stripped_field = field.strip()
+                    if len(stripped_field) > 1:
+                        db_keywords.add(stripped_field)
+
+        return list(db_keywords)
+
+    except Exception as e:
+        print(f"Error fetching keywords from database: {e}")
+        return []
+
+# Static keyword list
+keywords = [ 
     "stock", "stocks", "market", "markets", "equity", "equities",
     "trading", "investing", "investment", "portfolio", "bull market", 
     "bear market", "recession", "nasdaq", "dow jones", "s&p 500", 
@@ -47,16 +86,9 @@ keywords = [
     "federal reserve", "interest rates", "inflation", "wall street",
     "financial markets", "volatility", "dividends", "valuation",
     "price target", "IPO", "stock split", "ETF", "SPY",
-    "AAPL", "MSFT", "NVDA", "AMZN", "META", "ORCL", "GOOGL", "AVGO", "TSLA", "IBM",
-    "LLY", "JPM", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA", "CVX",
-    "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO",
-    "Apple", "Microsoft", "Nvidia", "Amazon", "Meta", "Oracle", "Alphabet",
-    "Broadcom", "Tesla", "Eli Lilly", "JPMorgan", "Visa", "Exxon", "Netflix",
-    "Costco", "UnitedHealth", "Johnson", "Procter", "Mastercard", "Chevron",
-    "Merck", "Pepsi", "AbbVie", "Adobe", "Walmart", "BofA", "Home Depot", 
-    "Coca-Cola", "Thermo Fisher", "Big Blue"
 ]
 
+# Get initial access and refresh tokens
 def get_initial_tokens():
     global access_jwt, refresh_jwt
     session_url = "https://bsky.social/xrpc/com.atproto.server.createSession"
@@ -73,13 +105,13 @@ def get_initial_tokens():
         token_data = response.json()
         access_jwt = token_data['accessJwt']
         refresh_jwt = token_data['refreshJwt']
-        print("Access token e refresh token ottenuti con successo.")
+        print("Access and refresh tokens obtained successfully.")
     else:
-        print("Errore nell'ottenere i token iniziali:", response.status_code, response.text)
+        print("Error obtaining initial tokens:", response.status_code, response.text)
         access_jwt = None
         refresh_jwt = None
 
-
+# Refresh the access token using the refresh token
 def get_new_access_token():
     global access_jwt, refresh_jwt
     url = "https://bsky.social/xrpc/com.atproto.server.refreshSession"
@@ -93,11 +125,12 @@ def get_new_access_token():
         token_data = response.json()
         access_jwt = token_data['accessJwt']
         refresh_jwt = token_data['refreshJwt']
-        print("✅ Token rinnovato con successo.")
+        print("Token successfully refreshed.")
     else:
-        print(f"❌ Errore nel rinnovo del token: {response.status_code}, {response.text}")
+        print(f"Error refreshing token: {response.status_code}, {response.text}")
         access_jwt = None
 
+# Fetch posts from Bluesky API
 def fetch_posts(keyword):
     headers = {
         'Authorization': f'Bearer {access_jwt}'
@@ -110,32 +143,39 @@ def fetch_posts(keyword):
         posts = response.json().get('posts', [])
         return posts
     else:
-        print(f"Errore nella richiesta dei post per '{keyword}':", response.status_code)
+        print(f"Error fetching posts for '{keyword}':", response.status_code)
         return []
 
+# Main tracking function
 def track_posts():
     global access_jwt
+
+    # Merge static and DB keywords
+    db_keywords = load_keywords_from_db()
+    print(f"Loaded {len(db_keywords)} keywords from the database.")
+    all_keywords = list(set(keywords + db_keywords))
+
     get_initial_tokens()
 
     if access_jwt is None:
-        print("Impossibile proseguire senza un accessJwt valido.")
+        print("Cannot proceed without a valid accessJwt.")
         return
 
     last_token_renewal_time = time.time()
     
     while True:
         if access_jwt is None:
-            print("Impossibile proseguire senza un accessJwt valido.")
+            print("Cannot proceed without a valid accessJwt.")
             break
 
-        print("Eseguendo ricerca nuovi post...")
+        print("Searching for new posts...")
 
-        for keyword in keywords:
+        for keyword in all_keywords:
             new_posts = fetch_posts(keyword)
             new_posts_filtered = [post for post in new_posts if post['cid'] not in processed_posts]
 
             if new_posts_filtered:
-                print(f"Trovati {len(new_posts_filtered)} nuovi post per '{keyword}'.")
+                print(f"Found {len(new_posts_filtered)} new posts for '{keyword}'.")
 
                 for post in new_posts_filtered:
                     processed_posts.add(post['cid'])
@@ -154,7 +194,7 @@ def track_posts():
                     producer.send(KAFKA_TOPIC, value=data)
 
             else:
-                print(f"Nessun nuovo post trovato per '{keyword}'.")
+                print(f"No new posts found for '{keyword}'.")
 
         time.sleep(30)
 

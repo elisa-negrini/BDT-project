@@ -15,7 +15,7 @@ import pyarrow as pa
 from io import BytesIO
 
 # === CONFIGURATION ===
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
+KAFKA_BOOTSTRAP_SERVERS = "kafka:9092"
 KAFKA_TOPIC = "h_alpaca"
 KAFKA_GROUP_ID = "consumer_alpaca"
 

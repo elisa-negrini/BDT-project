@@ -3,33 +3,30 @@ FROM flink:1.17-scala_2.12
 
 # Installa Python, pip e le dipendenze di build per psycopg2
 # psycopg2 richiede header di sviluppo per PostgreSQL
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
     libpq-dev \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
+    gcc && \
+    rm -rf /var/lib/apt/lists/*
 
-# Crea un link simbolico per python
+# Create a symbolic link for python
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
-# Installa le librerie Python
-# Aggiunto psycopg2-binary
-RUN pip3 install \
-    apache-flink==1.17.0 \
-    numpy \
-    pandas \
-    python-dateutil \
-    pytz \
-    sqlalchemy \
-    psycopg2-binary
+WORKDIR /app
 
-# Copia lo script Python
-COPY historical_aggregated.py /opt/historical_aggregated.py
+COPY requirements.txt .
 
-# Copia i JAR per Kafka (essenziali per il connettore Kafka di Flink)
+# Install Python libraries
+# Added psycopg2-binary
+RUN pip3 install --no-cache-dir -r requirements.txt
+
+# Copy Kafka JARs (essential for Flink's Kafka connector)
 COPY flink-connector-kafka-1.17.0.jar /opt/flink/lib/
 COPY kafka-clients-3.3.2.jar /opt/flink/lib/
 
-# Imposta il comando di default per eseguire lo script Flink
-CMD ["python", "/opt/historical_aggregated.py"]
+COPY historical_aggregated.py /app/historical_aggregated.py
+
+# Set the default command to run the Flink script
+CMD ["python", "historical_aggregated.py"]

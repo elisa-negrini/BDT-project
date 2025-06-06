@@ -7,8 +7,8 @@ import boto3
 from kafka import KafkaConsumer
 from botocore.exceptions import ClientError
 
-# === Parametri configurabili ===
-KAFKA_BROKER = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+# === Configurable parameters ===
+KAFKA_BROKER = "kafka:9092"
 TOPIC_NAME = 'bluesky'
 
 S3_ENDPOINT_URL = os.getenv('S3_ENDPOINT_URL')
@@ -16,7 +16,7 @@ S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY')
 S3_SECRET_KEY = os.getenv('S3_SECRET_KEY')
 S3_BUCKET = 'bluesky-data'
 
-# === Connessione a Kafka ===
+# === Connect to Kafka ===
 def connect_kafka_consumer():
     while True:
         try:
@@ -28,13 +28,13 @@ def connect_kafka_consumer():
                 enable_auto_commit=True,
                 group_id='json_saver_group'
             )
-            print("✅ Connessione a Kafka riuscita (consumer).")
+            print("Kafka consumer connected successfully.")
             return consumer
         except Exception as e:
-            print(f"⏳ Kafka non disponibile (consumer), ritento tra 5 secondi... ({e})")
+            print(f"Kafka not available, retrying in 5 seconds... ({e})")
             time.sleep(5)
 
-# === Crea bucket se non esiste ===
+# === Create bucket if it does not exist ===
 def ensure_bucket_exists():
     s3 = boto3.resource(
         's3',
@@ -45,11 +45,11 @@ def ensure_bucket_exists():
     try:
         s3.meta.client.head_bucket(Bucket=S3_BUCKET)
     except ClientError:
-        print(f"⚠️ Bucket '{S3_BUCKET}' non trovato, lo creo...")
+        print(f"Bucket '{S3_BUCKET}' not found, creating it...")
         s3.create_bucket(Bucket=S3_BUCKET)
-        print(f"✅ Bucket '{S3_BUCKET}' creato.")
+        print(f"Bucket '{S3_BUCKET}' created successfully.")
 
-# === Filesystem S3 ===
+# === S3 filesystem ===
 fs = s3fs.S3FileSystem(
     anon=False,
     key=S3_ACCESS_KEY,
@@ -57,10 +57,10 @@ fs = s3fs.S3FileSystem(
     client_kwargs={'endpoint_url': S3_ENDPOINT_URL}
 )
 
-# === Avvia Consumer ===
+# === Start consumer ===
 ensure_bucket_exists()
 consumer = connect_kafka_consumer()
-print(f"📡 In ascolto sul topic '{TOPIC_NAME}'...")
+print(f"Listening on topic '{TOPIC_NAME}'...")
 
 for message in consumer:
     data = message.value
@@ -70,13 +70,13 @@ for message in consumer:
     text = data.get("text")
 
     if not created_at or not keyword:
-        print("⚠️ Messaggio mancante di 'created_at' o 'keyword', saltato.")
+        print("Message missing 'created_at' or 'keyword', skipping.")
         continue
 
     try:
         timestamp = pd.to_datetime(created_at, utc=True).isoformat()
     except Exception as e:
-        print(f"⚠️ Errore parsing timestamp: {e}, saltato.")
+        print(f"Error parsing timestamp: {e}, skipping.")
         continue
 
     row = {
@@ -92,7 +92,4 @@ for message in consumer:
     path = f"{S3_BUCKET}/date={date}/keyword={keyword}/{filename}"
 
     df.to_parquet(f"s3://{path}", engine="pyarrow", filesystem=fs, index=False)
-    print(f"✓ Salvato: {path}")
-
-
-
+    print(f"Saved file: {path}")

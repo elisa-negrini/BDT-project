@@ -12,6 +12,7 @@ import os
 import sys
 import psycopg2
 from psycopg2 import sql
+from psycopg2 import sql, OperationalError
 import threading
 import time
 
@@ -20,21 +21,61 @@ import time
 # so main() and FullDayAggregator can consistently access them if needed.
 # For consistency, using UPPERCASE for env var names.
 
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+KAFKA_BOOTSTRAP_SERVERS = "kafka:9092"
 KAFKA_TOPICS = ["h_alpaca", "h_macrodata", "h_company"] # Consistent list of topics
 
-DB_NAME = os.getenv("DB_NAME", "aggregated-data")
-DB_USER = os.getenv("DB_USER", "admin")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "admin123")
-DB_HOST = os.getenv("DB_HOST", "postgre") # IMPORTANT: Default to 'postgre' for Docker network
-DB_PORT = os.getenv("DB_PORT", "5432")
+POSTGRES_DB = os.getenv("POSTGRES_DB")
+POSTGRES_USER = os.getenv("POSTGRES_USER")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST") # IMPORTANT: Default to 'postgre' for Docker network
+POSTGRES_PORT = os.getenv("POSTGRES_PORT")
 DB_TABLE_NAME = "aggregated_data" # This can remain hardcoded as it's a table name, not a credential
 
-TOP_30_TICKERS = [
-    "AAPL", "MSFT", "NVDA", "AMZN", "META", "ORCL", "GOOGL", "AVGO", "TSLA", "IBM",
-    "LLY", "JPM", "V", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA",
-    "CVX", "MRK", "PEP", "ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO"
-]
+# --- Database Connection with Retries for Initial Ticker Load ---
+def connect_to_db_for_tickers(max_retries=15, delay=5):
+    """Attempts to connect to the database with retry logic."""
+    db_url = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+    for i in range(max_retries):
+        try:
+            conn = psycopg2.connect(db_url)
+            sys.stderr.write(f"INFO: Connected to PostgreSQL successfully for tickers (attempt {i+1}).\n")
+            return conn
+        except OperationalError as e:
+            sys.stderr.write(f"ERROR: PostgreSQL connection failed for tickers: {e}. Retrying in {delay}s...\n")
+        except Exception as e:
+            sys.stderr.write(f"ERROR: Unexpected error during DB connection for tickers: {e}. Retrying in {delay}s...\n")
+        time.sleep(delay)
+    sys.stderr.write("CRITICAL ERROR: Max retries reached. Could not connect to PostgreSQL for tickers. Exiting.\n")
+    raise Exception("Failed to connect to database for tickers.")
+
+# --- Function to Load TOP_30_TICKERS from Database ---
+def load_tickers_from_db():
+    """
+    Loads the list of active tickers from the 'companies_info' table in the database.
+    """
+    tickers_list = []
+    conn = None # Initialize to None for error handling
+    try:
+        conn = connect_to_db_for_tickers()
+        cursor = conn.cursor()
+        cursor.execute(
+            sql.SQL("SELECT ticker FROM companies_info WHERE is_active = TRUE ORDER BY ticker_id")
+        )
+        rows = cursor.fetchall()
+        cursor.close()
+        
+        tickers_list = [row[0] for row in rows]
+        sys.stderr.write(f"INFO: Loaded {len(tickers_list)} active tickers from DB.\n")
+        return tickers_list
+    except Exception as e:
+        sys.stderr.write(f"CRITICAL ERROR: Failed to load TOP_30_TICKERS from database: {e}\n")
+        sys.exit(1) # Exit the program if essential data cannot be loaded
+    finally:
+        if conn:
+            conn.close()
+
+# --- Global Ticker List (Dynamically Loaded) ---
+TOP_30_TICKERS = load_tickers_from_db()
 
 # --- Global Data Stores (Shared across process_element calls, but ensure Flink's design handles state correctly) ---
 # For a production Flink job, these global variables might not be ideal for large-scale state management
@@ -73,11 +114,11 @@ class FullDayAggregator(KeyedProcessFunction):
         """
         # Read from the global variables (which are set by os.getenv in main or script start)
         # These are accessible because they are defined at the module level.
-        self.db_name = DB_NAME
-        self.db_user = DB_USER
-        self.db_password = DB_PASSWORD
-        self.db_host = DB_HOST
-        self.db_port = DB_PORT
+        self.db_name = POSTGRES_DB
+        self.db_user = POSTGRES_USER
+        self.db_password = POSTGRES_PASSWORD
+        self.db_host = POSTGRES_HOST
+        self.db_port = POSTGRES_PORT
         self.table_name = DB_TABLE_NAME # Use the global table name
 
         self.conn = None
@@ -303,9 +344,9 @@ class FullDayAggregator(KeyedProcessFunction):
                 "timestamp": now.isoformat(),
                 "price_mean_1min": mean(window_vals("open", 1)),
                 "price_mean_5min": mean(window_vals("open", 5)),
-                "price_std_5min": std(window_vals("open", 5))/mean(window_vals("open", 5)),
+                "price_std_5min": std(window_vals("open", 5)),
                 "price_mean_30min": mean(window_vals("open", 30)),
-                "price_std_30min": std(window_vals("open", 30))/mean(window_vals("open", 30)),
+                "price_std_30min": std(window_vals("open", 30)),
                 "size_tot_1min": total(window_vals("volume", 1)),
                 "size_tot_5min": total(window_vals("volume", 5)),
                 "size_tot_30min": total(window_vals("volume", 30)),
@@ -456,7 +497,7 @@ def main():
     """
     # Use global variables defined at the top of the script
     # These are already loaded from os.getenv()
-    global KAFKA_BOOTSTRAP_SERVERS, KAFKA_TOPICS, DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_TABLE_NAME
+    global KAFKA_BOOTSTRAP_SERVERS, KAFKA_TOPICS, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT, DB_TABLE_NAME
 
     # --- Flink Environment Setup ---
     env = StreamExecutionEnvironment.get_execution_environment()

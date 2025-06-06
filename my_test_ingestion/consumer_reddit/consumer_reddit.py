@@ -7,16 +7,16 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import os
 
-# === Configurazioni ===
+# === Configuration ===
 KAFKA_TOPIC = 'reddit'
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+KAFKA_BOOTSTRAP_SERVERS = "kafka:9092"
 
 S3_ENDPOINT_URL = os.getenv('S3_ENDPOINT_URL')
 S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY')
 S3_SECRET_KEY = os.getenv('S3_SECRET_KEY')
 S3_BUCKET = 'reddit-data'
 
-# === Connessione a Kafka ===
+# === Connect to Kafka ===
 def connect_kafka_consumer():
     while True:
         try:
@@ -28,13 +28,13 @@ def connect_kafka_consumer():
                 enable_auto_commit=True,
                 group_id="reddit_saver"
             )
-            print("✅ Connessione a Kafka riuscita (consumer).")
+            print("Kafka consumer connected successfully.")
             return consumer
         except Exception as e:
-            print(f"⏳ Kafka non disponibile (consumer), ritento tra 5 secondi... ({e})")
+            print(f"Kafka not available, retrying in 5 seconds... ({e})")
             time.sleep(5)
 
-# === Connessione a MinIO ===
+# === Connect to MinIO via S3FS ===
 fs = s3fs.S3FileSystem(
     anon=False,
     key=S3_ACCESS_KEY,
@@ -42,21 +42,21 @@ fs = s3fs.S3FileSystem(
     client_kwargs={'endpoint_url': S3_ENDPOINT_URL}
 )
 
-# === Crea il bucket solo se non esiste ===
+# === Create bucket if it does not exist ===
 if not fs.exists(S3_BUCKET):
     fs.mkdir(S3_BUCKET)
-    print(f"🪣 Bucket '{S3_BUCKET}' creato su MinIO.")
+    print(f"Bucket '{S3_BUCKET}' created on MinIO.")
 else:
-    print(f"✅ Bucket '{S3_BUCKET}' già esistente.")
+    print(f"Bucket '{S3_BUCKET}' already exists.")
 
-# === Inizio consumo ===
+# === Start consuming messages ===
 consumer = connect_kafka_consumer()
-print(f"📡 In ascolto sul topic '{KAFKA_TOPIC}'...")
+print(f"Listening to topic '{KAFKA_TOPIC}'...")
 
 for message in consumer:
     data = message.value
 
-    # Costruisci il DataFrame (adatta alle tue chiavi reali)
+    # Build the record dictionary (adapt field names as needed)
     record = {
         "id": [data.get("id")],
         "author": [data.get("author")],
@@ -68,14 +68,14 @@ for message in consumer:
 
     table = pa.Table.from_pydict(record)
 
-    # Crea percorso con subreddit e data
+    # Create path with subreddit and date
     subreddit = record["subreddit"][0] or "unknown"
     date = record["created_utc"][0][:10]
     filename = f"reddit_{record['id'][0]}.parquet"
     path = f"{S3_BUCKET}/date={date}/subreddit={subreddit}/{filename}"
 
-    # Scrivi su MinIO
+    # Write to MinIO
     with fs.open(f"s3://{path}", 'wb') as f:
         pq.write_table(table, f)
 
-    print(f"💾 Salvato: {path}")
+    print(f"File saved: {path}")

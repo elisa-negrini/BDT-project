@@ -9,8 +9,7 @@ import os
 # === CONFIG ===
 client_id = os.getenv("REDDIT_CLIENT_ID")
 client_secret = os.getenv("REDDIT_CLIENT_SECRET")
-user_agent = os.getenv("REDDIT_USER_AGENT", "Samu_Miki") 
-
+user_agent = os.getenv("REDDIT_USER_AGENT") 
 
 subreddit = [
     "stocks", "investment", "wallstreetbets", "StockMarket",
@@ -19,16 +18,15 @@ subreddit = [
 ]
 
 KAFKA_TOPIC = "reddit"
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+KAFKA_BOOTSTRAP_SERVERS = "kafka:9092"
 
-refresh_interval = 23  # ore
+refresh_interval = 23  # hours
 pause_seconds = 30
 
 # === STATE ===
 seen_ids = set()
 token = None
 token_time = None
-
 
 def connect_kafka():
     while True:
@@ -37,15 +35,15 @@ def connect_kafka():
                 bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 value_serializer=lambda v: json.dumps(v).encode('utf-8')
             )
-            print("✅ Connessione a Kafka riuscita.")
+            print("Connected to Kafka.")
             return producer
         except Exception as e:
-            print(f"⏳ Kafka non disponibile, ritento in 5 secondi... ({e})")
+            print(f"Kafka not available, retrying in 5 seconds... ({e})")
             time.sleep(5)
 
 producer = connect_kafka()
 
-# === FUNZIONI ===
+# === FUNCTIONS ===
 
 def get_reddit_token():
     url = 'https://www.reddit.com/api/v1/access_token'
@@ -54,13 +52,12 @@ def get_reddit_token():
     auth = (client_id, client_secret)
     response = requests.post(url, headers=headers, data=data, auth=auth)
     if response.status_code == 200:
-        print("✅ Token ottenuto.")
+        print("Token obtained.")
         return response.json()['access_token']
     else:
-        print(f"❌ Errore token: {response.status_code}")
+        print(f"Error obtaining token: {response.status_code}")
         print(response.text)
         return None
-
 
 def get_new_reddit_posts(subreddit, token):
     url = f'https://oauth.reddit.com/r/{subreddit}/new?limit=100'
@@ -90,7 +87,7 @@ def get_new_reddit_posts(subreddit, token):
                 })
         return new_posts
     else:
-        print(f"[{subreddit}] ❌ Errore richiesta: {response.status_code}")
+        print(f"[{subreddit}] Error fetching posts: {response.status_code}")
         return []
 
 # === MAIN LOOP ===
@@ -104,36 +101,35 @@ if __name__ == "__main__":
             now = datetime.now(timezone.utc)
 
             if now - token_time > timedelta(hours=refresh_interval):
-                print("🔄 Rigenerazione token...")
+                print("Refreshing token...")
                 token = get_reddit_token()
                 token_time = datetime.now(timezone.utc)
 
-            print(f"\n🔁 Ciclo: {now.isoformat()} UTC")
+            print(f"\nCycle: {now.isoformat()} UTC")
 
             for sub in subreddit:
-                print(f"\n➡️ Controllo subreddit: /r/{sub}")
+                print(f"\nChecking subreddit: /r/{sub}")
                 posts = get_new_reddit_posts(sub, token)
-                print(f"✅ Ricevuti {len(posts)} post da /r/{sub}")
+                print(f"Received {len(posts)} posts from /r/{sub}")
 
                 if posts:
                     try:
                         for post in posts:
-                            print(f"📨 [{post['subreddit']}] {post['title'][:80]} | text chars: {len(post['text'])}")
+                            print(f"[{post['subreddit']}] {post['title'][:80]} | text length: {len(post['text'])}")
                             producer.send(KAFKA_TOPIC, value=post)
-                        producer.flush()  # 🔒 forza invio dei messaggi Kafka
-                        print(f"📤 Inviati {len(posts)} post da /r/{sub}")
+                        producer.flush()
+                        print(f"Sent {len(posts)} posts from /r/{sub}")
                     except Exception as e:
-                        print(f"❗ Errore nell'invio a Kafka da /r/{sub}: {e}")
+                        print(f"Error sending posts to Kafka from /r/{sub}: {e}")
                 else:
-                    print(f"📭 Nessun nuovo post da /r/{sub}")
+                    print(f"No new posts from /r/{sub}")
                 time.sleep(2)
 
-            # Forza invio
             producer.flush()
-            print("⏳ Pausa di 30 secondi...\n")
+            print("Sleeping for 30 seconds...\n")
             time.sleep(pause_seconds)
 
         except Exception as e:
-            print(f"❗ Errore nel ciclo principale: {e}")
+            print(f"Error in main loop: {e}")
             traceback.print_exc()
             time.sleep(10)

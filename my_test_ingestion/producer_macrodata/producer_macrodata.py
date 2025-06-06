@@ -6,15 +6,15 @@ from datetime import datetime, timedelta
 from kafka import KafkaProducer
 import pandas as pd
 
-# Kafka Config
-KAFKA_BROKER = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+# Kafka configuration
+KAFKA_BROKER = "kafka:9092"
 KAFKA_TOPIC = 'macrodata'
 
-# FRED API Config
+# FRED API configuration
 API_KEY = os.getenv("API_KEY_FRED")
 BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 
-# Serie FRED
+# FRED series mapping
 series_dict = {
     "GDPC1": "gdp_real",
     "CPIAUCSL": "cpi",
@@ -27,14 +27,13 @@ series_dict = {
 
 series_ids = list(series_dict.keys())
 
-# Set iniziali per tenere traccia dei timestamp già visti
+# Track previously seen timestamps for each alias
 seen_timestamps = {alias: set() for alias in series_dict.values()}
 
-# Fissa la data di partenza a oggi, eseguito una sola volta
+# Fix reference date to today (once at startup)
 today = datetime.today().strftime('%Y-%m-%d')
-#ten_days_ago = (datetime.today() - timedelta(days=10)).strftime('%Y-%m-%d')
 
-# Connessione a Kafka con retry
+# Kafka connection with retry logic
 def connect_kafka():
     while True:
         try:
@@ -42,17 +41,17 @@ def connect_kafka():
                 bootstrap_servers=KAFKA_BROKER,
                 value_serializer=lambda v: json.dumps(v).encode('utf-8')
             )
-            print("✅ Connesso a Kafka.")
+            print("Kafka producer connected successfully.")
             return producer
         except Exception as e:
-            print(f"⏳ Kafka non disponibile, ritento in 5 secondi... ({e})")
+            print(f"Kafka not available, retrying in 5 seconds... ({e})")
             time.sleep(5)
 
 producer = connect_kafka()
 
-# Funzione per fetch e invio
+# Initialization: fetch and send most recent value for each series
 def initialize_seen_timestamps():
-    print("📌 Inizializzazione: recupero ultimo valore per ogni serie FRED...")
+    print("Initializing: retrieving latest values for all FRED series...")
 
     for series_id, alias in series_dict.items():
         url = f"{BASE_URL}?series_id={series_id}&api_key={API_KEY}&file_type=json&sort_order=desc&limit=1"
@@ -72,15 +71,16 @@ def initialize_seen_timestamps():
                             "date": date,
                             "value": float(value)
                         }
-                        print(f"📤 Inviato (inizializzazione): {payload}")
+                        print(f"Sent (init): {payload}")
                         producer.send(KAFKA_TOPIC, value=payload)
                     else:
-                        print(f"⚠️ Valore mancante per {series_id} alla data {date}")
+                        print(f"Missing value for {series_id} on {date}")
             else:
-                print(f"❌ Errore API iniziale {series_id} - status {response.status_code}")
+                print(f"API error during init for {series_id} - status {response.status_code}")
         except Exception as e:
-            print(f"❌ Errore inizializzazione {series_id}: {e}")
+            print(f"Error during init for {series_id}: {e}")
 
+# Fetch and send new values since the last check
 def fetch_and_send():
     for series_id, alias in series_dict.items():
         url = f"{BASE_URL}?series_id={series_id}&api_key={API_KEY}&file_type=json&observation_start={today}"
@@ -100,20 +100,19 @@ def fetch_and_send():
                             "date": date,
                             "value": float(value)
                         }
-                        print(f"📤 Inviato: {payload}")
+                        print(f"Sent: {payload}")
                         producer.send(KAFKA_TOPIC, value=payload)
             else:
-                print(f"❌ Errore API {series_id} - status {response.status_code}")
+                print(f"API error for {series_id} - status {response.status_code}")
         except Exception as e:
-            print(f"❌ Errore durante la richiesta per {series_id}: {e}")
+            print(f"Request error for {series_id}: {e}")
 
-# Loop continuo con sleep di 1 ora
-
-# Inizializza i timestamp visti prima del loop
+# Run init
 initialize_seen_timestamps()
 
+# Continuous loop with 1-hour interval
 while True:
-    print("🔄 Avvio fetch dati FRED...")
+    print("Fetching new FRED data...")
     fetch_and_send()
-    print("🕒 Attendo 1 ora...")
+    print("Sleeping for 1 hour...")
     time.sleep(3600)

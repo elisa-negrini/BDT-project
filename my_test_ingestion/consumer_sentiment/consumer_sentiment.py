@@ -8,38 +8,38 @@ from confluent_kafka import Consumer, KafkaError
 from botocore.exceptions import ClientError
 import pyarrow
 
-# === Configurazione ===
+# === Configuration ===
 KAFKA_BROKER = 'kafka:9092'
 TOPICS = ['reddit_sentiment', 'news_sentiment', 'bluesky_sentiment']
-S3_ENDPOINT = os.getenv('S3_ENDPOINT', 'http://minio:9000')
-S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY', 'admin')
-S3_SECRET_KEY = os.getenv('S3_SECRET_KEY', 'admin123')
-S3_BUCKET = os.getenv('S3_BUCKET', 'sentiment-data')
+S3_ENDPOINT_URL = os.getenv('S3_ENDPOINT_URL')
+S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY')
+S3_SECRET_KEY = os.getenv('S3_SECRET_KEY')
+S3_BUCKET = os.getenv('S3_BUCKET')
 
-# === Inizializza connessione S3 ===
+# === Initialize S3 connection ===
 def ensure_bucket_exists():
     s3 = boto3.resource(
         's3',
-        endpoint_url=S3_ENDPOINT,
+        endpoint_url=S3_ENDPOINT_URL,
         aws_access_key_id=S3_ACCESS_KEY,
         aws_secret_access_key=S3_SECRET_KEY
     )
     try:
         s3.meta.client.head_bucket(Bucket=S3_BUCKET)
     except ClientError:
-        print(f"⚠️ Bucket '{S3_BUCKET}' non trovato, lo creo...")
+        print(f"Bucket '{S3_BUCKET}' not found, creating it...")
         s3.create_bucket(Bucket=S3_BUCKET)
-        print(f"✅ Bucket '{S3_BUCKET}' creato.")
+        print(f"Bucket '{S3_BUCKET}' successfully created.")
 
-# === File system S3 ===
+# === S3 file system (for pyarrow / s3fs) ===
 fs = s3fs.S3FileSystem(
     anon=False,
     key=S3_ACCESS_KEY,
     secret=S3_SECRET_KEY,
-    client_kwargs={'endpoint_url': S3_ENDPOINT}
+    client_kwargs={'endpoint_url': S3_ENDPOINT_URL}
 )
 
-# === Configura consumer Kafka ===
+# === Configure Kafka consumer ===
 conf = {
     'bootstrap.servers': KAFKA_BROKER,
     'group.id': 'sentiment_consumer_group',
@@ -48,9 +48,9 @@ conf = {
 consumer = Consumer(conf)
 consumer.subscribe(TOPICS)
 
-# === Avvio ===
+# === Startup ===
 ensure_bucket_exists()
-print(f"✅ Listening to topics: {', '.join(TOPICS)}")
+print(f"Listening to Kafka topics: {', '.join(TOPICS)}")
 
 try:
     while True:
@@ -59,13 +59,13 @@ try:
             continue
         if msg.error():
             if msg.error().code() != KafkaError._PARTITION_EOF:
-                print(f"❌ Errore: {msg.error()}")
+                print(f"Kafka error: {msg.error()}")
             continue
 
         try:
             data = json.loads(msg.value().decode("utf-8"))
         except Exception as e:
-            print(f"⚠️ Errore parsing JSON: {e}")
+            print(f"JSON parsing error: {e}")
             continue
 
         timestamp = data.get("timestamp")
@@ -74,15 +74,14 @@ try:
         score = data.get("sentiment_score")
 
         if not timestamp or not tickers or not social:
-            print("⚠️ Messaggio incompleto, saltato. Dump:")
+            print("Incomplete message, skipping. Raw message:")
             print(json.dumps(data, indent=2))
             continue
-
 
         try:
             ts = pd.to_datetime(timestamp, utc=True)
         except Exception as e:
-            print(f"⚠️ Errore parsing timestamp: {e}, saltato.")
+            print(f"Timestamp parsing error: {e}, skipping.")
             continue
 
         for ticker in tickers:
@@ -94,17 +93,17 @@ try:
             }
             df = pd.DataFrame([row])
 
-            month_str = f"{ts.year % 100:02d}-{ts.month:02d}"  # Es: '25-01'
+            month_str = f"{ts.year % 100:02d}-{ts.month:02d}"  # e.g., '25-01'
             filename = f"{social}_{ticker}_{ts.strftime('%Y%m%dT%H%M%S')}.parquet"
             path = f"{S3_BUCKET}/social={social}/ticker={ticker}/month={month_str}/{filename}"
 
             try:
                 df.to_parquet(f"s3://{path}", engine="pyarrow", filesystem=fs, index=False)
-                print(f"✓ Salvato: {path}")
+                print(f"Saved to: {path}")
             except Exception as e:
-                print(f"❌ Errore salvataggio: {e}")
+                print(f"Error saving Parquet file: {e}")
 
 except KeyboardInterrupt:
-    print("🛑 Interrotto da tastiera")
+    print("Interrupted by user")
 finally:
     consumer.close()
