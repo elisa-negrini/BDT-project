@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta, timezone, time
 from streamlit_autorefresh import st_autorefresh
 import pytz
+from kafka import KafkaConsumer
 import os
 import psycopg2 # Import psycopg2 for PostgreSQL connection
 
@@ -28,7 +29,7 @@ def load_tickers_from_db():
     """
     Loads stock tickers and company names from the PostgreSQL database.
     Returns a dictionary {ticker: company_name}.
-    Includes a fallback to hardcoded data if DB connection fails.
+    Raises Streamlit error if DB connection fails.
     """
     try:
         conn = psycopg2.connect(
@@ -39,18 +40,23 @@ def load_tickers_from_db():
             password=POSTGRES_PASSWORD
         )
         cursor = conn.cursor()
-        # Select ticker and company_name, filtering for is_active = TRUE
         cursor.execute("SELECT DISTINCT ticker, company_name FROM companies_info WHERE is_active = TRUE;")
         rows = cursor.fetchall()
         cursor.close()
         conn.close()
 
         tickers_data = {row[0]: row[1] for row in rows}
+        if not tickers_data:
+            st.error("No tickers found in the database.")
+            st.stop()
+
         st.success(f"Loaded {len(tickers_data)} tickers from the database.")
         return tickers_data
+
     except Exception as e:
-        st.error(f"Error loading tickers from database: {e}")
-        st.warning("Using fallback (hardcoded) ticker dictionary.")
+        st.error(f"❌ Failed to load tickers from the database: {e}")
+        st.stop()  # Blocca l’esecuzione della dashboard
+
 
 # --- Configuration ---
 # Available tickers and their corresponding names
