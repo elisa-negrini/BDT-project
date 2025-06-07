@@ -100,11 +100,13 @@ for message in consumer:
     except Exception as e:
         print(f"Error saving file {filename}: {e}")
 
-# Optional init section (if used elsewhere)
-fs = S3FileSystem(
-    endpoint_override="http://minio:9000",
-    access_key="minioadmin",
-    secret_key="minioadmin"
-)
-ensure_bucket_exists()
-consumer = connect_kafka_consumer()
+# da togliere ? 
+
+# # Optional init section (if used elsewhere)
+# fs = S3FileSystem(
+#     endpoint_override="http://minio:9000",
+#     access_key="minioadmin",
+#     secret_key="minioadmin"
+# )
+# ensure_bucket_exists()
+# consumer = connect_kafka_consumer()

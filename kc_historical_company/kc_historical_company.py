@@ -7,7 +7,7 @@ import boto3
 from io import BytesIO
 from kafka import KafkaConsumer
 import logging
-import sys # Import sys for sys.exit
+import sys
 
 # === LOGGING ===
 logging.basicConfig(level=logging.INFO)

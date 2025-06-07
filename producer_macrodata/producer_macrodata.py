@@ -6,16 +6,18 @@ from datetime import datetime, timedelta
 from kafka import KafkaProducer
 import pandas as pd
 
-# Kafka configuration
+# --- Configuration ---
+
+# Kafka broker and topic.
 KAFKA_BROKER = "kafka:9092"
 KAFKA_TOPIC = 'macrodata'
 
-# FRED API configuration
+# FRED API key and base URL.
 API_KEY = os.getenv("API_KEY_FRED")
 BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 
-# FRED series mapping
-series_dict = {
+# Mapping of FRED series IDs to human-readable aliases.
+SERIES_MAPPING = {
     "GDPC1": "gdp_real",
     "CPIAUCSL": "cpi",
     "FEDFUNDS": "ffr",
@@ -25,16 +27,20 @@ series_dict = {
     "UNRATE": "unemployment"
 }
 
-series_ids = list(series_dict.keys())
+# List of FRED series IDs to fetch.
+SERIES_IDS = list(SERIES_MAPPING.keys())
 
-# Track previously seen timestamps for each alias
-seen_timestamps = {alias: set() for alias in series_dict.values()}
+# Track previously sent timestamps for each series alias to avoid duplicates.
+# This set is initialized with dummy values and populated during initialization.
+seen_timestamps = {alias: set() for alias in SERIES_MAPPING.values()}
 
-# Fix reference date to today (once at startup)
-today = datetime.today().strftime('%Y-%m-%d')
+# Fix the reference date to today for subsequent data fetches.
+TODAY = datetime.today().strftime('%Y-%m-%d')
 
-# Kafka connection with retry logic
+# --- Kafka Operations ---
+
 def connect_kafka():
+    """Establishes and returns a Kafka producer, with retry logic."""
     while True:
         try:
             producer = KafkaProducer(
@@ -44,16 +50,24 @@ def connect_kafka():
             print("Kafka producer connected successfully.")
             return producer
         except Exception as e:
-            print(f"Kafka not available, retrying in 5 seconds... ({e})")
+            print(f"Kafka unavailable, retrying in 5 seconds... ({e})")
             time.sleep(5)
 
+# Initialize Kafka producer.
 producer = connect_kafka()
 
-# Initialization: fetch and send most recent value for each series
+# --- FRED Data Fetching and Sending ---
+
 def initialize_seen_timestamps():
+    """
+    Initializes the 'seen_timestamps' set by fetching the latest observation
+    for each FRED series and sending it to Kafka.
+    This ensures that the script starts with the most recent data.
+    """
     print("Initializing: retrieving latest values for all FRED series...")
 
-    for series_id, alias in series_dict.items():
+    for series_id, alias in SERIES_MAPPING.items():
+        # Fetch only the most recent observation for initialization.
         url = f"{BASE_URL}?series_id={series_id}&api_key={API_KEY}&file_type=json&sort_order=desc&limit=1"
         try:
             response = requests.get(url)
@@ -63,7 +77,7 @@ def initialize_seen_timestamps():
                     date = obs["date"]
                     value = obs["value"]
 
-                    if value != ".":
+                    if value != ".": # Filter out missing values
                         seen_timestamps[alias].add(date)
                         payload = {
                             "series_id": series_id,
@@ -78,12 +92,16 @@ def initialize_seen_timestamps():
             else:
                 print(f"API error during init for {series_id} - status {response.status_code}")
         except Exception as e:
-            print(f"Error during init for {series_id}: {e}")
+            print(f"Request error during init for {series_id}: {e}")
 
-# Fetch and send new values since the last check
 def fetch_and_send():
-    for series_id, alias in series_dict.items():
-        url = f"{BASE_URL}?series_id={series_id}&api_key={API_KEY}&file_type=json&observation_start={today}"
+    """
+    Fetches new macroeconomic data from FRED since the script's start date (today).
+    Only sends observations with new timestamps to Kafka, avoiding duplicates.
+    """
+    for series_id, alias in SERIES_MAPPING.items():
+        # Fetch all observations from today onwards for continuous tracking.
+        url = f"{BASE_URL}?series_id={series_id}&api_key={API_KEY}&file_type=json&observation_start={TODAY}"
         try:
             response = requests.get(url)
             if response.status_code == 200:
@@ -92,6 +110,7 @@ def fetch_and_send():
                     date = obs["date"]
                     value = obs["value"]
 
+                    # Only send new observations with valid values.
                     if date not in seen_timestamps[alias] and value != ".":
                         seen_timestamps[alias].add(date)
                         payload = {
@@ -107,12 +126,14 @@ def fetch_and_send():
         except Exception as e:
             print(f"Request error for {series_id}: {e}")
 
-# Run init
+# --- Main Execution Loop ---
+
+# Perform initial fetch to populate seen_timestamps and send latest data.
 initialize_seen_timestamps()
 
-# Continuous loop with 1-hour interval
+# Continuous loop to periodically fetch and send new data.
 while True:
     print("Fetching new FRED data...")
     fetch_and_send()
     print("Sleeping for 1 hour...")
-    time.sleep(3600)
+    time.sleep(3600) # Sleep for 1 hour (3600 seconds)

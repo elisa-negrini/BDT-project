@@ -52,6 +52,36 @@ s3 = boto3.client(
     aws_secret_access_key=MINIO_SECRET_KEY
 )
 
+
+def create_minio_bucket():
+    """
+    Attempts to create the specified MinIO bucket if it does not already exist.
+    """
+    try:
+        s3.head_bucket(Bucket=MINIO_BUCKET)
+        logger.info(f"Bucket '{MINIO_BUCKET}' already exists.")
+    except s3.exceptions.ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == '404':
+            # Bucket does not exist, so create it
+            try:
+                s3.create_bucket(Bucket=MINIO_BUCKET)
+                logger.info(f"Bucket '{MINIO_BUCKET}' created successfully.")
+            except Exception as create_e:
+                logger.critical(f"Failed to create bucket '{MINIO_BUCKET}': {create_e}. Exiting.")
+                sys.exit(1)
+        else:
+            # Another error occurred when checking the bucket
+            logger.critical(f"Error checking bucket '{MINIO_BUCKET}': {e}. Exiting.")
+            sys.exit(1)
+    except Exception as e:
+        # Catch any other unexpected errors during bucket check
+        logger.critical(f"Unexpected error during bucket check for '{MINIO_BUCKET}': {e}. Exiting.")
+        sys.exit(1)
+
+# Ensure the bucket exists before proceeding
+create_minio_bucket()
+
 # === KAFKA CONSUMER CONNECTION ===
 def connect_kafka_consumer():
     """Attempts to connect to Kafka consumer with retry logic until successful."""

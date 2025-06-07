@@ -1,4 +1,3 @@
-pyspark
 pandas
 kafka-python
 requests
