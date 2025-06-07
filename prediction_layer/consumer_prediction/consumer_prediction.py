@@ -8,15 +8,15 @@ from confluent_kafka import Consumer, KafkaError
 from botocore.exceptions import ClientError
 import pyarrow
 
-# === Configurazione ===
+# === Configuration ===
 KAFKA_BROKER = 'kafka:9092'
 TOPIC = 'prediction'
-S3_ENDPOINT = os.getenv('S3_ENDPOINT', 'http://minio:9000')
-S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY', 'admin')
-S3_SECRET_KEY = os.getenv('S3_SECRET_KEY', 'admin123')
-S3_BUCKET = os.getenv('S3_BUCKET', 'prediction')
+S3_ENDPOINT = os.getenv('S3_ENDPOINT_URL')
+S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY')
+S3_SECRET_KEY = os.getenv('S3_SECRET_KEY')
+S3_BUCKET = 'prediction'
 
-# === Inizializza connessione S3 ===
+# === Ensure S3 bucket exists ===
 def ensure_bucket_exists():
     s3 = boto3.resource(
         's3',
@@ -27,11 +27,11 @@ def ensure_bucket_exists():
     try:
         s3.meta.client.head_bucket(Bucket=S3_BUCKET)
     except ClientError:
-        print(f"⚠️ Bucket '{S3_BUCKET}' non trovato, lo creo...")
+        print(f"Bucket '{S3_BUCKET}' not found, creating it...")
         s3.create_bucket(Bucket=S3_BUCKET)
-        print(f"✅ Bucket '{S3_BUCKET}' creato.")
+        print(f"Bucket '{S3_BUCKET}' created.")
 
-# === File system S3 ===
+# === S3 Filesystem for pyarrow ===
 fs = s3fs.S3FileSystem(
     anon=False,
     key=S3_ACCESS_KEY,
@@ -39,7 +39,7 @@ fs = s3fs.S3FileSystem(
     client_kwargs={'endpoint_url': S3_ENDPOINT}
 )
 
-# === Configura consumer Kafka ===
+# === Kafka consumer configuration ===
 conf = {
     'bootstrap.servers': KAFKA_BROKER,
     'group.id': 'prediction_consumer_group',
@@ -48,9 +48,9 @@ conf = {
 consumer = Consumer(conf)
 consumer.subscribe([TOPIC])
 
-# === Avvio ===
+# === Start listening ===
 ensure_bucket_exists()
-print(f"✅ Listening to topics: {', '.join([TOPIC])}")
+print(f"Listening to topic: {TOPIC}")
 
 try:
     while True:
@@ -59,13 +59,13 @@ try:
             continue
         if msg.error():
             if msg.error().code() != KafkaError._PARTITION_EOF:
-                print(f"❌ Errore: {msg.error()}")
+                print(f"Kafka error: {msg.error()}")
             continue
 
         try:
             data = json.loads(msg.value().decode("utf-8"))
         except Exception as e:
-            print(f"⚠️ Errore parsing JSON: {e}")
+            print(f"Error parsing JSON: {e}")
             continue
 
         timestamp = data.get("timestamp")
@@ -73,42 +73,41 @@ try:
         prediction = data.get("prediction")
         is_simulated_prediction = data.get("is_simulated_prediction")
 
-        # === Aggiunta della condizione per escludere le previsioni simulate ===
+        # Skip simulated predictions
         if is_simulated_prediction:
-            print(f"🔍 Previsione simulata per {ticker} a {timestamp}, saltato il salvataggio.")
-            continue # Salta il resto del ciclo per questo messaggio
-        # ====================================================================
+            print(f"Simulated prediction for {ticker} at {timestamp}, skipping.")
+            continue
 
         if not timestamp or not prediction or not ticker:
-            print("⚠️ Messaggio incompleto, saltato. Dump:")
+            print("Incomplete message, skipping. Full content:")
             print(json.dumps(data, indent=2))
             continue
 
         try:
             ts = pd.to_datetime(timestamp, utc=True)
         except Exception as e:
-            print(f"⚠️ Errore parsing timestamp: {e}, saltato.")
+            print(f"Timestamp parsing error: {e}, skipping.")
             continue
             
         row = {
-                "Ticker": ticker,
-                "Timestamp": ts.isoformat(),
-                "Prediction": prediction,
-                }
+            "Ticker": ticker,
+            "Timestamp": ts.isoformat(),
+            "Prediction": prediction,
+        }
         
         df = pd.DataFrame([row])
 
-        month_str = f"{ts.year % 100:02d}-{ts.month:02d}"  # Es: '25-01'
+        month_str = f"{ts.year % 100:02d}-{ts.month:02d}"  # e.g. '25-01'
         filename = f"{ticker}_{ts.strftime('%Y%m%dT%H%M%S')}.parquet"
         path = f"{S3_BUCKET}/ticker={ticker}/month={month_str}/{filename}"
 
         try:
             df.to_parquet(f"s3://{path}", engine="pyarrow", filesystem=fs, index=False)
-            print(f"✓ Salvato: {path}")
+            print(f"Saved: {path}")
         except Exception as e:
-            print(f"❌ Errore salvataggio: {e}")
+            print(f"Error saving file: {e}")
 
 except KeyboardInterrupt:
-    print("🛑 Interrotto da tastiera")
+    print("Interrupted by keyboard")
 finally:
     consumer.close()

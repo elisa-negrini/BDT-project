@@ -141,8 +141,8 @@ def train_model_for_ticker(ticker_info):
     print(f"TRAINING MODEL FOR TICKER: {current_ticker} (Ticker Code: {ticker_code})")
     print(f"{'='*80}\n")
 
-    MODEL_FILENAME = os.path.join(MODEL_SAVE_PATH, f"lstm_model4_{current_ticker}.h5")
-    SCALER_FILENAME = os.path.join(SCALAR_SAVE_PATH, f"scaler4_{current_ticker}.pkl")
+    MODEL_FILENAME = os.path.join(MODEL_SAVE_PATH, f"lstm_model_{current_ticker}.h5")
+    SCALER_FILENAME = os.path.join(SCALAR_SAVE_PATH, f"scaler_{current_ticker}.pkl")
 
     try:
         print(f"\U0001F535 [{current_ticker}] Step 1: Loading Data")

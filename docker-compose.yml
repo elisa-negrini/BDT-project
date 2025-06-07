@@ -37,9 +37,9 @@ services:
       context: ./postgresql
       dockerfile: Dockerfile
     environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
@@ -188,16 +188,16 @@ services:
 
   sentiment_bluesky:
     build:
-      context: ./sentiment_analysis
+      context: .
       dockerfile: ./sentiment_analysis/sentiment_bluesky/Dockerfile
     environment:
       - PYFLINK_CLASSPATH=/opt/flink/lib/:/opt/flink/opt/  
       - FINBERT_MODEL_BASE_PATH=/model 
-      - POSTGRES_HOST=${DB_HOST}  
-      - POSTGRES_PORT=${DB_PORT} 
-      - POSTGRES_DB=${DB_NAME}  
-      - POSTGRES_USER=${DB_USER}  
-      - POSTGRES_PASSWORD=${DB_PASSWORD} 
+      - POSTGRES_HOST=${POSTGRES_HOST}  
+      - POSTGRES_PORT=${POSTGRES_PORT} 
+      - POSTGRES_DB=${POSTGRES_DB}  
+      - POSTGRES_USER=${POSTGRES_USER}  
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD} 
     volumes:
       - ./sentiment_analysis/sentiment_bluesky:/app
       - ./sentiment_analysis/quantized_finbert:/model
@@ -205,40 +205,42 @@ services:
     depends_on:
       - kafka
       - postgres
+      - producer_bluesky
     restart: always
     mem_limit: 4g
     cpus: 1 
 
-  sentiment_reddit:
-    build:
-      context: ./sentiment_analysis
-      dockerfile: ./sentiment_analysis/sentiment_reddit/Dockerfile
-    environment:
-      - PYFLINK_CLASSPATH=/opt/flink/lib/:/opt/flink/opt/  
-      - FINBERT_MODEL_BASE_PATH=/model 
-    volumes:
-      - ./sentiment_analysis/sentiment_reddit:/app
-      - ./sentiment_analysis/quantized_finbert:/model
-    working_dir: /app
-    depends_on:
-      - kafka
-      - postgres
-    restart: always
-    mem_limit: 4g 
-    cpus: 1
+  # sentiment_reddit:
+  #   build:
+  #     context: ./sentiment_analysis
+  #     dockerfile: ./sentiment_analysis/sentiment_reddit/Dockerfile
+  #   environment:
+  #     - PYFLINK_CLASSPATH=/opt/flink/lib/:/opt/flink/opt/  
+  #     - FINBERT_MODEL_BASE_PATH=/model 
+  #   volumes:
+  #     - ./sentiment_analysis/sentiment_reddit:/app
+  #     - ./sentiment_analysis/quantized_finbert:/model
+  #   working_dir: /app
+  #   depends_on:
+  #     - kafka
+  #     - postgres
+  #     - producer_reddit
+  #   restart: always
+  #   mem_limit: 4g 
+  #   cpus: 1
 
   sentiment_news:
       build:
-        context: ./sentiment_analysis
+        context: .
         dockerfile: ./sentiment_analysis/sentiment_news/Dockerfile
       environment:
         - PYFLINK_CLASSPATH=/opt/flink/lib/:/opt/flink/opt/  
         - FINBERT_MODEL_BASE_PATH=/model 
-        - POSTGRES_HOST=${DB_HOST}  
-        - POSTGRES_PORT=${DB_PORT} 
-        - POSTGRES_DB=${DB_NAME}
-        - POSTGRES_USER=${DB_USER}  
-        - POSTGRES_PASSWORD=${DB_PASSWORD} 
+        - POSTGRES_HOST=${POSTGRES_HOST}  
+        - POSTGRES_PORT=${POSTGRES_PORT} 
+        - POSTGRES_DB=${POSTGRES_DB}
+        - POSTGRES_USER=${POSTGRES_USER}  
+        - POSTGRES_PASSWORD=${POSTGRES_PASSWORD} 
       volumes:
         - ./sentiment_analysis/sentiment_news:/app
         - ./sentiment_analysis/quantized_finbert:/model
@@ -246,6 +248,7 @@ services:
       depends_on:
         - kafka
         - postgres
+        - producer_finnhubnews
       restart: always
       mem_limit: 4g
       cpus: 1 
@@ -260,252 +263,188 @@ services:
     depends_on:
       - kafka
       - minio
+      - sentiment_bluesky
+      - sentiment_news
     networks:
       - default
     restart: always
 
 # ### AGGREGATION LAYER
 
-  flink_main_job:
-    build:
-      context: .
-      dockerfile: preprocessing_stream/main_job.Dockerfile
-    environment:
-      POSTGRES_HOST: ${POSTGRES_HOST}  
-      POSTGRES_PORT: ${POSTGRES_PORT} 
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}  
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} 
-      S3_ENDPOINT: ${S3_ENDPOINT} 
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
-      S3_SECRET_KEY: ${S3_SECRET_KEY}
-    depends_on:
-      - kafka
-      - postgres
-      - minio
-    restart: always
-
-  flink-global-job:
-    build:
-      context: .
-      dockerfile: preprocessing_stream/global_job.Dockerfile
-    depends_on:
-      - kafka
-    restart: always
-
-  flink-aggregated-job:
-    build:
-      context: .
-      dockerfile: preprocessing_stream/aggregated_job.Dockerfile
-    depends_on:
-      - kafka
-    restart: always
-
-  storage_aggregated:
-    build:
-      context: .
-      dockerfile: preprocessing_stream/storage_aggregated/Dockerfile
-    environment:
-      POSTGRES_HOST: ${POSTGRES_HOST}  
-      POSTGRES_PORT: ${POSTGRES_PORT} 
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}  
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} 
-    depends_on:
-      - kafka 
-      - postgres
-    restart: always
-
-### MODEL TRAINING
-  ML_model:
-    build:
-      context: .
-      dockerfile: ML_model/Dockerfile
-    environment:
-      POSTGRES_HOST: ${POSTGRES_HOST}  
-      POSTGRES_PORT: ${POSTGRES_PORT} 
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}  
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - ./prediction_layer/models_lstm:/app/output_data
-    depends_on:
-      - postgres
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-          cpus: '3.0'
-        reservations:
-          memory: 4G
-          cpus: '3.0' 
-
-
-### PREDICTION LAYER
-
-#   predictor_layer:
+#   flink_main_job:
 #     build:
-#       context: ./prediction_layer 
+#       context: .
+#       dockerfile: preprocessing_stream/main_job.Dockerfile
+#     environment:
+#       POSTGRES_HOST: ${POSTGRES_HOST}  
+#       POSTGRES_PORT: ${POSTGRES_PORT} 
+#       POSTGRES_DB: ${POSTGRES_DB}
+#       POSTGRES_USER: ${POSTGRES_USER}  
+#       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} 
+#       S3_ENDPOINT: ${S3_ENDPOINT} 
+#       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+#       S3_SECRET_KEY: ${S3_SECRET_KEY}
+#     depends_on:
+#       - kafka
+#       - postgres
+#       - minio
+#     restart: always
+
+#   flink-global-job:
+#     build:
+#       context: .
+#       dockerfile: preprocessing_stream/global_job.Dockerfile
 #     depends_on:
 #       - kafka
 #     restart: always
 
-
-  # prediction_consumer:
-  #   build:
-  #     context: ./prediction_layer # Il contesto di build è la directory corrente (dove si trova il Dockerfile)
-  #     dockerfile: Dockerfile # Il nome del tuo Dockerfile
-  #   container_name: prediction_layer
-  #   depends_on:
-  #     - kafka # Assicura che Kafka sia avviato prima del consumer
-  #   environment:
-  #     KAFKA_BROKER: kafka:9092 # Questo è CRUCIALE: usa il nome del servizio Kafka e la porta interna
-  #     KAFKA_TOPIC: aggregated_data
-  #   # Se vuoi esporre porte dal tuo consumer (es. per un'API di monitoraggio), aggiungile qui
-  #   # ports:
-  #   #   - "5000:5000"
-  #     # Non è strettamente necessario mappare volumi se gli artefatti sono copiati durante il build
-  #     # ma potresti farlo se vuoi aggiornare modello/scaler senza ricostruire l'immagine
-  #     # - ./model:/app/model
-  #     # - ./your_prediction_script_name.py:/app/your_prediction_script_name.py
-  #   restart: on-failure # Riavvia il container se fallisce
-
-
-   #consumer prediction
-  # kc_prediction:
-  #   build: ./consumer_prediction
-  #   depends_on:
-  #     - kafka
-  #     - minio
-  #   environment:
-  #     KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-  #     S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
-  #     S3_ACCESS_KEY: ${S3_ACCESS_KEY}
-  #     S3_SECRET_KEY: ${S3_SECRET_KEY}
-  #   volumes:
-  #     - ./consumer_prediction:/app
-  #   working_dir: /app
-  #   command: python consumer_prediction.py
-  #   restart: always
-
-#   prediction_layer:
+#   flink-aggregated-job:
 #     build:
 #       context: .
-#       dockerfile: ./prediction_layer/Dockerfile
-#     container_name: prediction_layer
+#       dockerfile: preprocessing_stream/aggregated_job.Dockerfile
 #     depends_on:
 #       - kafka
+#     restart: always
+
+#   storage_aggregated:
+#     build:
+#       context: .
+#       dockerfile: preprocessing_stream/storage_aggregated/Dockerfile
 #     environment:
-#       KAFKA_BROKER: kafka:9092
-#       KAFKA_TOPIC_AGGREGATED: aggregated_data
-#       KAFKA_TOPIC_DASHBOARD: prediction
-#       PYFLINK_CLASSPATH:  /opt/flink/lib/*:/opt/flink/opt/*  
-#     mem_limit: 4g
+#       POSTGRES_HOST: ${POSTGRES_HOST}  
+#       POSTGRES_PORT: ${POSTGRES_PORT} 
+#       POSTGRES_DB: ${POSTGRES_DB}
+#       POSTGRES_USER: ${POSTGRES_USER}  
+#       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} 
+#     depends_on:
+#       - kafka 
+#       - postgres
+#     restart: always
+
+# ### MODEL TRAINING
+#   ML_model:
+#     build:
+#       context: .
+#       dockerfile: ML_model/Dockerfile
+#     environment:
+#       POSTGRES_HOST: ${POSTGRES_HOST}  
+#       POSTGRES_PORT: ${POSTGRES_PORT} 
+#       POSTGRES_DB: ${POSTGRES_DB}
+#       POSTGRES_USER: ${POSTGRES_USER}  
+#       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
 #     volumes:
-#       - ./create_model_lstm:/app/create_model_lstm
-#     restart: unless-stopped
-#     cpus: 1 
+#       - ./prediction_layer/models_lstm:/app/output_data
+#     depends_on:
+#       - postgres
+#     deploy:
+#       resources:
+#         limits:
+#           memory: 4G
+#           cpus: '3.0'
+#         reservations:
+#           memory: 4G
+#           cpus: '3.0' 
 
 
+# ### PREDICTION LAYER
+#   prediction_layer:
+#     build:
+#       context: ./prediction_layer 
+#       dockerfile: Dockerfile
+#     depends_on:
+#       - kafka
+#     restart: on-failure
 
+#   consumer_prediction:
+#     build: ./prediction_layer /consumer_prediction
+#     environment:
+#       S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+#       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+#       S3_SECRET_KEY: ${S3_SECRET_KEY}
+#     volumes:
+#       - ./consumer_prediction:/app
+#     working_dir: /app
+#     depends_on:
+#       - kafka
+#       - minio
+#     restart: always
 
-# ### DASHBOARD 
+# # ### DASHBOARD 
+#   dashboard:
+#     build:
+#       context: ./dashboard
+#       dockerfile: Dockerfile
+#     ports:
+#       - "8501:8501"
+#     environment:
+#       - PYTHONUNBUFFERED=1
+#     depends_on:
+#       - kafka
 
-  # dashboard:
-  #   build:
-  #     context: ./dashboard
-  #     dockerfile: Dockerfile
-  #   container_name: dashboard
-  #   ports:
-  #     - "8501:8501"
-  #   depends_on:
-  #     - kafka
-  #   environment:
-  #     - PYTHONUNBUFFERED=1
+# # HISTORICAL CONTAINER
+#   producer_h_macrodata: # tutto sistemato
+#     build: ./historical_data/producer_h_macrodata
+#     environment:
+#       API_KEY_FRED: ${API_KEY_FRED}
+#     depends_on:
+#       - kafka
 
-# ## CLEANER MINIO
+#   producer_h_alpaca: # tutto sistemato
+#     build: ./historical_data/producer_h_alpaca
+#     environment:
+#       API_KEY_ALPACA: ${API_KEY_ALPACA}
+#       API_SECRET_ALPACA: ${API_SECRET_ALPACA}
+#       POSTGRES_HOST: ${POSTGRES_HOST} 
+#       POSTGRES_PORT: ${POSTGRES_PORT} 
+#       POSTGRES_DB: ${POSTGRES_DB}   
+#       POSTGRES_USER: ${POSTGRES_USER} 
+#       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} 
+#     depends_on:
+#       - kafka
+#       - postgres
 
-  # clear-minio:
-  #   build:
-  #     context: ./clean_minio
-  #   environment:
-  #     MINIO_URL: "minio:9000"
-  #     MINIO_ACCESS_KEY: "admin"
-  #     MINIO_SECRET_KEY: "admin123"
-  #   command: ["python", "clean_minio.py"]
+#   producer_h_company: # tutto sistemato
+#     build:
+#       context: ./historical_data/producer_h_company
+#     depends_on:
+#       - kafka
 
-
-# HISTORICAL CONTAINER
-
-# Historical producer
-
-  producer_h_macrodata: # tutto sistemato
-    build: ./historical_data/producer_h_macrodata
-    environment:
-      API_KEY_FRED: ${API_KEY_FRED}
-    depends_on:
-      - kafka
-
-
-  producer_h_alpaca: # tutto sistemato
-    build: ./historical_data/producer_h_alpaca
-    environment:
-      API_KEY_ALPACA: ${API_KEY_ALPACA}
-      API_SECRET_ALPACA: ${API_SECRET_ALPACA}
-      POSTGRES_HOST: ${POSTGRES_HOST} 
-      POSTGRES_PORT: ${POSTGRES_PORT} 
-      POSTGRES_DB: ${POSTGRES_DB}   
-      POSTGRES_USER: ${POSTGRES_USER} 
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} 
-    depends_on:
-      - kafka
-      - postgres
-
-
-  producer_h_company: # tutto sistemato
-    build:
-      context: ./historical_data/producer_h_company
-    depends_on:
-      - kafka
-
-
-# historical consumer
-  consumer_h_company: # tutto sistemato
-    build:
-      context: ./historical_data/consumer_h_company
-    environment:
-      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
-      S3_SECRET_KEY: ${S3_SECRET_KEY}
-    depends_on:
-      - kafka
-      - minio
-      - producer_h_company
+#   consumer_h_company: # tutto sistemato
+#     build:
+#       context: ./historical_data/consumer_h_company
+#     environment:
+#       S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+#       S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
+#       S3_SECRET_KEY: ${S3_SECRET_KEY}
+#     depends_on:
+#       - kafka
+#       - minio
+#       - producer_h_company
          
-  consumer_h_alpaca: # tutto sistemato
-    build:
-      context: ./historical_data/consumer_h_alpaca
-    environment:
-      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
-      S3_SECRET_KEY: ${S3_SECRET_KEY}
-    depends_on:
-      - kafka
-      - minio
-      - producer_h_alpaca
+#   consumer_h_alpaca: # tutto sistemato
+#     build:
+#       context: ./historical_data/consumer_h_alpaca
+#     environment:
+#       S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+#       S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
+#       S3_SECRET_KEY: ${S3_SECRET_KEY}
+#     depends_on:
+#       - kafka
+#       - minio
+#       - producer_h_alpaca
 
-  consumer_h_macrodata:
-    build:
-      context: ./historical_data/consumer_h_macrodata
-    environment:
-      S3_ENDPOINT: ${S3_ENDPOINT} 
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
-      S3_SECRET_KEY: ${S3_SECRET_KEY}
-      SPARK_SUBMIT_OPTIONS: --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
-    depends_on:
-      - kafka
-      - minio
-      - producer_h_macrodata
+#   consumer_h_macrodata:
+#     build:
+#       context: ./historical_data/consumer_h_macrodata
+#     environment:
+#       S3_ENDPOINT: ${S3_ENDPOINT} 
+#       S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
+#       S3_SECRET_KEY: ${S3_SECRET_KEY}
+#       SPARK_SUBMIT_OPTIONS: --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
+#     depends_on:
+#       - kafka
+#       - minio
+#       - producer_h_macrodata
 
   # flink_historical:
   #     build:

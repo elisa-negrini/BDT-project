@@ -12,12 +12,12 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 
 WORKDIR /app
 
-COPY sentiment_bluesky/requirements.txt .
+COPY sentiment_analysis/sentiment_bluesky/requirements.txt .
 
 RUN pip3 install --no-cache-dir -r requirements.txt
 
 COPY jar_flink/*.jar /opt/flink/lib/
 
-COPY . .
+COPY sentiment_analysis/sentiment_bluesky /app
 
 CMD ["python", "/app/sentiment_bluesky.py"]
