@@ -1,5 +1,0 @@
-boto3
-pandas
-kafka-python
-s3fs
-pyarrow

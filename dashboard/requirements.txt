@@ -3,3 +3,5 @@ kafka-python
 pandas
 plotly
 streamlit-autorefresh
+pytz
+psycopg2-binary

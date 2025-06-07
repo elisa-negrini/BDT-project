@@ -1,3 +1,0 @@
-pandas
-kafka-python
-requests

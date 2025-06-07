@@ -1,7 +1,0 @@
-apache-flink==1.17.0
-numpy
-pandas
-python-dateutil
-pytz
-sqlalchemy
-psycopg2-binary

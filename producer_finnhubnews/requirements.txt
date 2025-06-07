@@ -1,4 +1,0 @@
-pandas
-kafka-python
-requests
-psycopg2-binary

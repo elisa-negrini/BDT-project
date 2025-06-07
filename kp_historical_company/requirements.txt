@@ -1,4 +1,0 @@
-pandas
-pyarrow
-minio
-kafka-python
