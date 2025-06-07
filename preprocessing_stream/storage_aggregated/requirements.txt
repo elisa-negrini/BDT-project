@@ -1,0 +1,4 @@
+apache-flink==1.17.0
+psycopg2-binary
+python-dateutil
+pytz
