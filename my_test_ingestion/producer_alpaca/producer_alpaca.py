@@ -38,11 +38,9 @@ producer = connect_kafka()
 
 # List of 30 main tickers of S&P 500
 top_30_tickers = [
-    "AAPL", "MSFT", #"NVDA",
-      "AMZN", "META", "ORCL", "GOOGL", "AVGO", "TSLA", "IBM",
+    "AAPL", "MSFT", "NVDA", "AMZN", "META", "ORCL", "GOOGL", "AVGO", "TSLA", "IBM",
     "LLY", "JPM", "V", "XOM", "NFLX", "COST", "UNH", "JNJ", "PG", "MA",
-    "CVX", #"MRK", "PEP","ABBV", 
-    "ADBE", "WMT", "BAC", "HD", "KO", "TMO"
+    "CVX", "MRK", "PEP","ABBV", "ADBE", "WMT", "BAC", "HD", "KO", "TMO"
 ]
 
 # New York timezone for market hours
@@ -77,7 +75,7 @@ async def generate_random_trade_data():
 
     for ticker in top_30_tickers:
         # Calculate the new price
-        price_change = random.uniform(-1, 1)
+        price_change = random.uniform(-0.1, 0.1)
         new_price = last_prices[ticker] + price_change
 
         # Ensure the price never drops below 100
@@ -143,3 +141,33 @@ async def main():
 # Start the script
 if __name__ == "__main__":
     asyncio.run(main())
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
