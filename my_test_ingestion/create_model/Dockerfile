@@ -19,10 +19,10 @@ RUN apt-get update && apt-get install -y \
     && pip install --no-cache-dir -r requirements.txt
 
 # Copia solo la cartella necessaria (più sicuro e mirato)
-COPY create_model_lstm /app/create_model_lstm
+COPY create_model /app/create_model
 
 # Imposta la working dir per lo script
-WORKDIR /app/create_model_lstm
+WORKDIR /app/create_model
 
 # Comando finale (può essere overrideato in docker-compose)
-CMD ["python", "train_lstm.py"]
+CMD ["python", "first_train.py"]

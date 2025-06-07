@@ -343,7 +343,7 @@ def train_model_for_ticker(ticker_info):
 if __name__ == "__main__":
     # --- LOGICA DI CONTROLLO E ATTESA PER IL RE-TRAINING SCHEDULATO ---
     italy_tz = pytz.timezone('Europe/Rome') # Fuso orario italiano (CEST/CET)
-    TARGET_HOUR = 1 # 1 AM
+    TARGET_HOUR = 16 # 1 AM
     TARGET_WEEKDAY = 5 # Sabato (Lunedì=0, Domenica=6)
 
     print(f"\n\u2139 Re-training scheduler avviato. In attesa del prossimo Sabato alle 01:00 AM (ora italiana).")
