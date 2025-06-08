@@ -78,7 +78,7 @@ After modifying and saving the companies_info.csv file, you need to update the f
 
 To shut down any Docker Compose configuration, use the command:
 
-<pre lang="markdown"> docker-compose -f <docker_compose_filename>.yml down </pre>
+<pre lang="markdown"> docker-compose -f docker-compose-filename.yml down </pre>
 
 For example, to shut down the historical configuration:
 
