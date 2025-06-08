@@ -37,18 +37,32 @@ services:
      - ./data/minio:/data
     command: server /data --console-address ":9001"
 
+  # postgre:
+  #   image: postgres:16-alpine
+  #   container_name: postgre
+  #   environment:
+  #     POSTGRES_DB: ${DB_NAME}
+  #     POSTGRES_USER: ${DB_USER}
+  #     POSTGRES_PASSWORD: ${DB_PASSWORD}
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+  #   restart: always
+
   postgre:
-    image: postgres:16-alpine
-    container_name: postgre
-    environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    restart: always
+      build:
+        context: ./postgresql
+        dockerfile: Dockerfile
+      environment:
+        POSTGRES_DB: ${DB_NAME}
+        POSTGRES_USER: ${DB_USER}
+        POSTGRES_PASSWORD: ${DB_PASSWORD}
+      ports:
+        - "5432:5432"
+      volumes:
+        - pgdata:/var/lib/postgresql/data
+      restart: always
 
   # db:
   #   build:
@@ -480,37 +494,37 @@ services:
 
 # Historical producer
 
-#   kp_h_macrodata:
-#     build: ./kp_historical_macrodata
-#     environment:
-#       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-#       API_KEY_FRED: ${API_KEY_FRED}
-#     depends_on:
-#       - kafka
+  # kp_h_macrodata:
+  #   build: ./kp_historical_macrodata
+  #   environment:
+  #     KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+  #     API_KEY_FRED: ${API_KEY_FRED}
+  #   depends_on:
+  #     - kafka
 
-#   kp_h_alpaca:
-#     build: ./kp_historical_alpaca
-#     environment:
-#       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-#       API_KEY_ALPACA: ${API_KEY_ALPACA}
-#       API_SECRET_ALPACA: ${API_SECRET_ALPACA}
-#       POSTGRES_HOST: ${POSTGRES_HOST} 
-#       POSTGRES_PORT: ${POSTGRES_PORT} 
-#       POSTGRES_DB: ${POSTGRES_DB}   
-#       POSTGRES_USER: ${POSTGRES_USER} 
-#       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} 
-#     depends_on:
-#       - kafka
-#       - postgre
+  # kp_h_alpaca:
+  #   build: ./kp_historical_alpaca
+  #   environment:
+  #     KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+  #     API_KEY_ALPACA: ${API_KEY_ALPACA}
+  #     API_SECRET_ALPACA: ${API_SECRET_ALPACA}
+  #     POSTGRES_HOST: ${POSTGRES_HOST} 
+  #     POSTGRES_PORT: ${POSTGRES_PORT} 
+  #     POSTGRES_DB: ${POSTGRES_DB}   
+  #     POSTGRES_USER: ${POSTGRES_USER} 
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} 
+  #   depends_on:
+  #     - kafka
+  #     - postgre
 
-#   kp_h_company:
-#     build:
-#       context: ./kp_historical_company
-#     container_name: kp_h_company
-#     environment:
-#       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-#     depends_on:
-#       - kafka
+  # kp_h_company:
+  #   build:
+  #     context: ./kp_historical_company
+  #   container_name: kp_h_company
+  #   environment:
+  #     KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+  #   depends_on:
+  #     - kafka
 
 # # # historical consumer
 #   kc_h_company:
