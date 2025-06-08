@@ -1,6 +1,6 @@
-# producer finnhubnews/Dockerfile
+# consumer_news/Dockerfile
 
-FROM python:3.10-slim
+FROM python:3.9-slim
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends build-essential && \
@@ -12,6 +12,6 @@ COPY requirements.txt .
 
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-COPY producer_finnhubnews.py /app/producer_finnhubnews.py
+COPY consumer_news.py .
 
-CMD ["python", "producer_finnhubnews.py"]
+CMD ["python", "consumer_news.py"]
