@@ -79,11 +79,11 @@ Dopo aver modificato e salvato il file companies_info.csv, è necessario aggiorn
 
 Per spegnere qualsiasi configurazione Docker Compose, usa il comando:
 
-<pre lang="markdown"> docker-compose -f <nome_file_docker_compose>.yml down -d </pre>
+<pre lang="markdown"> docker-compose -f nome_file_docker_compose.yml down </pre>
 
 Ad esempio, per spegnere la configurazione stream:
 
-<pre lang="markdown"> docker-compose -f docker-compose-stream.yml down -d </pre>
+<pre lang="markdown"> docker-compose -f docker-compose-stream.yml down </pre>
 
 #### Sequenza Importante per l'Avvio dei Flussi
 
@@ -174,7 +174,7 @@ After modifying and saving the companies_info.csv file, you need to update the f
 
 To shut down any Docker Compose configuration, use the command:
 
-<pre lang="markdown"> docker-compose -f <docker_compose_filename>.yml down </pre>
+<pre lang="markdown"> docker-compose -f docker_compose_filename.yml down </pre>
 
 For example, to shut down the historical configuration:
 
