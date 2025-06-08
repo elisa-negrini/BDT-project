@@ -1,4 +1,4 @@
-# consumer alpaca/Dockerfile
+# consumer stockdata/Dockerfile
 
 FROM python:3.9-slim
 
@@ -12,6 +12,6 @@ COPY requirements.txt /app/requirements.txt
 
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-COPY consumer_alpaca.py /app/consumer_alpaca.py
+COPY consumer_stockdata.py /app/consumer_stockdata.py
 
-CMD ["python", "consumer_alpaca.py"]
+CMD ["python", "consumer_stockdata.py"]

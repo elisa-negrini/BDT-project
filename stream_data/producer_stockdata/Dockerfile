@@ -1,4 +1,4 @@
-# producer alpaca/Dockerfile
+# producer stockdata/Dockerfile
 
 FROM python:3.10-slim
 
@@ -12,6 +12,6 @@ COPY requirements.txt .
 
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-COPY producer_alpaca.py /app/producer_alpaca.py
+COPY producer_stockdata.py /app/producer_stockdata.py
 
-CMD ["python", "producer_alpaca.py"]
+CMD ["python", "producer_stockdata.py"]

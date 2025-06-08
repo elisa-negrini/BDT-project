@@ -50,7 +50,7 @@ services:
     restart: always
 
 ### PRODUCER STREAM
-  producer_reddit: # tutto sistemato
+  producer_reddit:
     container_name: producer_reddit
     build: ./stream_data/producer_reddit
     environment:
@@ -61,9 +61,9 @@ services:
       - kafka
     restart: always
 
-  producer_finnhubnews: # tutto sistemato
-    container_name: producer_finnhubnews
-    build: ./stream_data/producer_finnhubnews
+  producer_news:
+    container_name: producer_news
+    build: ./stream_data/producer_news
     environment:
       FINNHUB_API_KEY: ${FINNHUB_API_KEY}
       POSTGRES_HOST: ${POSTGRES_HOST} 
@@ -76,9 +76,9 @@ services:
       - postgres
     restart: always
 
-  producer_alpaca: # tutto sistemato
-    container_name: producer_alpaca
-    build: ./stream_data/producer_alpaca
+  producer_stockdata:
+    container_name: producer_stockdata
+    build: ./stream_data/producer_stockdata
     environment:
       API_KEY_ALPACA: ${API_KEY_ALPACA}
       API_SECRET_ALPACA: ${API_SECRET_ALPACA}
@@ -92,7 +92,7 @@ services:
       - postgres
     restart: always
 
-  producer_bluesky: # tutto sistemato
+  producer_bluesky:
     container_name: producer_bluesky
     build: ./stream_data/producer_bluesky
     environment:
@@ -108,7 +108,7 @@ services:
       - postgres
     restart: always
 
-  producer_macrodata: # tutto sistemato
+  producer_macrodata:
     container_name: producer_macrodata
     build: ./stream_data/producer_macrodata
     environment:
@@ -117,39 +117,39 @@ services:
       - kafka
     restart: always
 
-  consumer_finnhubnews: # tutto sistemato
-    container_name: consumer_finnhubnews
-    build: ./stream_data/consumer_finnhubnews
+  consumer_news:
+    container_name: consumer_news
+    build: ./stream_data/consumer_news
     environment:
       S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
     volumes:
-      - ./stream_data/consumer_finnhubnews:/app
+      - ./stream_data/consumer_news:/app
     working_dir: /app
     depends_on:
       - kafka
       - minio
-      - producer_finnhubnews
+      - producer_news
     restart: always
 
-  consumer_alpaca: # tutto sistemato
-    container_name: consumer_alpaca
-    build: ./stream_data/consumer_alpaca
+  consumer_stockdata:
+    container_name: consumer_stockdata
+    build: ./stream_data/consumer_stockdata
     environment:
       S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
     volumes:
-      - ./stream_data/consumer_alpaca:/app
+      - ./stream_data/consumer_stockdata:/app
     working_dir: /app
     depends_on:
       - kafka
       - minio
-      - producer_alpaca
+      - producer_stockdata
     restart: always
 
-  consumer_reddit: # tutto sistemato
+  consumer_reddit:
     container_name: consumer_reddit
     build: ./stream_data/consumer_reddit 
     environment:
@@ -165,7 +165,7 @@ services:
       - producer_reddit
     restart: always
 
-  consumer_bluesky: # tutto sistemato
+  consumer_bluesky:
     container_name: consumer_bluesky
     build: ./stream_data/consumer_bluesky
     environment:
@@ -263,7 +263,7 @@ services:
       depends_on:
         - kafka
         - postgres
-        - producer_finnhubnews
+        - producer_news
       restart: always
       mem_limit: 4g
       cpus: 1 
@@ -285,8 +285,7 @@ services:
       - default
     restart: always
 
-# ### AGGREGATION LAYER
-
+### AGGREGATION LAYER
   flink_main_job:
     container_name: flink_main_job
     build:
@@ -305,7 +304,7 @@ services:
       - kafka
       - postgres
       - minio
-      - producer_alpaca
+      - producer_stockdata
       - sentiment_bluesky
       - sentiment_news
     restart: always
@@ -346,6 +345,7 @@ services:
     depends_on:
       - kafka 
       - postgres
+      - flink-aggregated-job
     restart: always
 
 # ### MODEL TRAINING
@@ -382,6 +382,7 @@ services:
       dockerfile: Dockerfile
     depends_on:
       - kafka
+      - flink-aggregated-job
     restart: on-failure
 
   consumer_prediction:
@@ -417,6 +418,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     depends_on:
       - kafka
+      - producer_stockdata
+      - prediction_layer
 
 # # HISTORICAL CONTAINER
   producer_h_macrodata: # tutto sistemato
@@ -427,9 +430,9 @@ services:
     depends_on:
       - kafka
 
-  producer_h_alpaca: # tutto sistemato
-    container_name: producer_h_alpaca
-    build: ./historical_data/producer_h_alpaca
+  producer_h_stockdata: # tutto sistemato
+    container_name: producer_h_stockdata
+    build: ./historical_data/producer_h_stockdata
     environment:
       API_KEY_ALPACA: ${API_KEY_ALPACA}
       API_SECRET_ALPACA: ${API_SECRET_ALPACA}
@@ -462,10 +465,10 @@ services:
       - minio
       - producer_h_company
          
-  consumer_h_alpaca: # tutto sistemato
-    container_name: consumer_h_alpaca
+  consumer_h_stockdata: # tutto sistemato
+    container_name: consumer_h_stockdata
     build:
-      context: ./historical_data/consumer_h_alpaca
+      context: ./historical_data/consumer_h_stockdata
     environment:
       S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
       S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
@@ -473,7 +476,7 @@ services:
     depends_on:
       - kafka
       - minio
-      - producer_h_alpaca
+      - producer_h_stockdata
 
   consumer_h_macrodata:
     container_name: consumer_h_macrodata
@@ -489,8 +492,8 @@ services:
       - minio
       - producer_h_macrodata
 
-  flink_historical:
-      container_name: flink_historical
+  historical_aggregated:
+      container_name: historical_aggregated
       build:
         context: ./historical_data/historical_aggregated
       restart: always
@@ -503,6 +506,9 @@ services:
       depends_on:
         - kafka
         - postgres
+        - consumer_h_stockdata
+        - consumer_h_company
+        - consumer_h_macrodata
 
 networks:
   flink_net:

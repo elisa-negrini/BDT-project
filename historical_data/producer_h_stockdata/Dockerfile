@@ -1,4 +1,4 @@
-# producer_h_alpaca / Dockerfile
+# producer_h_stockdata / Dockerfile
 
 FROM python:3.9-slim
 
@@ -19,4 +19,4 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY . /app
 
-CMD ["python", "producer_h_alpaca.py"]
+CMD ["python", "producer_h_stockdata.py"]

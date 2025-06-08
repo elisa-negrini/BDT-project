@@ -1,4 +1,4 @@
-# consumer_h_alpaca / Dockerfile
+# consumer_h_stockdata / Dockerfile
 
 FROM python:3.10-slim
 
@@ -8,6 +8,6 @@ COPY requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY consumer_h_alpaca.py .
+COPY consumer_h_stockdata.py .
 
-CMD ["python", "consumer_h_alpaca.py"]
+CMD ["python", "consumer_h_stockdata.py"]
