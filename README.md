@@ -90,6 +90,10 @@ docker-compose -f docker-compose-stream.yml down
 Quando il training del modello con docker-compose-historical.yml è terminato (lo noterai dai log del container o dal fatto che il processo di training si ferma), **devi spegnere questa configurazione** (usando il comando docker-compose -f docker-compose-historical.yml down) prima di avviare docker-compose-stream.yml.
 
 
+
+
+
+
 # Project Startup Guide
 
 This project analyzes stock market trends in real time by combining financial data, macroeconomic indicators, and sentiment analysis from news and social media. Its main goal is to provide a **prediction of each company's stock price one minute into the future**, which is visualized on an interactive dashboard.
