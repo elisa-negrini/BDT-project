@@ -227,29 +227,29 @@ services:
 
 ## SENTIMENT ANALYSIS
 
-  # sentiment_bluesky:
-  #   build:
-  #     context: .
-  #     dockerfile: ./sentiment_bluesky/Dockerfile
-  #   volumes:
-  #     # Mount per il tuo codice Python.
-  #     - ./sentiment_bluesky:/app
-  #     # Mount per la cartella del modello (tokenizer e .onnx).
-  #     - ./quantized_finbert:/model
-  #   working_dir: /app
-  #   depends_on:
-  #     - kafka
-  #   container_name: sentiment_bluesky
-  #   restart: always
-  #   environment:
-  #     # *** QUESTA È LA MODIFICA CHIAVE ***
-  #     # Dice a PyFlink di includere i JAR dalle directory standard di Flink
-  #     # (/opt/flink/lib e /opt/flink/opt) nella classpath.
-  #     # Il connettore Kafka verrà copiato in /opt/flink/lib dal Dockerfile.
-  #     - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
-  #     - FINBERT_MODEL_BASE_PATH=/model 
-  #   mem_limit: 4g # Consider increasing this if you raise parallelism
-  #   cpus: 1 
+  sentiment_bluesky:
+    build:
+      context: .
+      dockerfile: ./sentiment_bluesky/Dockerfile
+    volumes:
+      # Mount per il tuo codice Python.
+      - ./sentiment_bluesky:/app
+      # Mount per la cartella del modello (tokenizer e .onnx).
+      - ./quantized_finbert:/model
+    working_dir: /app
+    depends_on:
+      - kafka
+    container_name: sentiment_bluesky
+    restart: always
+    environment:
+      # *** QUESTA È LA MODIFICA CHIAVE ***
+      # Dice a PyFlink di includere i JAR dalle directory standard di Flink
+      # (/opt/flink/lib e /opt/flink/opt) nella classpath.
+      # Il connettore Kafka verrà copiato in /opt/flink/lib dal Dockerfile.
+      - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
+      - FINBERT_MODEL_BASE_PATH=/model 
+    mem_limit: 4g # Consider increasing this if you raise parallelism
+    cpus: 1 
 
   # sentiment_reddit:
   #   build:
@@ -275,44 +275,44 @@ services:
   #   mem_limit: 4g # Consider increasing this if you raise parallelism
   #   cpus: 1
 
-  # sentiment_news:
-  #   build:
-  #     context: .
-  #     dockerfile: ./sentiment_news/Dockerfile
-  #   volumes:
-  #     # Mount per il tuo codice Python.
-  #     - ./sentiment_news:/app
-  #     # Mount per la cartella del modello (tokenizer e .onnx).
-  #     - ./quantized_finbert:/model
-  #   working_dir: /app
-  #   depends_on:
-  #     - kafka
-  #   container_name: sentiment_news
-  #   restart: always
-  #   environment:
-  #     # *** QUESTA È LA MODIFICA CHIAVE ***
-  #     # Dice a PyFlink di includere i JAR dalle directory standard di Flink
-  #     # (/opt/flink/lib e /opt/flink/opt) nella classpath.
-  #     # Il connettore Kafka verrà copiato in /opt/flink/lib dal Dockerfile.
-  #     - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
-  #     - FINBERT_MODEL_BASE_PATH=/model 
-  #   mem_limit: 4g # Consider increasing this if you raise parallelism
-  #   cpus: 1 
+  sentiment_news:
+    build:
+      context: .
+      dockerfile: ./sentiment_news/Dockerfile
+    volumes:
+      # Mount per il tuo codice Python.
+      - ./sentiment_news:/app
+      # Mount per la cartella del modello (tokenizer e .onnx).
+      - ./quantized_finbert:/model
+    working_dir: /app
+    depends_on:
+      - kafka
+    container_name: sentiment_news
+    restart: always
+    environment:
+      # *** QUESTA È LA MODIFICA CHIAVE ***
+      # Dice a PyFlink di includere i JAR dalle directory standard di Flink
+      # (/opt/flink/lib e /opt/flink/opt) nella classpath.
+      # Il connettore Kafka verrà copiato in /opt/flink/lib dal Dockerfile.
+      - PYFLINK_CLASSPATH=/opt/flink/lib/*:/opt/flink/opt/*  
+      - FINBERT_MODEL_BASE_PATH=/model 
+    mem_limit: 4g # Consider increasing this if you raise parallelism
+    cpus: 1 
   
-  # sentiment_consumer:
-  #   build:
-  #     context: ./consumer_sentiment
-  #   depends_on:
-  #     - kafka
-  #     - minio
-  #   environment:
-  #     S3_ENDPOINT: http://minio:9000
-  #     S3_ACCESS_KEY: admin
-  #     S3_SECRET_KEY: admin123
-  #     S3_BUCKET: sentiment-data
-  #   networks:
-  #     - default  # o il nome della rete Docker se ne hai definita una custom
-  #   restart: always
+  sentiment_consumer:
+    build:
+      context: ./consumer_sentiment
+    depends_on:
+      - kafka
+      - minio
+    environment:
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: admin
+      S3_SECRET_KEY: admin123
+      S3_BUCKET: sentiment-data
+    networks:
+      - default  # o il nome della rete Docker se ne hai definita una custom
+    restart: always
 
 # ### AGGREGATION LAYER
 
@@ -351,20 +351,20 @@ services:
       - kafka
     restart: always
 
-    # aggregated_storage:
-    #   build: ./consumer_aggregated
-    #   container_name: aggregated_storage
-    #   depends_on:
-    #     - kafka 
-    #     - postgre
-    #   command: python consumer_aggregated.py
-    #   restart: always
-    #   environment: # <-- Aggiungi questa sezione
-    #     - POSTGRES_HOST=postgre
-    #     - POSTGRES_DB=aggregated-data
-    #     - POSTGRES_USER=admin
-    #     - POSTGRES_PASSWORD=admin123
-    #     - POSTGRES_PORT=5432
+  aggregated_storage:
+    build: ./consumer_aggregated
+    container_name: aggregated_storage
+    depends_on:
+      - kafka 
+      - postgre
+    command: python consumer_aggregated.py
+    restart: always
+    environment: # <-- Aggiungi questa sezione
+      - POSTGRES_HOST=postgre
+      - POSTGRES_DB=aggregated-data
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin123
+      - POSTGRES_PORT=5432
 
 ### MODEL TRAINING
 
@@ -395,6 +395,31 @@ services:
     #   resources:
     #     limits:
     #       memory: 8g # Example: Give 4GB of RAM.
+
+
+  # lstm_trainer:
+  #     build:
+  #       context: . # Docker build context is now 'my_test_ingestion'
+  #       dockerfile: create_model/Dockerfile
+  #     depends_on:
+  #       - postgre
+  #     environment:
+  #       POSTGRES_HOST: ${POSTGRES_HOST}  
+  #       POSTGRES_PORT: ${POSTGRES_PORT} 
+  #       POSTGRES_DB: ${POSTGRES_DB}
+  #       POSTGRES_USER: ${POSTGRES_USER}  
+  #       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  #     volumes:
+  #       - ./prediction_layer/models_lstm:/app/output_data 
+  #     command: python first_train.py
+  #     deploy:
+  #       resources:
+  #         limits:
+  #           memory: 2G
+  #           cpus: '3.0'
+  #         reservations:
+  #           memory: 2G
+  #           cpus: '3.0'
 
 ### PREDICTION LAYER
 
@@ -427,21 +452,21 @@ services:
 
 
    #consumer prediction
-  # kc_prediction:
-  #   build: ./consumer_prediction
-  #   depends_on:
-  #     - kafka
-  #     - minio
-  #   environment:
-  #     KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-  #     S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
-  #     S3_ACCESS_KEY: ${S3_ACCESS_KEY}
-  #     S3_SECRET_KEY: ${S3_SECRET_KEY}
-  #   volumes:
-  #     - ./consumer_prediction:/app
-  #   working_dir: /app
-  #   command: python consumer_prediction.py
-  #   restart: always
+  kc_prediction:
+    build: ./consumer_prediction
+    depends_on:
+      - kafka
+      - minio
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    volumes:
+      - ./consumer_prediction:/app
+    working_dir: /app
+    command: python consumer_prediction.py
+    restart: always
 
 #   prediction_layer:
 #     build:
