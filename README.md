@@ -55,7 +55,7 @@ Il progetto considera un set specifico di aziende. Puoi modificare queste aziend
 Inoltre, **è fondamentale rimuovere il volume persistente** che contiene i dati precedenti di PostgreSQL, altrimenti le modifiche non verranno applicate.
 Esegui il seguente comando prima di riavviare la configurazione:
 
-<pre lang="markdown"> docker volume rm my_test_ingestion_pgdata -d </pre>
+<pre lang="markdown"> docker volume rm bdt-project_pgdata -d </pre>
 
 **Importante**: Con il piano gratuito dell'API di Alpaca, non è possibile superare le 30 aziende.
 
@@ -150,7 +150,7 @@ The project considers a specific set of companies. You can modify these companie
 Additionally, **you must remove the persistent PostgreSQL volume** that stores previous company data. Otherwise, the changes will not take effect.
 Run the following command before restarting the configuration:
 
-<pre lang="markdown"> docker volume rm my_test_ingestion_pgdata </pre>
+<pre lang="markdown"> docker volume rm bdt-project_pgdata </pre>
 
 **Important**: With Alpaca's free API plan, you cannot exceed 30 companies.
 
