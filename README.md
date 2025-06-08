@@ -87,10 +87,3 @@ For example, to shut down the historical configuration:
 #### Important Sequence for Starting Streams
 
 When the model training with docker-compose-historical.yml is finished (you'll notice this from the container logs or when the training process stops), **you must shut down this configuration** (using the command docker-compose -f docker-compose-historical.yml down) before starting docker-compose-stream.yml.
-
-    Example SQL insertion:
-    ```sql
-    INSERT INTO tickers (ticker_symbol, company_name) VALUES
-    ('GOOG', 'Alphabet Inc.');
-    ```
-    * Upon the next run of the training or real-time process, the system will automatically fetch this new entry from the database and incorporate it into the analysis. This dynamic approach ensures that all modules requiring ticker information (e.g., data ingestion, model training) stay synchronized with the latest list of companies.
