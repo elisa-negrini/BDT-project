@@ -8,11 +8,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Crea la directory 'model' all'interno di /app
-RUN mkdir -p model 
+RUN mkdir -p models_lstm 
 
 # Copia gli artefatti del modello nella directory 'model' all'interno del container
 # Il percorso di origine (il primo argomento di COPY) è relativo al CONTESTO DI BUILD
-COPY create_model_lstm/ create_model_lstm/
+COPY models_lstm/ models_lstm/
 
 # Copia lo script dell'applicazione dalla sua posizione relativa al contesto di build
 COPY prediction_layer.py /app

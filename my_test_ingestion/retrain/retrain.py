@@ -94,7 +94,7 @@ if not ALL_TICKERS:
 # Number of worker processes to use for parallel training
 NUM_WORKERS = min(len(ALL_TICKERS), 2)
 
-CONTAINER_OUTPUT_BASE = "/app/output_data"
+CONTAINER_OUTPUT_BASE = "/app/models_lstm"  
 
 MODEL_SAVE_PATH = os.path.join(CONTAINER_OUTPUT_BASE, "models")
 SCALAR_SAVE_PATH = os.path.join(CONTAINER_OUTPUT_BASE, "scalers")
@@ -153,8 +153,8 @@ def train_model_for_ticker(ticker_info):
     print(f"TRAINING MODEL FOR TICKER: {current_ticker} (Ticker Code: {ticker_code})")
     print(f"{'='*80}\n")
 
-    MODEL_FILENAME = os.path.join(MODEL_SAVE_PATH, f"lstm_model4_{current_ticker}.h5")
-    SCALER_FILENAME = os.path.join(SCALAR_SAVE_PATH, f"scaler4_{current_ticker}.pkl")
+    MODEL_FILENAME = os.path.join(MODEL_SAVE_PATH, f"lstm_model_{current_ticker}.h5")
+    SCALER_FILENAME = os.path.join(SCALAR_SAVE_PATH, f"scaler_{current_ticker}.pkl")
 
     try:
         print(f"\U0001F535 [{current_ticker}] Step 1: Loading Data")
@@ -168,6 +168,41 @@ def train_model_for_ticker(ticker_info):
 
         print(f"\n\U0001F535 [{current_ticker}] Step 2: Preprocessing and Memory Optimization")
         initial_rows = df.shape[0]
+
+        print(f"\n\u2139 [{current_ticker}] DEBUG NaN: Stato del DataFrame prima del dropna()")
+        print(f"    \u27A1 Shape iniziale: {df.shape}")
+        print("    \u27A1 Informazioni sui tipi di dati e valori non-nulli:")
+        df.info(verbose=True, show_counts=True) # show_counts=True è utile per vedere i non-null
+
+        print("    \u27A1 Conteggio dei NaN per colonna (prima della conversione):")
+        print(df.isnull().sum())
+
+        # Prova a convertire le colonne numeriche, coercendo gli errori
+        # Identifica le colonne che dovrebbero essere numeriche ma potrebbero non esserlo a causa di dati sporchi
+        # Escludi 'timestamp', 'ticker' e 'y1' (che verrà rinominata 'y')
+        cols_to_convert_to_numeric = [col for col in df.columns if col not in ['timestamp', 'ticker', 'y1']]
+        for col in cols_to_convert_to_numeric:
+            if df[col].dtype == 'object': # Se è di tipo oggetto (spesso stringhe)
+                # Tenta la conversione a numerico, mettendo NaN dove non riesce
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+                print(f"    \u27A1 Convertita colonna '{col}' a numerico, coercendo errori.")
+
+        print("\n    \u27A1 Conteggio dei NaN per colonna (DOPO la conversione a numerico):")
+        nan_counts_after_coerce = df.isnull().sum()
+        print(nan_counts_after_coerce[nan_counts_after_coerce > 0]) # Stampa solo le colonne con NaN
+
+        # Se ci sono ancora NaN, stampa alcune righe con NaN per investigare
+        if nan_counts_after_coerce.sum() > 0:
+            print("\n    \u27A1 Esempio di righe con NaN (prima di droppare):")
+            # Trova le righe che contengono almeno un NaN
+            rows_with_nan = df[df.isnull().any(axis=1)]
+            if not rows_with_nan.empty:
+                print(rows_with_nan.head(5).to_string()) # Stampa le prime 5
+            else:
+                print("Nessuna riga con NaN dopo la coercizione (strano, controlla output precedenti).")
+
+
+
         df = df.dropna()
         print(f"    \u27A1 [{current_ticker}] Removed {initial_rows - df.shape[0]} rows with NaNs. Remaining: {df.shape[0]}")
 
@@ -343,8 +378,8 @@ def train_model_for_ticker(ticker_info):
 if __name__ == "__main__":
     # --- LOGICA DI CONTROLLO E ATTESA PER IL RE-TRAINING SCHEDULATO ---
     italy_tz = pytz.timezone('Europe/Rome') # Fuso orario italiano (CEST/CET)
-    TARGET_HOUR = 16 # 1 AM
-    TARGET_WEEKDAY = 5 # Sabato (Lunedì=0, Domenica=6)
+    TARGET_HOUR = 19 # 1 AM
+    TARGET_WEEKDAY = 0 # Sabato (Lunedì=0, Domenica=6)
 
     print(f"\n\u2139 Re-training scheduler avviato. In attesa del prossimo Sabato alle 01:00 AM (ora italiana).")
 

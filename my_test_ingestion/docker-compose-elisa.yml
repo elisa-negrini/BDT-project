@@ -139,40 +139,40 @@ services:
 
 # ### CONSUMER STREAM
 
-  # Kafka consumer finnhubnews
-  # kc_finnhubnews:
-  #   build: ./consumer_finnhubnews
-  #   environment:
-  #     KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-  #     S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
-  #     S3_ACCESS_KEY: ${S3_ACCESS_KEY}
-  #     S3_SECRET_KEY: ${S3_SECRET_KEY}
-  #   depends_on:
-  #     - kafka
-  #     - minio
-  #   volumes:
-  #     - ./consumer_finnhubnews:/app
-  #   working_dir: /app
-  #   command: python consumer_finnhubnews.py
-  #   restart: always
+  #Kafka consumer finnhubnews
+  kc_finnhubnews:
+    build: ./consumer_finnhubnews
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    depends_on:
+      - kafka
+      - minio
+    volumes:
+      - ./consumer_finnhubnews:/app
+    working_dir: /app
+    command: python consumer_finnhubnews.py
+    restart: always
 
 
-  # Kafka consumer alpaca
-  # kc_alpaca:
-  #   build: ./consumer_alpaca
-  #   depends_on:
-  #     - kafka
-  #     - minio
-  #   environment:
-  #     KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-  #     S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
-  #     S3_ACCESS_KEY: ${S3_ACCESS_KEY}
-  #     S3_SECRET_KEY: ${S3_SECRET_KEY}
-  #   volumes:
-  #     - ./consumer_alpaca:/app
-  #   working_dir: /app
-  #   command: python consumer_alpaca.py
-  #   restart: always
+  #Kafka consumer alpaca
+  kc_alpaca:
+    build: ./consumer_alpaca
+    depends_on:
+      - kafka
+      - minio
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    volumes:
+      - ./consumer_alpaca:/app
+    working_dir: /app
+    command: python consumer_alpaca.py
+    restart: always
 
   # Kafka consumer reddit
   # kc_reddit:
@@ -192,38 +192,38 @@ services:
   #   restart: always
 
   #kafka consumer bluesky
-  # kc_bluesky:
-  #   build: ./consumer_bluesky
-  #   depends_on:
-  #     - kafka
-  #     - minio
-  #   environment:
-  #     KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-  #     S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
-  #     S3_ACCESS_KEY: ${S3_ACCESS_KEY}
-  #     S3_SECRET_KEY: ${S3_SECRET_KEY}
-  #   volumes:
-  #     - ./consumer_bluesky:/app
-  #   working_dir: /app
-  #   command: python consumer_bluesky.py
-  #   restart: always
+  kc_bluesky:
+    build: ./consumer_bluesky
+    depends_on:
+      - kafka
+      - minio
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    volumes:
+      - ./consumer_bluesky:/app
+    working_dir: /app
+    command: python consumer_bluesky.py
+    restart: always
 
   #kafka consumer macrodata
-  # kc_macrodata:
-  #   build: ./consumer_macrodata
-  #   depends_on:
-  #     - kafka
-  #     - minio
-  #   environment:
-  #     KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-  #     S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
-  #     S3_ACCESS_KEY: ${S3_ACCESS_KEY}
-  #     S3_SECRET_KEY: ${S3_SECRET_KEY}
-  #   volumes:
-  #     - ./consumer_macrodata:/app
-  #   working_dir: /app
-  #   command: python consumer_macrodata.py
-  #   restart: always
+  kc_macrodata:
+    build: ./consumer_macrodata
+    depends_on:
+      - kafka
+      - minio
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    volumes:
+      - ./consumer_macrodata:/app
+    working_dir: /app
+    command: python consumer_macrodata.py
+    restart: always
 
 ## SENTIMENT ANALYSIS
 
@@ -397,29 +397,28 @@ services:
     #       memory: 8g # Example: Give 4GB of RAM.
 
 
-  # lstm_trainer:
-  #     build:
-  #       context: . # Docker build context is now 'my_test_ingestion'
-  #       dockerfile: create_model/Dockerfile
-  #     depends_on:
-  #       - postgre
-  #     environment:
-  #       POSTGRES_HOST: ${POSTGRES_HOST}  
-  #       POSTGRES_PORT: ${POSTGRES_PORT} 
-  #       POSTGRES_DB: ${POSTGRES_DB}
-  #       POSTGRES_USER: ${POSTGRES_USER}  
-  #       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-  #     volumes:
-  #       - ./prediction_layer/models_lstm:/app/output_data 
-  #     command: python first_train.py
-  #     deploy:
-  #       resources:
-  #         limits:
-  #           memory: 2G
-  #           cpus: '3.0'
-  #         reservations:
-  #           memory: 2G
-  #           cpus: '3.0'
+  retrainer:
+      build:
+        context: . # Docker build context is now 'my_test_ingestion'
+        dockerfile: retrain/Dockerfile
+      depends_on:
+        - postgre
+      environment:
+        POSTGRES_HOST: ${POSTGRES_HOST}  
+        POSTGRES_PORT: ${POSTGRES_PORT} 
+        POSTGRES_DB: ${POSTGRES_DB}
+        POSTGRES_USER: ${POSTGRES_USER}  
+        POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      volumes:
+        - ./prediction_layer/models_lstm:/app/models_lstm
+      deploy:
+        resources:
+          limits:
+            memory: 2G
+            cpus: '3.0'
+          reservations:
+            memory: 2G
+            cpus: '3.0'
 
 ### PREDICTION LAYER
 
@@ -431,7 +430,7 @@ services:
 #     restart: always
 
 
-  prediction_consumer:
+  prediction_layer:
     build:
       context: ./prediction_layer # Il contesto di build è la directory corrente (dove si trova il Dockerfile)
       dockerfile: Dockerfile # Il nome del tuo Dockerfile
@@ -441,6 +440,8 @@ services:
     environment:
       KAFKA_BROKER: kafka:9092 # Questo è CRUCIALE: usa il nome del servizio Kafka e la porta interna
       KAFKA_TOPIC: aggregated_data
+    volumes:
+        - ./prediction_layer/models_lstm:/app/models_lstm
     # Se vuoi esporre porte dal tuo consumer (es. per un'API di monitoraggio), aggiungile qui
     # ports:
     #   - "5000:5000"
