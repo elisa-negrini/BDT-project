@@ -1,12 +1,6 @@
 # consumer_h_macrodata / Dockerfile
 
-FROM bitnami/spark:latest
-
-USER root
-
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends build-essential && \
-    rm -rf /var/lib/apt/lists/*
+FROM python:3.10-slim
 
 WORKDIR /app
 
@@ -14,6 +8,6 @@ COPY requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY consumer_h_macrodata.py .
 
-CMD ["spark-submit", "--master", "spark://spark-master:7077", "consumer_h_macrodata.py"]
+CMD ["python", "consumer_h_macrodata.py"]
