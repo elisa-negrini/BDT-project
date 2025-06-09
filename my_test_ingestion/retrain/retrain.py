@@ -378,7 +378,8 @@ def train_model_for_ticker(ticker_info):
 if __name__ == "__main__":
     # --- LOGICA DI CONTROLLO E ATTESA PER IL RE-TRAINING SCHEDULATO ---
     italy_tz = pytz.timezone('Europe/Rome') # Fuso orario italiano (CEST/CET)
-    TARGET_HOUR = 19 # 1 AM
+    TARGET_HOUR = 21 # 1 AM
+    TARGET_MINUTE = 00 # 00 minutes
     TARGET_WEEKDAY = 0 # Sabato (Lunedì=0, Domenica=6)
 
     print(f"\n\u2139 Re-training scheduler avviato. In attesa del prossimo Sabato alle 01:00 AM (ora italiana).")
@@ -390,7 +391,7 @@ if __name__ == "__main__":
         current_minute = now_italy.minute
 
         # Controlla se è sabato e se l'ora è tra le 01:00 e le 01:59
-        if current_weekday == TARGET_WEEKDAY and current_hour == TARGET_HOUR:
+        if current_weekday == TARGET_WEEKDAY and current_hour == TARGET_HOUR and current_minute == TARGET_MINUTE:
             print(f"\n\u2705 {now_italy.strftime('%Y-%m-%d %H:%M:%S %Z%z')}: Condizioni soddisfatte. Inizio re-training schedulato.")
 
             # Il resto del codice di training è spostato qui
