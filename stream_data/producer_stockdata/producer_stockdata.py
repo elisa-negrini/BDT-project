@@ -39,9 +39,7 @@ ny_timezone = pytz.timezone("America/New_York")
 
 def fetch_tickers_from_db():
     """
-    Retrieves distinct stock tickers from the PostgreSQL database.
-    Includes retry logic and a fallback if 'is_active' column is not found.
-    Exits if database connection fails after multiple attempts.
+    Retrieves active stock tickers and their avg_pred_price from the PostgreSQL database.
     """
     max_retries = 10
     delay = 5
@@ -53,27 +51,26 @@ def fetch_tickers_from_db():
                 user=POSTGRES_USER, password=POSTGRES_PASSWORD
             )
             cursor = conn.cursor()
-            try:
-                cursor.execute("SELECT DISTINCT ticker FROM companies_info WHERE is_active = TRUE;")
-            except psycopg2.ProgrammingError:
-                cursor.execute("SELECT DISTINCT ticker FROM companies_info;")
-
+            cursor.execute("SELECT ticker, avg_pred_price FROM companies_info WHERE is_active = TRUE AND avg_pred_price IS NOT NULL;")
             result = cursor.fetchall()
-            tickers = [row[0] for row in result if row[0]]
             cursor.close()
             conn.close()
 
-            if not tickers:
-                print("No tickers found in the database.")
-            else:
-                print(f"Loaded {len(tickers)} tickers from DB.")
-            return tickers
+            if not result:
+                print("No tickers with avg_pred_price found.")
+                return {}
+
+            ticker_price_map = {row[0]: float(row[1]) for row in result if row[0] and row[1]}
+            print(f"Loaded {len(ticker_price_map)} tickers with avg_pred_price from DB.")
+            return ticker_price_map
+
         except Exception as e:
             print(f"Database unavailable, retrying in {delay * (attempt + 1)} seconds... ({e})")
             time.sleep(delay * (attempt + 1))
 
     print("Failed to connect to database after multiple attempts. Exiting.")
     exit(1)
+
 
 # Fetch tickers on script initialization.
 top_tickers = fetch_tickers_from_db()
@@ -103,7 +100,9 @@ producer = connect_kafka()
 # --- Stock Data Generation & Streaming ---
 
 # Initialize the last known price for each ticker for random data generation.
-last_prices = {ticker: random.uniform(200, 300) for ticker in top_tickers}
+ticker_price_map = fetch_tickers_from_db()
+top_tickers = list(ticker_price_map.keys())
+last_prices = {ticker: ticker_price_map[ticker] for ticker in top_tickers}
 
 # Initialize Alpaca StockDataStream.
 stream = StockDataStream(API_KEY, API_SECRET)
@@ -137,8 +136,8 @@ async def generate_random_trade_data():
     for ticker in top_tickers:
         price_change = random.uniform(-0.1, 0.1)
         new_price = last_prices[ticker] + price_change
-        if new_price < 100: # Ensure price doesn't drop too low
-            new_price = 100 + random.uniform(0, 1)
+        if new_price < 10: # Ensure price doesn't drop too low
+            new_price = 10 + random.uniform(0, 1)
         last_prices[ticker] = new_price
         size = float(random.randint(1, 500))
 

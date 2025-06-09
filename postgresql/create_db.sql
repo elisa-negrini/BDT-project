@@ -3,10 +3,11 @@ CREATE TABLE IF NOT EXISTS companies_info (
     ticker VARCHAR(10) NOT NULL,
     company_name VARCHAR(100) NOT NULL,
     related_words TEXT,  
-    is_active BOOLEAN NOT NULL
+    is_active BOOLEAN NOT NULL,
+    avg_pred_price INT
 );
 
-COPY companies_info (ticker_id, ticker, company_name, related_words, is_active)
+COPY companies_info (ticker_id, ticker, company_name, related_words, is_active, avg_pred_price)
 FROM '/docker-entrypoint-initdb.d/companies_info.csv'
 DELIMITER ','
 CSV HEADER

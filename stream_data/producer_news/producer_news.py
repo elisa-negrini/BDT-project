@@ -109,7 +109,7 @@ def fetch_and_send_news():
             except Exception as e:
                 print(f"Error during request for {symbol}: {e}")
 
-            time.sleep(2)  # prevent API rate limits
+            time.sleep(3)  # prevent API rate limits
 
         print("Waiting 60 seconds before next cycle...\n")
         time.sleep(60)

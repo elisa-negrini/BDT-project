@@ -1,31 +1,31 @@
-ticker_id,ticker,company_name,related_words,is_active
-1,AAPL,Apple,null,TRUE
-2,MSFT,Microsoft,null,TRUE
-3,NVDA,Nvidia,null,TRUE
-4,AMZN,Amazon,null,TRUE
-5,META,Meta,Facebook,TRUE
-6,ORCL,Oracle,null,TRUE
-7,GOOGL,Google,Alphabet,TRUE
-8,AVGO,Broadcom,null,TRUE
-9,TSLA,Tesla,Musk,TRUE
-10,IBM,International Business Machines,Big Blue,TRUE
-11,LLY,Eli Lilly and Company,Eli Lilly,TRUE
-12,JPM,JPMorgan,null,TRUE
-13,V,Visa,null,TRUE
-14,XOM,Exxon,ExxonMobil,TRUE
-15,NFLX,Netflix,null,TRUE
-16,COST,Costco,null,TRUE
-17,UNH,UnitedHealth Group,UnitedHealth,TRUE
-18,JNJ,Johnson & Johnson,Johnson,TRUE
-19,PG,Procter & Gamble,Procter,TRUE
-20,MA,Mastercard,null,TRUE
-21,CVX,Chevron,null,TRUE
-22,MRK,Merck,null,TRUE
-23,PEP,Pepsi,PepsiCo,TRUE
-24,ABBV,AbbVie,null,TRUE
-25,ADBE,Adobe,null,TRUE
-26,WMT,Walmart,null,TRUE
-27,BAC,Bank of America,BofA,TRUE
-28,HD,Home Depot,The Home Depot,TRUE
-29,KO,Coca-Cola,The Coca-Cola Company,TRUE
-30,TMO,Thermo Fisher Scientific,Thermo Fisher,TRUE
+ticker_id,ticker,company_name,related_words,is_active,avg_pred_price
+1,AAPL,Apple,null,TRUE, 200
+2,MSFT,Microsoft,null,TRUE, 470
+3,NVDA,Nvidia,null,TRUE, 140
+4,AMZN,Amazon,null,TRUE, 210
+5,META,Meta,Facebook,TRUE, 700
+6,ORCL,Oracle,null,TRUE, 170
+7,GOOGL,Google,Alphabet,TRUE, 170
+8,AVGO,Broadcom,null,TRUE, 250
+9,TSLA,Tesla,Musk,TRUE, 300
+10,IBM,International Business Machines,Big Blue,TRUE, 270
+11,LLY,Eli Lilly and Company,Eli Lilly,TRUE, 770
+12,JPM,JPMorgan,null,TRUE, 265
+13,V,Visa,null,TRUE, 370
+14,XOM,Exxon,ExxonMobil,TRUE, 105
+15,NFLX,Netflix,null,TRUE, 1250
+16,COST,Costco,null,TRUE, 1010
+17,UNH,UnitedHealth Group,UnitedHealth,TRUE, 300
+18,JNJ,Johnson & Johnson,Johnson,TRUE, 155
+19,PG,Procter & Gamble,Procter,TRUE, 165
+20,MA,Mastercard,null,TRUE, 590
+21,CVX,Chevron,null,TRUE, 140
+22,MRK,Merck,null,TRUE, 80
+23,PEP,Pepsi,PepsiCo,TRUE, 130
+24,ABBV,AbbVie,null,TRUE, 190
+25,ADBE,Adobe,null,TRUE, 415
+26,WMT,Walmart,null,TRUE, 100
+27,BAC,Bank of America,BofA,TRUE, 45
+28,HD,Home Depot,The Home Depot,TRUE, 370
+29,KO,Coca-Cola,The Coca-Cola Company,TRUE, 70
+30,TMO,Thermo Fisher Scientific,Thermo Fisher,TRUE, 400

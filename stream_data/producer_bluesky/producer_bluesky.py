@@ -208,6 +208,7 @@ def track_posts():
                     producer.send(KAFKA_TOPIC, value=data)
             else:
                 print(f"No new posts found for '{keyword}'.")
+            time.sleep(2)
 
         time.sleep(30) # Wait before the next search iteration.
 

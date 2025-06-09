@@ -169,34 +169,49 @@ def extract_tickers(text):
 
 
 def compute_sentiment(text):
-    """
-    Computes the sentiment score for the given text using the loaded FinBERT model.
-    Returns a float sentiment score, or 0.0 in case of errors or empty text.
-    """
-    # Ensure model and tokenizer are loaded before use
+    # Assicurati che il modello e il tokenizer siano caricati
     load_finbert_model()
 
     try:
         if not text or text.strip() == "":
-            return 0.0 # Neutral value if text is empty or only whitespace
-            
+            return 0.0
+
+        # Tokenizzazione e inferenza del modello
         tokens = finbert_tokenizer(
             text,
             return_tensors="np",
             truncation=True,
             padding="max_length",
-            max_length=128 # Max length for FinBERT
+            max_length=128
         )
         ort_inputs = {k: v for k, v in tokens.items()}
         logits = finbert_session.run(None, ort_inputs)[0]
         probs = softmax(logits[0])
+
+        # Le probabilità delle classi:
+        # probs[0] = positivo
+        # probs[1] = neutro
+        # probs[2] = negativo
         
-        # Assuming FinBERT output order: [negative, neutral, positive]
-        # Sentiment score as (probability_positive - probability_negative)
-        sentiment_score = round(float(probs[0] - probs[2]), 4)
-        return sentiment_score
+        prob_positive = probs[0]
+        prob_neutral = probs[1]
+        prob_negative = probs[2]
+
+        # Calcolo del punteggio di sentiment attenuato dalla neutralità
+        # Questo punteggio varia ancora tra -1 e 1
+        raw_sentiment_score = prob_positive - prob_negative
+        attenuation_factor = 1 - prob_neutral
+        
+        attenuated_score = raw_sentiment_score * attenuation_factor
+        
+        # Scala il punteggio attenuato per farlo variare tra -0.2 e 0.2
+        # Il fattore di scala è 0.2, poiché l'intervallo totale è 0.4 (da -0.2 a 0.2)
+        final_scaled_score = attenuated_score * 0.1
+        
+        return round(float(final_scaled_score), 4)
+        
     except Exception as e:
-        sys.stderr.write(f"ERROR: Error in compute_sentiment for text (first 50 chars): '{text[:50]}...': {e}\n")
+        sys.stderr.write(f"Error in compute_sentiment for text (first 50 chars): '{text[:50]}...': {e}\n")
         return 0.0
 
 

@@ -12,10 +12,10 @@ import sys
 import pytz
 
 # Paths for saving artifacts
-MODELS_BASE_PATH = "create_model_lstm/models_2"
-SCALERS_BASE_PATH = "create_model_lstm/scalers_2"
+MODELS_BASE_PATH = "models_lstm/models"
+SCALERS_BASE_PATH = "models_lstm/scalers"
 
-TICKER_MAP_FILENAME = "create_model_lstm/ticker_map2.json"
+TICKER_MAP_FILENAME = "models_lstm/ticker_map.json"
 
 # N_STEPS must match the N_STEPS used in training (e.g., 5 for 5 aggregated 10-second points)
 N_STEPS = 5 # Crucial: this must be the same value as in training
@@ -45,11 +45,11 @@ KEY_FEATURE_TO_EMPHASIZE = "price_mean_1min"
 # --- Functions to get file paths ---
 def get_model_path(ticker_name):
     """Constructs the path to a specific ticker's LSTM model file."""
-    return os.path.join(MODELS_BASE_PATH, f"lstm_model2_{ticker_name}.h5")
+    return os.path.join(MODELS_BASE_PATH, f"lstm_model_{ticker_name}.h5")
 
 def get_scaler_path(ticker_name):
     """Constructs the path to a specific ticker's scaler file."""
-    return os.path.join(SCALERS_BASE_PATH, f"scaler2_{ticker_name}.pkl")
+    return os.path.join(SCALERS_BASE_PATH, f"scaler_{ticker_name}.pkl")
 
 # --- Function to check if we are in the market warmup period ---
 def is_market_warmup_period(timestamp):

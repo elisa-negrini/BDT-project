@@ -300,6 +300,7 @@ services:
       S3_ENDPOINT: ${S3_ENDPOINT} 
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
+      ANOMALY_THRESHOLD: ${ANOMALY_THRESHOLD}
     depends_on:
       - kafka
       - postgres
@@ -348,30 +349,30 @@ services:
       - flink-aggregated-job
     restart: always
 
-# ### MODEL TRAINING
-  ML_model:
-    container_name: ML_model
-    build:
-      context: .
-      dockerfile: ML_model/Dockerfile
-    environment:
-      POSTGRES_HOST: ${POSTGRES_HOST}  
-      POSTGRES_PORT: ${POSTGRES_PORT} 
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}  
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - ./prediction_layer/models_lstm:/app/output_data
-    depends_on:
-      - postgres
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-          cpus: '3.0'
-        reservations:
-          memory: 4G
-          cpus: '3.0' 
+# # ### MODEL TRAINING
+#   ml_model:
+#     container_name: ml_model
+#     build:
+#       context: .
+#       dockerfile: ml_model/Dockerfile
+#     environment:
+#       POSTGRES_HOST: ${POSTGRES_HOST}  
+#       POSTGRES_PORT: ${POSTGRES_PORT} 
+#       POSTGRES_DB: ${POSTGRES_DB}
+#       POSTGRES_USER: ${POSTGRES_USER}  
+#       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+#     volumes:
+#       - ./prediction_layer/models_lstm:/app/output_data
+#     depends_on:
+#       - postgres
+#     deploy:
+#       resources:
+#         limits:
+#           memory: 4G
+#           cpus: '3.0'
+#         reservations:
+#           memory: 4G
+#           cpus: '3.0' 
 
 
 # ### PREDICTION LAYER
@@ -383,6 +384,8 @@ services:
     depends_on:
       - kafka
       - flink-aggregated-job
+    volumes:
+      - ./prediction_layer/models_lstm:/app/models_lstm
     restart: on-failure
 
   consumer_prediction:
@@ -401,8 +404,8 @@ services:
       - prediction_layer
     restart: always
 
-# # ### DASHBOARD 
-  dashboard:
+# #### DASHBOARD 
+  dashboard: # fatto tutto sistemato NON TOCCARE
     container_name: dashboard
     build:
      context: ./dashboard
@@ -422,93 +425,94 @@ services:
       - prediction_layer
 
 # # HISTORICAL CONTAINER
-  producer_h_macrodata: # tutto sistemato
-    container_name: producer_h_macrodata
-    build: ./historical_data/producer_h_macrodata
-    environment:
-      API_KEY_FRED: ${API_KEY_FRED}
-    depends_on:
-      - kafka
+  # producer_h_macrodata: # tutto sistemato
+  #   container_name: producer_h_macrodata
+  #   build: ./historical_data/producer_h_macrodata
+  #   environment:
+  #     API_KEY_FRED: ${API_KEY_FRED}
+  #   depends_on:
+  #     - kafka
 
-  producer_h_stockdata: # tutto sistemato
-    container_name: producer_h_stockdata
-    build: ./historical_data/producer_h_stockdata
-    environment:
-      API_KEY_ALPACA: ${API_KEY_ALPACA}
-      API_SECRET_ALPACA: ${API_SECRET_ALPACA}
-      POSTGRES_HOST: ${POSTGRES_HOST} 
-      POSTGRES_PORT: ${POSTGRES_PORT} 
-      POSTGRES_DB: ${POSTGRES_DB}   
-      POSTGRES_USER: ${POSTGRES_USER} 
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} 
-    depends_on:
-      - kafka
-      - postgres
+  # producer_h_stockdata: # tutto sistemato
+  #   container_name: producer_h_stockdata
+  #   build: ./historical_data/producer_h_stockdata
+  #   environment:
+  #     API_KEY_ALPACA: ${API_KEY_ALPACA}
+  #     API_SECRET_ALPACA: ${API_SECRET_ALPACA}
+  #     POSTGRES_HOST: ${POSTGRES_HOST} 
+  #     POSTGRES_PORT: ${POSTGRES_PORT} 
+  #     POSTGRES_DB: ${POSTGRES_DB}   
+  #     POSTGRES_USER: ${POSTGRES_USER} 
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} 
+  #   depends_on:
+  #     - kafka
+  #     - postgres
 
-  producer_h_company: # tutto sistemato
-    container_name: producer_h_company
-    build:
-      context: ./historical_data/producer_h_company
-    depends_on:
-      - kafka
+  # producer_h_company: # tutto sistemato
+  #   container_name: producer_h_company
+  #   build:
+  #     context: ./historical_data/producer_h_company
+  #   depends_on:
+  #     - kafka
 
-  consumer_h_company: # tutto sistemato
-    container_name: consumer_h_company
-    build:
-      context: ./historical_data/consumer_h_company
-    environment:
-      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
-      S3_SECRET_KEY: ${S3_SECRET_KEY}
-    depends_on:
-      - kafka
-      - minio
-      - producer_h_company
+  # consumer_h_company: # tutto sistemato
+  #   container_name: consumer_h_company
+  #   build:
+  #     context: ./historical_data/consumer_h_company
+  #   environment:
+  #     S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+  #     S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
+  #     S3_SECRET_KEY: ${S3_SECRET_KEY}
+  #   depends_on:
+  #     - kafka
+  #     - minio
+  #     - producer_h_company
          
-  consumer_h_stockdata: # tutto sistemato
-    container_name: consumer_h_stockdata
-    build:
-      context: ./historical_data/consumer_h_stockdata
-    environment:
-      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
-      S3_SECRET_KEY: ${S3_SECRET_KEY}
-    depends_on:
-      - kafka
-      - minio
-      - producer_h_stockdata
+  # consumer_h_stockdata: # tutto sistemato
+  #   container_name: consumer_h_stockdata
+  #   build:
+  #     context: ./historical_data/consumer_h_stockdata
+  #   environment:
+  #     S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+  #     S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
+  #     S3_SECRET_KEY: ${S3_SECRET_KEY}
+  #   depends_on:
+  #     - kafka
+  #     - minio
+  #     - producer_h_stockdata
 
-  consumer_h_macrodata:
-    container_name: consumer_h_macrodata
-    build:
-      context: ./historical_data/consumer_h_macrodata
-    environment:
-      S3_ENDPOINT: ${S3_ENDPOINT} 
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
-      S3_SECRET_KEY: ${S3_SECRET_KEY}
-      SPARK_SUBMIT_OPTIONS: --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
-    depends_on:
-      - kafka
-      - minio
-      - producer_h_macrodata
+  # consumer_h_macrodata:
+  #   container_name: consumer_h_macrodata
+  #   build:
+  #     context: ./historical_data/consumer_h_macrodata
+  #   environment:
+  #     S3_ENDPOINT: ${S3_ENDPOINT} 
+  #     S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
+  #     S3_SECRET_KEY: ${S3_SECRET_KEY}
+  #     SPARK_SUBMIT_OPTIONS: --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
+  #   depends_on:
+  #     - kafka
+  #     - minio
+  #     - producer_h_macrodata
 
-  historical_aggregated:
-      container_name: historical_aggregated
-      build:
-        context: ./historical_data/historical_aggregated
-      restart: always
-      environment:
-        POSTGRES_HOST: ${POSTGRES_HOST} 
-        POSTGRES_PORT: ${POSTGRES_PORT} 
-        POSTGRES_DB: ${POSTGRES_DB}   
-        POSTGRES_USER: ${POSTGRES_USER} 
-        POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} 
-      depends_on:
-        - kafka
-        - postgres
-        - consumer_h_stockdata
-        - consumer_h_company
-        - consumer_h_macrodata
+  # historical_aggregated:
+  #     container_name: historical_aggregated
+  #     build:
+  #       context: .
+  #       dockerfile: ./historical_data/historical_aggregated/Dockerfile
+  #     restart: always
+  #     environment:
+  #       POSTGRES_HOST: ${POSTGRES_HOST} 
+  #       POSTGRES_PORT: ${POSTGRES_PORT} 
+  #       POSTGRES_DB: ${POSTGRES_DB}   
+  #       POSTGRES_USER: ${POSTGRES_USER} 
+  #       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} 
+  #     depends_on:
+  #       - kafka
+  #       - postgres
+  #       - producer_h_stockdata
+  #       - producer_h_company
+  #       - producer_h_macrodata
 
 networks:
   flink_net:
