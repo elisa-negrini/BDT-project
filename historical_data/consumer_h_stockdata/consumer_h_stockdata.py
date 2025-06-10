@@ -332,7 +332,7 @@ def connect_kafka_consumer():
             time.sleep(5)
 
 # === SAVE DATA TO MINIO ===
-def save_to_minio(ticker, year, month, date_str, records):
+def save_to_minio(ticker, year, week, records):
     """
     Converts a list of records for a specific day into a Parquet DataFrame
     and uploads it to MinIO.
@@ -356,18 +356,17 @@ def save_to_minio(ticker, year, month, date_str, records):
         pq.write_table(table, buf, compression='snappy') # Write Table to Parquet in-memory
         buf.seek(0) # Reset buffer position to the beginning for upload
 
-        # Construct MinIO object key (path) for partitioned storage
-        # e.g., ticker/year/month/ticker_date.parquet
-        key = f"{ticker}/{year}/{month:02d}/{ticker}_{date_str}.parquet"
-        
-        # Upload the Parquet file to MinIO
+        # Nuovo path: ticker/year/ticker_week.parquet
+        key = f"{ticker}/{year}/{ticker}_{week:02d}.parquet"
+
         s3.put_object(Bucket=MINIO_BUCKET, Key=key, Body=buf.getvalue())
         logger.info(f"Saved to MinIO: {key} ({len(df)} records)")
         return True
 
     except Exception as e:
-        logger.error(f"Error saving Parquet for {ticker} {date_str}: {e}")
+        logger.error(f"Error saving Parquet for {ticker} week {week}: {e}")
         return False
+
 
 # === MAIN EXECUTION LOOP ===
 def main():
@@ -399,16 +398,15 @@ def main():
                             payload = message.value
                             ticker = payload.get('ticker')
                             year = payload.get('year')
-                            month = payload.get('month')
-                            date_str = payload.get('date')
+                            week = payload.get('week')
                             records = payload.get('data')
 
-                            if not all([ticker, year, month, date_str, records]):
+                            if not all([ticker, year, week, records]):
                                 logger.warning(f"Skipping malformed message: Missing key data in payload {payload}")
                                 errors_encountered += 1
                                 continue
 
-                            if save_to_minio(ticker, year, month, date_str, records):
+                            if save_to_minio(ticker, year, week, records):
                                 processed_messages += 1
                             else:
                                 errors_encountered += 1

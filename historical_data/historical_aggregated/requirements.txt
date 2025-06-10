@@ -6,3 +6,4 @@ pytz
 sqlalchemy
 psycopg2-binary
 kafka-python
+apache-beam==2.43.0
