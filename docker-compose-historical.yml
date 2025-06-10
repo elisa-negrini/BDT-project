@@ -1,0 +1,175 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    container_name: kafka
+    image: confluentinc/cp-kafka:latest
+    ports:
+      - "9092:9092"
+    environment:
+          KAFKA_BROKER_ID: 1
+          KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    depends_on:
+      - zookeeper
+    restart: always
+
+  minio:
+    container_name: minio
+    image: minio/minio
+    ports:
+     - "9000:9000"
+     - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY} 
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
+    volumes:
+     - ./data/minio:/data
+    command: server /data --console-address ":9001"
+
+  postgres:
+    container_name: postgres
+    build:
+      context: ./postgresql
+      dockerfile: Dockerfile
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: always
+
+  producer_h_macrodata:
+    container_name: producer_h_macrodata
+    build: ./historical_data/producer_h_macrodata
+    environment:
+      API_KEY_FRED: ${API_KEY_FRED}
+    depends_on:
+      - kafka
+
+  producer_h_stockdata:
+    container_name: producer_h_stockdata
+    build: ./historical_data/producer_h_stockdata
+    environment:
+      API_KEY_ALPACA: ${API_KEY_ALPACA}
+      API_SECRET_ALPACA: ${API_SECRET_ALPACA}
+      POSTGRES_HOST: ${POSTGRES_HOST} 
+      POSTGRES_PORT: ${POSTGRES_PORT} 
+      POSTGRES_DB: ${POSTGRES_DB}   
+      POSTGRES_USER: ${POSTGRES_USER} 
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} 
+    depends_on:
+      - kafka
+      - postgres
+
+  producer_h_company:
+    container_name: producer_h_company
+    build:
+      context: ./historical_data/producer_h_company
+    depends_on:
+      - kafka
+
+  consumer_h_company:
+    container_name: consumer_h_company
+    build:
+      context: ./historical_data/consumer_h_company
+    environment:
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    depends_on:
+      - kafka
+      - minio
+      - producer_h_company
+         
+  consumer_h_stockdata:
+    container_name: consumer_h_stockdata
+    build:
+      context: ./historical_data/consumer_h_stockdata
+    environment:
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL} 
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    depends_on:
+      - kafka
+      - minio
+      - producer_h_stockdata
+
+  consumer_h_macrodata:
+    container_name: consumer_h_macrodata
+    build:
+      context: ./historical_data/consumer_h_macrodata
+    environment:
+      S3_ENDPOINT: ${S3_ENDPOINT} 
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY} 
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      SPARK_SUBMIT_OPTIONS: --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
+    depends_on:
+      - kafka
+      - minio
+      - producer_h_macrodata
+
+  historical_aggregated:
+      container_name: historical_aggregated
+      build:
+        context: .
+        dockerfile: ./historical_data/historical_aggregated/Dockerfile
+      restart: always
+      environment:
+        POSTGRES_HOST: ${POSTGRES_HOST} 
+        POSTGRES_PORT: ${POSTGRES_PORT} 
+        POSTGRES_DB: ${POSTGRES_DB}   
+        POSTGRES_USER: ${POSTGRES_USER} 
+        POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} 
+      depends_on:
+        - kafka
+        - postgres
+        - producer_h_stockdata
+        - producer_h_company
+        - producer_h_macrodata
+
+### MODEL TRAINING
+  ml_model_train:
+    container_name: ml_model_train
+    build:
+      context: .
+      dockerfile: ml_model/Dockerfile
+    environment:
+      POSTGRES_HOST: ${POSTGRES_HOST}  
+      POSTGRES_PORT: ${POSTGRES_PORT} 
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}  
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./prediction_layer/models_lstm:/app/models_lstm
+    depends_on:
+      - postgres
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '3.0'
+        reservations:
+          memory: 4G
+          cpus: '3.0' 
+
+networks:
+  flink_net:
+    driver: bridge
+
+  minio_network:
+    driver: bridge
+
+volumes:
+  pgdata:
+    driver: local 
