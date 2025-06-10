@@ -1,0 +1,10 @@
+apache-flink==1.17.0
+numpy
+boto3
+kafka-python
+python-dateutil
+pytz
+pyarrow
+minio
+pandas
+psycopg2-binary

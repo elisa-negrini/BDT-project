@@ -181,7 +181,7 @@ services:
       - producer_bluesky
     restart: always
 
-  consumer_macrodata: # da togliere ultima parte commentata(?)
+  consumer_macrodata:
     container_name: consumer_macrodata
     build: ./stream_data/consumer_macrodata
     environment:
@@ -290,7 +290,7 @@ services:
     container_name: flink_main_job
     build:
       context: .
-      dockerfile: preprocessing_stream/main_job.Dockerfile
+      dockerfile: preprocessing_layer/main_job_flink/Dockerfile
     environment:
       POSTGRES_HOST: ${POSTGRES_HOST}  
       POSTGRES_PORT: ${POSTGRES_PORT} 
@@ -314,7 +314,7 @@ services:
     container_name: flink-global-job
     build:
       context: .
-      dockerfile: preprocessing_stream/global_job.Dockerfile
+      dockerfile: preprocessing_layer/global_job_flink/Dockerfile
     depends_on:
       - kafka
       - producer_macrodata
@@ -325,7 +325,7 @@ services:
     container_name: flink-aggregated-job
     build:
       context: .
-      dockerfile: preprocessing_stream/aggregated_job.Dockerfile
+      dockerfile: preprocessing_layer/aggregated_job_flink/Dockerfile
     depends_on:
       - kafka
       - flink_main_job
@@ -336,7 +336,7 @@ services:
     container_name: storage_aggregated
     build:
       context: .
-      dockerfile: preprocessing_stream/storage_aggregated/Dockerfile
+      dockerfile: preprocessing_layer/storage_aggregated/Dockerfile
     environment:
       POSTGRES_HOST: ${POSTGRES_HOST}  
       POSTGRES_PORT: ${POSTGRES_PORT} 
@@ -443,8 +443,7 @@ services:
     depends_on:
       - kafka
       - minio
-      - producer_h_company
-         
+      - producer_h_company    
 
 networks:
   flink_net:

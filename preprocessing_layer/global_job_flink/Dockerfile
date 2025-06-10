@@ -9,11 +9,11 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 
 WORKDIR /app
 
-COPY preprocessing_stream/requirements.txt .
+COPY preprocessing_layer/global_job_flink/requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-COPY preprocessing_stream/main_job.py .
+COPY preprocessing_layer/global_job_flink/global_job.py .
 
 COPY jar_flink/*.jar /opt/flink/lib/
 
-CMD ["python", "/app/main_job.py"]
+CMD ["python", "/app/global_job.py"]
