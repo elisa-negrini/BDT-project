@@ -115,7 +115,3 @@ To shut down any Docker Compose configuration, use the command:
 For example, to shut down the historical configuration:
 
 <pre lang="markdown"> docker-compose -f docker-compose-historical.yml down </pre>
-
-#### Important Sequence for Starting Streams
-
-When the model training with docker-compose-historical.yml is finished (you'll notice this from the container logs or when the training process stops), **you must shut down this configuration** (using the command docker-compose -f docker-compose-historical.yml down) before starting docker-compose-stream.yml.
