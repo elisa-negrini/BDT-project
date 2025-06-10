@@ -1,7 +1,11 @@
 # Project Startup Guide
 
 This project analyzes stock market trends in real time by combining financial data, macroeconomic indicators, and sentiment analysis from news and social media. The goal is to **provide a one-minute-ahead forecast of each company's stock price**, displayed on an interactive dashboard, which also allows real-time monitoring of market price anomalies.
-This repository contains two Docker Compose configurations to launch the Stock Market Trend Analysis project in different modes: continuous streaming with a pre-trained model, and an option to download historical data and train the model from scratch.
+This repository provides two Docker Compose configurations to launch the Stock Market Trend Analysis project:
+
+- **Initial setup** involving historical data download and model training.
+
+- **Continuous streaming** with a pre-trained model that also supports real-time retraining.
 
 ### Prerequisites
 
@@ -9,6 +13,11 @@ To start and use the project, ensure you have **Docker** installed on your syste
 - **RAM**: Minimum 8 GB RAM (allocated to Docker)
 - **CPU**: Minimum 12 CPUs (allocated to Docker)
 
+### Essential Setup
+
+**1. Clone the repository**
+
+First, clone this repository to your local system using the repository url: 
 ### Download of the .env file
 
 Download the provided .env file and place it in the root directory of this repository. This file will contain necessary credentials and configuration settings.
@@ -25,7 +34,7 @@ The Alpaca (stock market) streaming data is real and is provided Monday to Frida
 
 ## 1. Docker Compose for Streaming (docker-compose-stream.yml)
 
-This configuration is designed to start the real-time data stream and use an already trained model for prediction. It's the ideal option for those who want to see the project in action without having to manage the initial training.
+This configuration is designed to start the real-time data stream and use an already trained model for prediction. It's the ideal option for those who want to see the project in action without having to manage the initial model training.
 
 #### Startup
 
@@ -40,13 +49,35 @@ From the dropdown menu at the top, you can select a company and view both the st
 
 ## 2. Docker Compose for Historical Data and Training (docker-compose-historical.yml)
 
-This configuration allows you to download approximately 13 million rows of historical data (~4GB) and train the model from scratch. This is a longer process but gives you full control over the model. The first prediction will be available 5 minutes after the dashboard starts and will then continue in a continuous manner.
+This comprehensive setup first **downloads approximately 13 million rows of historical data (~4GB) and trains the model from scratch**. Once this initial training is complete, you will manually transition to a continuous streaming mode with real-time model retraining enabled. This provides a more realistic setup for an evolving model.
+
+The first prediction will typically be available about 5 minutes after the dashboard starts, after which it will continue continuously with ongoing retraining.
 
 #### Startup
 
-To download historical data and start model training, run the following command in your terminal:
+To download historical data, perform initial model training, and then start continuous streaming with retraining, follow these steps:
+
+1. **Start the historical data download and initial training:**
 
 <pre lang="markdown"> docker-compose -f docker-compose-historical.yml up --build -d </pre>
+
+Monitor the container logs (docker-compose logs -f) to determine when the initial training process has finished. This process can take a significant amount of time depending on your system's resources and data volume.
+
+2. **Once initial training is complete, shut down the docker-compose-historical.yml configuration:**
+
+<pre lang="markdown"> docker-compose -f docker-compose-historical.yml down </pre>
+
+It is crucial to perform this shutdown to release resources and prepare for the next step.
+
+3. **Start the continuous streaming with retraining:**
+
+<pre lang="markdown"> docker-compose -f docker-compose-retrain.yml up --build -d </pre>
+
+This will launch the application in a mode where it streams real-time data and continuously retrains the model using the historical data you've already downloaded.
+
+#### Dashboard Visualization
+
+Once the streaming configuration is launched, you can access the dashboard at http://localhost:8501. From the dropdown menu, you can select a company to view its stock price trend, the model's future prediction, and real-time detection of potential market anomalies.
 
 ### Company Configuration
 
