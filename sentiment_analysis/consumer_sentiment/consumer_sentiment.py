@@ -18,6 +18,7 @@ S3_BUCKET = 'sentiment-data'
 
 # === Initialize S3 connection ===
 def ensure_bucket_exists():
+    """Ensures the configured S3 bucket exists, creating it if it doesn't."""
     s3 = boto3.resource(
         's3',
         endpoint_url=S3_ENDPOINT_URL,

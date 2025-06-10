@@ -23,6 +23,7 @@ POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
 
 # === Load tickers from PostgreSQL ===
 def load_tickers_from_db():
+    """Loads distinct active company tickers from the PostgreSQL database."""
     try:
         conn = psycopg2.connect(
             host=POSTGRES_HOST,
@@ -47,6 +48,7 @@ if not tickers:
 
 # === Kafka producer connection ===
 def connect_kafka():
+    """Establishes and returns a Kafka producer, with retry logic."""
     while True:
         try:
             producer = KafkaProducer(
@@ -66,6 +68,7 @@ sent_ids = set()
 
 # === Main fetch and send function ===
 def fetch_and_send_news():
+    """Continuously fetches Finnhub news for configured tickers and sends new articles to Kafka."""
     while True:
         today = date.today()
         from_date = (today - timedelta(days=1)).strftime("%Y-%m-%d")

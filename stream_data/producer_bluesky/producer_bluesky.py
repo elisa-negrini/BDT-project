@@ -6,14 +6,13 @@ from kafka import KafkaProducer
 import os
 import psycopg2
 
-# --- Configuration ---
+# ====== Configuration ======
 
 # Bluesky API authentication tokens.
-# These will be updated dynamically.
 access_jwt = ""
 refresh_jwt = ""
 
-# Bluesky user credentials. Set as environment variables.
+# Bluesky user credentials from environment variables.
 identifier = os.getenv("BLUESKY_IDENTIFIER")
 password = os.getenv("BLUESKY_PASSWORD")
 
@@ -33,8 +32,7 @@ POSTGRES_DB = os.getenv("POSTGRES_DB")
 POSTGRES_USER = os.getenv("POSTGRES_USER")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
 
-# --- Kafka Operations ---
-
+# ====== Kafka Operations ======
 def connect_kafka():
     """Establishes and returns a Kafka producer, with retry logic."""
     while True:
@@ -49,14 +47,12 @@ def connect_kafka():
             print(f"Kafka unavailable, retrying in 5 seconds... ({e})")
             time.sleep(5)
 
-# Initialize Kafka producer.
 producer = connect_kafka()
 
 # Set to track already processed post IDs to avoid duplicates.
 processed_posts = set()
 
-# --- Database Operations ---
-
+# ====== Database Operations ======
 def load_keywords_from_db():
     """
     Loads distinct keywords (tickers, company names, related words) from the database.
@@ -97,8 +93,7 @@ STATIC_KEYWORDS = [
     "price target", "IPO", "stock split", "ETF", "SPY",
 ]
 
-# --- Bluesky Authentication ---
-
+# ====== Bluesky Authentication ======
 def get_initial_tokens():
     """Authenticates with Bluesky to obtain initial access and refresh tokens."""
     global access_jwt, refresh_jwt
@@ -139,8 +134,7 @@ def get_new_access_token():
         print(f"Error refreshing token: {response.status_code}, {response.text}")
         access_jwt = None
 
-# --- Bluesky Data Fetching ---
-
+# ====== Bluesky Data Fetching ======
 def fetch_posts(keyword):
     """Fetches posts from the Bluesky API for a given keyword."""
     headers = {
@@ -156,8 +150,7 @@ def fetch_posts(keyword):
         print(f"Error fetching posts for '{keyword}': {response.status_code}")
         return []
 
-# --- Main Tracking Function ---
-
+# ====== Main Tracking Function ======
 def track_posts():
     """
     Main loop to track Bluesky posts, merge keywords, and send new posts to Kafka.
@@ -165,12 +158,10 @@ def track_posts():
     """
     global access_jwt
 
-    # Load and merge keywords.
     db_keywords = load_keywords_from_db()
     print(f"Loaded {len(db_keywords)} keywords from the database.")
     all_keywords = list(set(STATIC_KEYWORDS + db_keywords))
 
-    # Obtain initial authentication tokens.
     get_initial_tokens()
 
     if access_jwt is None:
@@ -182,9 +173,9 @@ def track_posts():
     while True:
         if access_jwt is None:
             print("Cannot proceed without a valid accessJwt. Re-attempting login.")
-            get_initial_tokens() # Attempt to get new tokens if current ones are invalid
+            get_initial_tokens()
             if access_jwt is None:
-                time.sleep(60) # Wait before retrying
+                time.sleep(60)
                 continue
 
         print("Searching for new posts...")
@@ -210,12 +201,11 @@ def track_posts():
                 print(f"No new posts found for '{keyword}'.")
             time.sleep(2)
 
-        time.sleep(30) # Wait before the next search iteration.
+        time.sleep(30)
 
         # Refresh token every 15 minutes (900 seconds).
         if time.time() - last_token_renewal_time > 900:
             get_new_access_token()
             last_token_renewal_time = time.time()
 
-# Start the post tracking process.
 track_posts()

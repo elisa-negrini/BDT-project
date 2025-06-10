@@ -18,6 +18,7 @@ S3_BUCKET = 'finnhub-data'
 
 # === Kafka Connection ===
 def connect_kafka_consumer():
+    """Establishes and returns a Kafka consumer with retry logic."""
     while True:
         try:
             consumer = KafkaConsumer(
@@ -36,6 +37,7 @@ def connect_kafka_consumer():
 
 # === Ensure bucket exists ===
 def ensure_bucket_exists():
+    """Ensures the S3 bucket exists, creating it if necessary."""
     s3 = boto3.resource(
         's3',
         endpoint_url=S3_ENDPOINT_URL,

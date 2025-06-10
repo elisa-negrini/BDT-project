@@ -29,6 +29,7 @@ token = None
 token_time = None
 
 def connect_kafka():
+    """Establishes and returns a Kafka producer, with retry logic."""
     while True:
         try:
             producer = KafkaProducer(
@@ -44,8 +45,8 @@ def connect_kafka():
 producer = connect_kafka()
 
 # === FUNCTIONS ===
-
 def get_reddit_token():
+    """Obtains an access token from the Reddit API."""
     url = 'https://www.reddit.com/api/v1/access_token'
     headers = {'User-Agent': user_agent}
     data = {'grant_type': 'client_credentials'}
@@ -60,6 +61,7 @@ def get_reddit_token():
         return None
 
 def get_new_reddit_posts(subreddit, token):
+    """Fetches new posts from a specified Reddit subreddit."""
     url = f'https://oauth.reddit.com/r/{subreddit}/new?limit=100'
     headers = {'Authorization': f'bearer {token}', 'User-Agent': user_agent}
     response = requests.get(url, headers=headers)
@@ -91,7 +93,6 @@ def get_new_reddit_posts(subreddit, token):
         return []
 
 # === MAIN LOOP ===
-
 if __name__ == "__main__":
     token = get_reddit_token()
     token_time = datetime.now(timezone.utc)

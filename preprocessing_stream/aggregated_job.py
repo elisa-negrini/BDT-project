@@ -9,9 +9,9 @@ from kafka import KafkaAdminClient
 from kafka.admin import ConfigResource, ConfigResourceType, NewTopic
 import time
 
-# --- GLOBAL VARIABLES ---
+# ==== GLOBAL VARIABLES ====
 global_data_dict = {}
-global_data_received = False  # Flag to track if global data has been received
+global_data_received = False 
 
 # Kafka Configuration
 KAFKA_BOOTSTRAP_SERVERS = 'kafka:9092'
@@ -104,7 +104,7 @@ def create_kafka_topic_with_partitions():
             topic = NewTopic(
                 name=AGGREGATED_TOPIC,
                 num_partitions=NUM_PARTITIONS,
-                replication_factor=1  # Adjust according to your cluster configuration
+                replication_factor=1
             )
 
             admin_client.create_topics([topic])
@@ -139,7 +139,6 @@ class SlidingAggregator(KeyedProcessFunction):
             # --- Handle Global Data (GLOBAL_DATA_KEY) ---
             if current_key == GLOBAL_DATA_KEY:
                 if isinstance(data, dict):
-                    # Initialize general sentiment fields in global data
                     general_sentiment_fields = [
                         "sentiment_general_bluesky_mean_2hours",
                         "sentiment_general_bluesky_mean_1day"
@@ -147,34 +146,31 @@ class SlidingAggregator(KeyedProcessFunction):
                     for field in general_sentiment_fields:
                         global_data_dict[field] = 0.0
 
-                    # Update global_data_dict with received global values
                     for k, v in data.items():
                         if k == "timestamp":
                             continue
 
-                        # Handle boolean, numeric, and string values for global data
                         if isinstance(v, bool):
                             global_data_dict[k] = v
                         elif isinstance(v, (int, float)):
                             global_data_dict[k] = float(v)
-                        elif isinstance(v, str) and v.replace('.', '', 1).isdigit(): # Check if string is a valid number
+                        elif isinstance(v, str) and v.replace('.', '', 1).isdigit():
                             global_data_dict[k] = float(v)
                         else:
                             global_data_dict[k] = v
 
-                    # Mark that global data has been received
                     global_data_received = True
                     print(f"[GLOBAL-DATA-HANDLER] Updated global_data_dict: {global_data_dict}", file=sys.stderr)
                 else:
                     print(f"[WARN] Global data message is not a valid dictionary: {value}", file=sys.stderr)
-                return [] # Global data messages do not produce direct output for aggregation
+                return []
 
-            # --- Handle Main Data (MAIN_DATA_KEY) ---
+            # ==== Handle Main Data (MAIN_DATA_KEY) ====
             elif current_key == MAIN_DATA_KEY:
                 # Ensure global data is received before processing main data
                 if not global_data_received:
                     print(f"[WAIT] Waiting for global data before processing main data. Message ignored: {data.get('ticker', 'unknown')}", file=sys.stderr)
-                    return [] # Discard message if global data is not ready
+                    return []
 
                 ticker = data.get("ticker")
 
@@ -182,11 +178,11 @@ class SlidingAggregator(KeyedProcessFunction):
                 merged_data = {}
                 for field in OUTPUT_FIELD_ORDER:
                     if field in ["ticker", "timestamp"]:
-                        merged_data[field] = None # Will be filled by ticker-specific data
+                        merged_data[field] = None
                     elif field == "is_simulated_prediction":
-                        merged_data[field] = False # Default boolean value
+                        merged_data[field] = False
                     else:
-                        merged_data[field] = 0.0 # Default numeric value
+                        merged_data[field] = 0.0
 
                 # Overwrite with global data (macro and general sentiment)
                 for k, v in global_data_dict.items():
@@ -201,7 +197,6 @@ class SlidingAggregator(KeyedProcessFunction):
 
                 # Overwrite with ticker-specific data (trade metrics and specific sentiment)
                 for k, v in data.items():
-                    # Direct mapping for sentiment fields (as they might have different names in source)
                     mapped_k = k
                     if k == "sentiment_bluesky_mean_2hours":
                         mapped_k = "sentiment_bluesky_mean_2hours"
@@ -213,7 +208,6 @@ class SlidingAggregator(KeyedProcessFunction):
                         mapped_k = "sentiment_news_mean_3days"
 
                     if mapped_k in merged_data:
-                        # Handle boolean, numeric, and string values for main data
                         if isinstance(v, bool):
                             merged_data[mapped_k] = v
                         elif isinstance(v, (int, float)):
@@ -234,14 +228,13 @@ class SlidingAggregator(KeyedProcessFunction):
                 result_json = json.dumps(result_data)
 
                 print(f"[MAIN-DATA-PROCESS] {ticker} - Partition {partition} - Combined data: {result_json}", file=sys.stderr)
-                yield result_json # Emit the combined data
+                yield result_json
 
         except json.JSONDecodeError:
             print(f"[ERROR] Failed to decode JSON: {value}", file=sys.stderr)
             return []
         except Exception as e:
             print(f"[ERROR] Error in process_element: {e} for value: {value}", file=sys.stderr)
-            # Emit an error message for debugging purposes
             return [json.dumps({"error": str(e), "original_message": value})]
 
 def route_by_ticker(json_str):
@@ -260,7 +253,7 @@ def route_by_ticker(json_str):
             return MAIN_DATA_KEY
         else:
             print(f"[WARN] Unrecognized data or missing ticker: {json_str}", file=sys.stderr)
-            return "discard_key" # Discard messages that don't fit expected patterns
+            return "discard_key"
 
     except json.JSONDecodeError:
         print(f"[WARN] Failed to decode JSON for key_by: {json_str}", file=sys.stderr)
@@ -278,7 +271,7 @@ def extract_ticker_for_partitioning(json_str):
         ticker = data.get("ticker", "unknown")
         return ticker
     except:
-        return "unknown" # Return "unknown" if parsing fails
+        return "unknown"
 
 def main():
     """
@@ -286,13 +279,11 @@ def main():
     Initializes Kafka connections, creates topics, defines data sources,
     processing logic, and sinks.
     """
-    # First, wait for Kafka to be available
     print("[INFO] Checking Kafka availability...", file=sys.stderr)
     if not wait_for_kafka():
         print("[ERROR] Failed to connect to Kafka. Exiting.", file=sys.stderr)
         sys.exit(1)
 
-    # Create the Kafka topic with partitions after Kafka is available
     print("[INFO] Creating Kafka topic with partitions...", file=sys.stderr)
     create_kafka_topic_with_partitions()
 
@@ -300,12 +291,12 @@ def main():
     time.sleep(2)
 
     env = StreamExecutionEnvironment.get_execution_environment()
-    env.set_parallelism(1) # Set parallelism for the job
+    env.set_parallelism(1)
 
     consumer_props = {
         'bootstrap.servers': KAFKA_BOOTSTRAP_SERVERS,
         'group.id': 'flink_stock_group',
-        'auto.offset.reset': 'earliest' # Start consuming from the earliest offset
+        'auto.offset.reset': 'earliest'
     }
 
     # Define Kafka consumer for 'main_data' and 'global_data' topics
@@ -316,10 +307,8 @@ def main():
     )
 
     # Configure the Kafka producer
-    # Flink handles serialization via SimpleStringSchema
     producer_config = {
-        'bootstrap.servers': KAFKA_BOOTSTRAP_SERVERS,
-        # 'key.serializer' and 'value.serializer' are managed by SimpleStringSchema
+        'bootstrap.servers': KAFKA_BOOTSTRAP_SERVERS
     }
 
     # Add Kafka consumer as a source to the Flink environment
@@ -334,14 +323,13 @@ def main():
     # Define the final Kafka producer for aggregated data
     final_producer = FlinkKafkaProducer(
         topic=AGGREGATED_TOPIC,
-        serialization_schema=SimpleStringSchema(), # Serialize output as simple strings
+        serialization_schema=SimpleStringSchema(),
         producer_config=producer_config
     )
 
     # Partition the processed stream by ticker before sending to the sink
-    # This ensures messages for the same ticker go to the same Kafka partition
     partitioned_stream = processed.key_by(extract_ticker_for_partitioning, key_type=Types.STRING())
-    partitioned_stream.add_sink(final_producer) # Add Kafka producer as a sink
+    partitioned_stream.add_sink(final_producer)
 
     print(f"[INFO] Starting Flink job with partitioning on {NUM_PARTITIONS} partitions...", file=sys.stderr)
     env.execute("Global Data Join with Kafka Partitioning")
