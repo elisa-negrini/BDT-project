@@ -351,28 +351,29 @@ services:
     
 
 ### RETRAIN
-  # retrainer:
-  #     build:
-  #       context: . # Docker build context is now 'my_test_ingestion'
-  #       dockerfile: retrain/Dockerfile
-  #     depends_on:
-  #       - storage_aggregated
-  #     environment:
-  #       POSTGRES_HOST: ${POSTGRES_HOST}  
-  #       POSTGRES_PORT: ${POSTGRES_PORT} 
-  #       POSTGRES_DB: ${POSTGRES_DB}
-  #       POSTGRES_USER: ${POSTGRES_USER}  
-  #       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-  #     volumes:
-  #       - ./prediction_layer/models_lstm:/app/models_lstm
-  #     deploy:
-  #       resources:
-  #         limits:
-  #           memory: 2G
-  #           cpus: '3.0'
-  #         reservations:
-  #           memory: 2G
-  #           cpus: '3.0'
+  retrain:
+      container_name: retrain
+      build:
+        context: . # Docker build context is now 'my_test_ingestion'
+        dockerfile: ml_model/retrain/Dockerfile
+      depends_on:
+        - storage_aggregated
+      environment:
+        POSTGRES_HOST: ${POSTGRES_HOST}  
+        POSTGRES_PORT: ${POSTGRES_PORT} 
+        POSTGRES_DB: ${POSTGRES_DB}
+        POSTGRES_USER: ${POSTGRES_USER}  
+        POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      volumes:
+        - ./prediction_layer/models_lstm:/app/models_lstm
+      deploy:
+        resources:
+          limits:
+            memory: 2G
+            cpus: '1.0'
+          reservations:
+            memory: 2G
+            cpus: '1.0'
 
 ### PREDICTION LAYER
   prediction_layer:

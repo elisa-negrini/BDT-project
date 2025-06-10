@@ -88,7 +88,7 @@ for message in consumer:
     row = {
         "ticker": data["ticker"],
         "timestamp": data["timestamp"],
-        "price": float(data["price"]),.
+        "price": float(data["price"]),
         "size": data["size"],
         "exchange": data["exchange"]
     }

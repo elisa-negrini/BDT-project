@@ -17,7 +17,8 @@ COPY requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY df_company_fundamentals.parquet .
+RUN mkdir -p producer_h_company
+COPY df_company_fundamentals.parquet producer_h_company/
 
 COPY producer_h_company.py .
 
