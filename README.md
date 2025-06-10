@@ -17,18 +17,19 @@ To start and use the project, ensure you have **Docker** installed on your syste
 
 **1. Clone the repository**
 
-First, clone this repository to your local system using the repository url: 
-### Download of the .env file
+First, clone this repository to your local system using the repository url: https://github.com/elisa-negrini/BDT-project.git
+
+**2. Download of the .env file**
 
 Download the provided .env file and place it in the root directory of this repository. This file will contain necessary credentials and configuration settings.
 
-### Alpaca Credentials
+**3. Alpaca Credentials**
 
 To use real stock market streaming and historical data, you need to configure your Alpaca credentials. You can obtain an **API_KEY_ALPACA** and an **API_SECRET_ALPACA** by registering through the Alpaca Trading API: https://alpaca.markets/. Alternatively, you can send an email to samuele.viola@studenti.unitn.it to receive updated credentials.
 
 Once obtained, modify the environment variables in the .env file with your credentials (**API_KEY_ALPACA** and **API_SECRET_ALPACA**).
 
-### Stock Market Data
+#### NOTE: Stock Market Data Availability
 
 The Alpaca (stock market) streaming data is real and is provided Monday to Friday from 9:30 AM to 4:00 PM (US Eastern Time, ET), which corresponds to **3:30 PM to 10:00 PM (Italian Summer Time, CEST)**. For the rest of the time, synthetic data will be generated to maintain the flow, and therefore, it is not necessary to have updated **API_KEY_ALPACA** and **API_SECRET_ALPACA**. The other data streams (macroeconomics data, company fundamentals, bluesky’s sentiment and news’ bluesky) are always real.
 
