@@ -51,7 +51,7 @@ def fetch_tickers_from_db():
                 user=POSTGRES_USER, password=POSTGRES_PASSWORD
             )
             cursor = conn.cursor()
-            cursor.execute("SELECT ticker, avg_pred_price FROM companies_info WHERE is_active = TRUE AND avg_pred_price IS NOT NULL;")
+            cursor.execute("SELECT ticker, avg_simulated_price FROM companies_info WHERE is_active = TRUE AND avg_pred_price IS NOT NULL;")
             result = cursor.fetchall()
             cursor.close()
             conn.close()

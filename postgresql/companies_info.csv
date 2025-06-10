@@ -1,4 +1,4 @@
-ticker_id,ticker,company_name,related_words,is_active,avg_pred_price
+ticker_id,ticker,company_name,related_words,is_active,avg_simulated_price
 1,AAPL,Apple,null,TRUE, 200
 2,MSFT,Microsoft,null,TRUE, 470
 3,NVDA,Nvidia,null,TRUE, 140

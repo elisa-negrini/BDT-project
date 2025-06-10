@@ -7,7 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 RUN mkdir -p model 
 
-COPY create_model_lstm/ create_model_lstm/
+COPY models_lstm/ models_lstm/
 
 COPY prediction_layer.py /app
 
