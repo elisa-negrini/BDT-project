@@ -6,7 +6,8 @@ ENV TF_CPP_MIN_LOG_LEVEL=2
 
 WORKDIR /app
 
-COPY ml_model/requirements.txt ./requirements.txt
+COPY ml_model/retrain/requirements.txt ./requirements.txt
+
 RUN apt-get update && apt-get install -y \
     build-essential \
     python3-dev \
@@ -16,6 +17,6 @@ RUN apt-get update && apt-get install -y \
 
 COPY ml_model /app/ml_model
 
-WORKDIR /app/ml_model
+WORKDIR /app/ml_model/retrain
 
-CMD ["python", "train_lstm.py"]
+CMD ["python", "retrain.py"]
