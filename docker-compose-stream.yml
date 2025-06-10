@@ -332,7 +332,7 @@ services:
       - flink-global-job
     restart: always
 
-  storage_aggregated:
+  storage_aggregated: 
     container_name: storage_aggregated
     build:
       context: .
@@ -343,11 +343,36 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}  
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} 
+      FLINK_PROPERTIES: "env.java.opts: --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED"
     depends_on:
       - kafka 
       - postgres
-      - flink-aggregated-job
     restart: always
+    
+
+### RETRAIN
+  # retrainer:
+  #     build:
+  #       context: . # Docker build context is now 'my_test_ingestion'
+  #       dockerfile: retrain/Dockerfile
+  #     depends_on:
+  #       - storage_aggregated
+  #     environment:
+  #       POSTGRES_HOST: ${POSTGRES_HOST}  
+  #       POSTGRES_PORT: ${POSTGRES_PORT} 
+  #       POSTGRES_DB: ${POSTGRES_DB}
+  #       POSTGRES_USER: ${POSTGRES_USER}  
+  #       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  #     volumes:
+  #       - ./prediction_layer/models_lstm:/app/models_lstm
+  #     deploy:
+  #       resources:
+  #         limits:
+  #           memory: 2G
+  #           cpus: '3.0'
+  #         reservations:
+  #           memory: 2G
+  #           cpus: '3.0'
 
 ### PREDICTION LAYER
   prediction_layer:

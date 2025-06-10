@@ -95,41 +95,67 @@ def is_market_warmup_period(timestamp):
 
     return is_warmup
 
-# --- Function to dynamically load Models and Scalers ---
+# --- Funzione per caricare dinamicamente Modelli e Scalers (con ricaricamento) ---
 def load_model_and_scaler_for_ticker(ticker_name):
     """
-    Loads the Keras model and MinMaxScaler for a given ticker, with caching.
-
-    Args:
-        ticker_name (str): The ticker symbol (e.g., 'AAPL').
-
-    Returns:
-        tuple: (model, scaler, num_features) or (None, None, None) if loading fails.
+    Carica il modello e lo scaler per un dato ticker, con caching e ricaricamento
+    se i file sono stati modificati sul disco.
     """
-    if ticker_name not in loaded_models:
-        model_path = get_model_path(ticker_name)
-        scaler_path = get_scaler_path(ticker_name)
+    model_path = get_model_path(ticker_name)
+    scaler_path = get_scaler_path(ticker_name)
+
+    model_needs_reload = True
+    scaler_needs_reload = True
+
+    # Controlla se il modello è già in cache e se il file è stato modificato
+    if ticker_name in loaded_models and os.path.exists(model_path):
+        current_model_mtime = os.path.getmtime(model_path)
+        if loaded_models[ticker_name].get('last_modified') == current_model_mtime:
+            model_needs_reload = False
+        else:
+            print(f"\u21BA Model file for {ticker_name} changed. Reloading.")
+
+    # Controlla se lo scaler è già in cache e se il file è stato modificato
+    if ticker_name in loaded_scalers and os.path.exists(scaler_path):
+        current_scaler_mtime = os.path.getmtime(scaler_path)
+        if loaded_scalers[ticker_name].get('last_modified') == current_scaler_mtime:
+            scaler_needs_reload = False
+        else:
+            print(f"\u21BA Scaler file for {ticker_name} changed. Reloading.")
+            
+    # Se il modello non è in cache O ha bisogno di essere ricaricato
+    if model_needs_reload:
         try:
             model = tf.keras.models.load_model(model_path)
-            scaler = joblib.load(scaler_path)
-            loaded_models[ticker_name] = model
-            loaded_scalers[ticker_name] = scaler
-            num_features = scaler.n_features_in_
-            print(f"\u2705 Loaded model and scaler for {ticker_name} from {model_path} and {scaler_path}. Features: {num_features}")
+            loaded_models[ticker_name] = {'model': model, 'last_modified': os.path.getmtime(model_path)}
+            print(f"\u2705 Loaded/Reloaded model for {ticker_name} from {model_path}")
         except Exception as e:
-            print(f"\u274C Error loading artifacts for {ticker_name}: {e}")
+            print(f"\u274C Error loading model for {ticker_name} from {model_path}: {e}")
             return None, None, None
 
-    return loaded_models[ticker_name], loaded_scalers[ticker_name], loaded_scalers[ticker_name].n_features_in_
+    # Se lo scaler non è in cache O ha bisogno di essere ricaricato
+    if scaler_needs_reload:
+        try:
+            scaler = joblib.load(scaler_path)
+            loaded_scalers[ticker_name] = {'scaler': scaler, 'last_modified': os.path.getmtime(scaler_path)}
+            print(f"\u2705 Loaded/Reloaded scaler for {ticker_name} from {scaler_path}")
+        except Exception as e:
+            print(f"\u274C Error loading scaler for {ticker_name} from {scaler_path}: {e}")
+            # Se lo scaler fallisce, invalidiamo anche il modello perché non possiamo fare prediction senza scaler
+            if ticker_name in loaded_models:
+                del loaded_models[ticker_name]
+            return None, None, None
+            
+    # Recupera il modello e lo scaler dalla cache
+    model_obj = loaded_models[ticker_name]['model']
+    scaler_obj = loaded_scalers[ticker_name]['scaler']
+    num_features = scaler_obj.n_features_in_
+    
+    return model_obj, scaler_obj, num_features
 
 def load_ticker_map():
-    """
-    Loads the ticker-to-code mapping from a JSON file.
-    This map is crucial for identifying models.
-    Exits if the map file is not found or cannot be loaded.
-    """
     global ticker_name_to_code_map
-    print("Attempting to load ticker_map...")
+    print(f"Attempting to load ticker_map from {TICKER_MAP_FILENAME}")
     try:
         with open(TICKER_MAP_FILENAME, 'r') as f:
             ticker_name_to_code_map = json.load(f)
