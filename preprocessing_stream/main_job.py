@@ -27,7 +27,7 @@ POSTGRES_DB = os.getenv("POSTGRES_DB")
 POSTGRES_USER = os.getenv("POSTGRES_USER")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
 
-ANOMALY_THRESHOLD = os.getenv("ANOMALY_THRESHOLD")
+ANOMALY_THRESHOLD = float(os.getenv("ANOMALY_THRESHOLD"))
 
 def fetch_tickers_from_db():
     """
