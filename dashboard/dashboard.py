@@ -9,20 +9,19 @@ from kafka import KafkaConsumer
 import os
 import psycopg2
 
-# --- Streamlit Page Configuration ---
+# ====== Streamlit Page Configuration ======
 st.set_page_config(page_title="Real-Time Kafka Dashboard", layout="wide")
 
 # Auto-refresh every 3 seconds to keep data flowing.
 st_autorefresh(interval=3000, key="refresh")
 
-# --- Environment Variables and Configuration ---
+# ====== Environment Variables and Configuration ======
 # PostgreSQL environment variables (used to load tickers).
 POSTGRES_HOST = os.getenv("POSTGRES_HOST")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT")
 POSTGRES_DB = os.getenv("POSTGRES_DB")
 POSTGRES_USER = os.getenv("POSTGRES_USER")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
-
 
 @st.cache_data(ttl=3600) # Cache the data for 1 hour to avoid frequent DB connections.
 def load_tickers_from_db():
@@ -57,7 +56,7 @@ def load_tickers_from_db():
         st.stop()  # Blocca l’esecuzione della dashboard
 
 
-# --- Configuration ---
+# ====== Configuration ======
 # Available tickers and their corresponding names
 TICKERS_DATA = load_tickers_from_db()
 
@@ -71,13 +70,14 @@ utc_timezone = timezone.utc
 MARKET_OPEN_TIME = time(9, 30, 0) 
 MARKET_SECOND_REFERENCE_TIME = time(16, 1, 0)
 
-# --- Streamlit UI Selection ---
+# ====== Streamlit UI Selection ======
 selected_name = st.selectbox("Select a company:", DISPLAY_NAMES)
 selected_ticker = NAME_TO_TICKER[selected_name]
 
-# --- Kafka Consumers Initialization ---
+# ====== Kafka Consumers Initialization ======
 @st.cache_resource
 def create_consumers():
+    """Initializes and returns Kafka consumers for stock prices, predictions, and anomaly detection."""
     # Consumer for real-time stock price data
     consumer_prices = KafkaConsumer(
         "stock_trades",
@@ -94,7 +94,7 @@ def create_consumers():
         auto_offset_reset="latest",
         group_id="dashboard-consumer-predictions"
     )
-    # NEW: Consumer for anomaly detection data
+    # Consumer for anomaly detection data
     consumer_anomalies = KafkaConsumer(
         "anomaly_detection",
         bootstrap_servers="kafka:9092",
@@ -106,14 +106,14 @@ def create_consumers():
 
 consumer_prices, consumer_predictions, consumer_anomalies = create_consumers()
 
-# --- Session State Management for Data Buffers ---
+# ====== Session State Management for Data Buffers ======
 # Buffer for raw price data (last 10 minutes)
 if "price_buffer" not in st.session_state:
     st.session_state.price_buffer = {}
 # Buffer for raw prediction data (last 10 minutes)
 if "prediction_buffer" not in st.session_state:
     st.session_state.prediction_buffer = {}
-# NEW: Buffer for anomaly data (last 10 minutes)
+# Buffer for anomaly data (last 10 minutes)
 if "anomaly_buffer" not in st.session_state:
     st.session_state.anomaly_buffer = {}
 # Buffer to store the exchange source for each ticker (e.g., "RANDOM" or real)
@@ -129,7 +129,6 @@ for ticker in TICKERS_DATA.keys():
         st.session_state.price_buffer[ticker] = []
     if ticker not in st.session_state.prediction_buffer:
         st.session_state.prediction_buffer[ticker] = []
-    # NEW: Initialize anomaly buffer for each ticker
     if ticker not in st.session_state.anomaly_buffer:
         st.session_state.anomaly_buffer[ticker] = []
     if ticker not in st.session_state.exchange_status:
@@ -142,14 +141,13 @@ for ticker in TICKERS_DATA.keys():
             'is_post_market_price_set': False
         }
 
-# --- Kafka Data Consumption and Processing ---
+# ====== Kafka Data Consumption and Processing ======
 
 # Consume Price Topic
 records = consumer_prices.poll(timeout_ms=100)
 for tp, messages in records.items():
     for msg in messages:
         data = msg.value
-        # Ensure essential keys are present in the message
         if "ticker" not in data or "timestamp" not in data or "exchange" not in data:
             continue
 
@@ -168,7 +166,6 @@ for tp, messages in records.items():
             reference_data = st.session_state.daily_reference_data[current_message_ticker]
 
             # Condition to reset ALL daily reference prices if it's a NEW DAY.
-            # This is key: it ensures reset upon receiving a message for a new calendar day.
             if reference_data['reference_date'] is None or reference_data['reference_date'] < current_day_ny:
                 reference_data['daily_reference_price'] = None
                 reference_data['reference_date'] = current_day_ny
@@ -176,20 +173,16 @@ for tp, messages in records.items():
                 reference_data['is_post_market_price_set'] = False
 
             # 1. Capture the very first price of the day (pre-market or on initial dashboard load).
-            # This handles the "primissima volta prende il primo dato".
             if reference_data['daily_reference_price'] is None:
                 reference_data['daily_reference_price'] = price
 
             # 2. Update to the official 9:30 AM ET reference price.
-            # This overwrites any pre-market price if market open time is reached and not yet set.
             if ts_ny.time() >= MARKET_OPEN_TIME and \
                not reference_data['is_market_open_price_set']:
                 reference_data['daily_reference_price'] = price
                 reference_data['is_market_open_price_set'] = True # Mark as official 9:30 AM reference
 
             # 3. Update to the 4:00 PM ET (second reference) price.
-            # This overwrites the 9:30 AM price if the second reference time is reached and not yet set.
-            # Once set, it sticks for the rest of the day.
             if ts_ny.time() >= MARKET_SECOND_REFERENCE_TIME and \
                not reference_data['is_post_market_price_set']:
                 reference_data['daily_reference_price'] = price
@@ -225,7 +218,7 @@ for tp, messages in records_pred.items():
             st.error(f"Error processing prediction message: {e} - Data: {data}")
             continue
 
-# NEW: Consume Anomaly Detection Topic
+# Consume Anomaly Detection Topic
 records_anomalies = consumer_anomalies.poll(timeout_ms=100)
 for tp, messages in records_anomalies.items():
     for msg in messages:
@@ -263,7 +256,7 @@ for tp, messages in records_anomalies.items():
             st.error(f"Error processing anomaly message: {e} - Data: {data}")
             continue
 
-# --- Data Cleanup and Filtering for Display (Harmonized to 5 Minutes) ---
+# ====== Data Cleanup and Filtering for Display (Harmonized to 5 Minutes) ======
 display_and_cleanup_cutoff_utc = datetime.now(utc_timezone) - timedelta(minutes=5)
 
 # Cleanup and Filter for Prices
@@ -298,7 +291,7 @@ for d in st.session_state.anomaly_buffer.get(selected_ticker, []):
     d["max_timestamp_ny"] = d["max_timestamp"].astimezone(ny_timezone)
     filtered_anomalies.append(d)
 
-# --- Streamlit Dashboard Layout ---
+# ====== Streamlit Dashboard Layout ======
 
 # Display Header based on Exchange Status
 current_exchange_status = st.session_state.exchange_status.get(selected_ticker, "N/A")
@@ -308,7 +301,7 @@ if current_exchange_status == "RANDOM":
 else:
     st.header(f"Real-Time Price & Prediction for {selected_name}")
 
-# --- Plotly Chart for Prices and Predictions ---
+# ====== Plotly Chart for Prices and Predictions ======
 if not filtered_prices:
     st.warning("Waiting for recent price data...")
 else:
@@ -390,9 +383,8 @@ else:
             )
         )
 
-# --- Add Daily Reference Price Line to Chart as a Shape ---
+# ====== Add Daily Reference Price Line to Chart as a Shape ======
     daily_reference_price_value = st.session_state.daily_reference_data.get(selected_ticker, {}).get('daily_reference_price')
-    # reference_date non è direttamente usato per la shape, ma per l'annotazione
     is_post_market_price_set = st.session_state.daily_reference_data.get(selected_ticker, {}).get('is_post_market_price_set', False)
     is_market_open_price_set = st.session_state.daily_reference_data.get(selected_ticker, {}).get('is_market_open_price_set', False)
 
@@ -455,8 +447,7 @@ else:
 
     st.plotly_chart(fig, use_container_width=True)
 
-
-# --- Display Daily Reference Price and Performance ---
+# ====== Display Daily Reference Price and Performance ======
 if st.session_state.daily_reference_data[selected_ticker]['daily_reference_price'] is not None:
     reference_price = st.session_state.daily_reference_data[selected_ticker]['daily_reference_price']
     display_date = st.session_state.daily_reference_data[selected_ticker]['reference_date']

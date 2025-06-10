@@ -20,6 +20,7 @@ S3_BUCKET = 'macro-data'
 
 # === Kafka connection ===
 def connect_kafka_consumer():
+    """Establishes and returns a Kafka consumer with retry logic."""
     while True:
         try:
             consumer = KafkaConsumer(
@@ -38,6 +39,7 @@ def connect_kafka_consumer():
 
 # === Create bucket if it does not exist ===
 def ensure_bucket_exists():
+    """Ensures the S3 bucket exists, creating it if necessary."""
     s3 = boto3.resource(
         's3',
         endpoint_url=S3_ENDPOINT_URL,
@@ -99,14 +101,3 @@ for message in consumer:
         print(f"File saved: {path}")
     except Exception as e:
         print(f"Error saving file {filename}: {e}")
-
-# da togliere ? 
-
-# # Optional init section (if used elsewhere)
-# fs = S3FileSystem(
-#     endpoint_override="http://minio:9000",
-#     access_key="minioadmin",
-#     secret_key="minioadmin"
-# )
-# ensure_bucket_exists()
-# consumer = connect_kafka_consumer()

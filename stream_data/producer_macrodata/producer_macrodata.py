@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from kafka import KafkaProducer
 import pandas as pd
 
-# --- Configuration ---
+# ====== Configuration ======
 
 # Kafka broker and topic.
 KAFKA_BROKER = "kafka:9092"
@@ -31,14 +31,12 @@ SERIES_MAPPING = {
 SERIES_IDS = list(SERIES_MAPPING.keys())
 
 # Track previously sent timestamps for each series alias to avoid duplicates.
-# This set is initialized with dummy values and populated during initialization.
 seen_timestamps = {alias: set() for alias in SERIES_MAPPING.values()}
 
 # Fix the reference date to today for subsequent data fetches.
 TODAY = datetime.today().strftime('%Y-%m-%d')
 
-# --- Kafka Operations ---
-
+# ====== Kafka Operations ======
 def connect_kafka():
     """Establishes and returns a Kafka producer, with retry logic."""
     while True:
@@ -53,11 +51,9 @@ def connect_kafka():
             print(f"Kafka unavailable, retrying in 5 seconds... ({e})")
             time.sleep(5)
 
-# Initialize Kafka producer.
 producer = connect_kafka()
 
-# --- FRED Data Fetching and Sending ---
-
+# ====== FRED Data Fetching and Sending ======
 def initialize_seen_timestamps():
     """
     Initializes the 'seen_timestamps' set by fetching the latest observation
@@ -67,7 +63,6 @@ def initialize_seen_timestamps():
     print("Initializing: retrieving latest values for all FRED series...")
 
     for series_id, alias in SERIES_MAPPING.items():
-        # Fetch only the most recent observation for initialization.
         url = f"{BASE_URL}?series_id={series_id}&api_key={API_KEY}&file_type=json&sort_order=desc&limit=1"
         try:
             response = requests.get(url)
@@ -77,7 +72,7 @@ def initialize_seen_timestamps():
                     date = obs["date"]
                     value = obs["value"]
 
-                    if value != ".": # Filter out missing values
+                    if value != ".":
                         seen_timestamps[alias].add(date)
                         payload = {
                             "series_id": series_id,
@@ -95,12 +90,8 @@ def initialize_seen_timestamps():
             print(f"Request error during init for {series_id}: {e}")
 
 def fetch_and_send():
-    """
-    Fetches new macroeconomic data from FRED since the script's start date (today).
-    Only sends observations with new timestamps to Kafka, avoiding duplicates.
-    """
+    """Fetches new macroeconomic data from FRED and sends only new observations to Kafka."""
     for series_id, alias in SERIES_MAPPING.items():
-        # Fetch all observations from today onwards for continuous tracking.
         url = f"{BASE_URL}?series_id={series_id}&api_key={API_KEY}&file_type=json&observation_start={TODAY}"
         try:
             response = requests.get(url)
@@ -110,7 +101,6 @@ def fetch_and_send():
                     date = obs["date"]
                     value = obs["value"]
 
-                    # Only send new observations with valid values.
                     if date not in seen_timestamps[alias] and value != ".":
                         seen_timestamps[alias].add(date)
                         payload = {
@@ -126,7 +116,7 @@ def fetch_and_send():
         except Exception as e:
             print(f"Request error for {series_id}: {e}")
 
-# --- Main Execution Loop ---
+# ====== Main Execution Loop ======
 
 # Perform initial fetch to populate seen_timestamps and send latest data.
 initialize_seen_timestamps()

@@ -6,9 +6,9 @@ import numpy as np
 from datetime import datetime, timezone
 from scipy.special import softmax
 import onnxruntime as ort
-import psycopg2 # Import psycopg2 for database connection
-from psycopg2 import OperationalError # Import to handle DB connection errors
-import time # Import for retry logic
+import psycopg2
+from psycopg2 import OperationalError
+import time
 
 from pyflink.datastream import StreamExecutionEnvironment
 from pyflink.common.typeinfo import Types
@@ -16,21 +16,18 @@ from pyflink.datastream.connectors import FlinkKafkaConsumer, FlinkKafkaProducer
 from pyflink.common.serialization import SimpleStringSchema
 from transformers import AutoTokenizer
 
-# --- Kafka Configuration ---
+# ==== Kafka Configuration ====
 SOURCE_TOPIC = "bluesky"
 TARGET_TOPIC = "bluesky_sentiment"
 KAFKA_BROKER = "kafka:9092"
 
-# --- PostgreSQL Database Configuration ---
-# Ensure these environment variables are defined
-# in your Docker environment or system.
+# ==== PostgreSQL Database Configuration ====
 POSTGRES_HOST = os.getenv("POSTGRES_HOST")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT")
 POSTGRES_DB = os.getenv("POSTGRES_DB")
 POSTGRES_USER = os.getenv("POSTGRES_USER")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
 
-# --- Function for Database Connection with Retries ---
 def connect_to_db_for_keywords(max_retries=15, delay=5):
     """Attempts to connect to the database with retry logic."""
     db_url = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
@@ -47,7 +44,6 @@ def connect_to_db_for_keywords(max_retries=15, delay=5):
     sys.stderr.write("CRITICAL ERROR: Max retries reached. Could not connect to PostgreSQL.\n")
     raise Exception("Failed to connect to database.")
 
-# --- Function to Load Ticker Map from Database ---
 def load_company_ticker_map_from_db():
     """
     Loads ticker and company name information from the database
@@ -69,13 +65,10 @@ def load_company_ticker_map_from_db():
         for row in rows:
             ticker, company_name, related_words_str = row
 
-            # Add the main company name
             if company_name:
                 company_ticker_map[company_name.lower()] = ticker
 
-            # Add related words (if present and not null)
             if related_words_str:
-                # Assuming related_words are comma-separated (e.g., "Facebook, Meta Platforms")
                 related_words = [w.strip() for w in related_words_str.split(',') if w.strip()]
                 for word in related_words:
                     company_ticker_map[word.lower()] = ticker
@@ -85,17 +78,14 @@ def load_company_ticker_map_from_db():
 
     except Exception as e:
         sys.stderr.write(f"CRITICAL ERROR: Failed to load COMPANY_TICKER_MAP from database: {e}\n")
-        # In case of critical DB error, you might want to exit or retry the application
-        sys.exit(1) # Exit the program if essential data cannot be loaded
+        sys.exit(1)
     finally:
         if conn:
             conn.close()
 
-# --- Load the map at script startup ---
+# === Load the map at script startup ===
 COMPANY_TICKER_MAP = load_company_ticker_map_from_db()
 
-
-# Global model and tokenizer (lazy loaded in a more robust way)
 finbert_tokenizer = None
 finbert_session = None
 
@@ -105,7 +95,6 @@ def load_finbert_model():
     """
     global finbert_tokenizer, finbert_session
     
-    # Get the base model path from the environment variable, or use /model as default
     base_model_dir = os.environ.get("FINBERT_MODEL_BASE_PATH", "/model")
 
     if finbert_tokenizer is None:
@@ -140,32 +129,28 @@ def extract_tickers(text):
     Returns a list of unique tickers found, or ['GENERAL'] if none are identified.
     """
     tickers = set()
-    # Find tickers like $AAPL
     matches = re.findall(r"\$([A-Z]{1,5})", text.upper())
     for sym in matches:
-        # Check if the extracted symbol is in our valid ticker list (values of COMPANY_TICKER_MAP)
         if sym in COMPANY_TICKER_MAP.values():
             tickers.add(sym)
     
-    # Find company names or related words
     lowered = text.lower()
     for name, ticker in COMPANY_TICKER_MAP.items():
-        # Check if the company name/related word is present in the text
-        if name in lowered: # Simple substring check for now, can be improved with word boundaries if needed
+        if name in lowered:
             tickers.add(ticker)
             
     return list(tickers) if tickers else ["GENERAL"]
 
-
 def compute_sentiment(text):
-    # Assicurati che il modello e il tokenizer siano caricati
+    """
+    Computes the sentiment score for the given text using the FinBERT model.
+    The score is normalized to a range between -0.2 and 0.2.
+    """
     load_finbert_model()
-
     try:
         if not text or text.strip() == "":
             return 0.0
 
-        # Tokenizzazione e inferenza del modello
         tokens = finbert_tokenizer(
             text,
             return_tensors="np",
@@ -177,24 +162,15 @@ def compute_sentiment(text):
         logits = finbert_session.run(None, ort_inputs)[0]
         probs = softmax(logits[0])
 
-        # Le probabilità delle classi:
-        # probs[0] = positivo
-        # probs[1] = neutro
-        # probs[2] = negativo
-        
         prob_positive = probs[0]
         prob_neutral = probs[1]
         prob_negative = probs[2]
 
-        # Calcolo del punteggio di sentiment attenuato dalla neutralità
-        # Questo punteggio varia ancora tra -1 e 1
         raw_sentiment_score = prob_positive - prob_negative
         attenuation_factor = 1 - prob_neutral
         
         attenuated_score = raw_sentiment_score * attenuation_factor
-        
-        # Scala il punteggio attenuato per farlo variare tra -0.2 e 0.2
-        # Il fattore di scala è 0.2, poiché l'intervallo totale è 0.4 (da -0.2 a 0.2)
+
         final_scaled_score = attenuated_score * 0.1
         
         return round(float(final_scaled_score), 4)
@@ -215,30 +191,24 @@ def process_message(msg):
         text = data.get("text", "")
         created_at = data.get("created_at", "")
 
-        # --- Timestamp Parsing Logic ---
         timestamp_str_parsed = ""
         try:
-            # Regex to handle timestamps with optional microseconds and 'Z' timezone
             match = re.match(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d+)?(Z)?", created_at)
             if match:
                 base_time = match.group(1)
                 fractional_seconds = match.group(2)
                 timezone_z = match.group(3)
 
-                # Truncate fractional seconds to milliseconds if present
                 if fractional_seconds:
-                    fractional_seconds = fractional_seconds[:7] # keep up to 6 digits (microseconds)
+                    fractional_seconds = fractional_seconds[:7]
                 else:
                     fractional_seconds = ""
 
-                # Construct the string for datetime.fromisoformat
                 timestamp_to_parse = f"{base_time}{fractional_seconds}{timezone_z if timezone_z else ''}"
                 
-                # Parse and convert to UTC
                 timestamp_obj = datetime.fromisoformat(timestamp_to_parse.replace("Z", "+00:00"))
                 timestamp_obj_utc = timestamp_obj.astimezone(timezone.utc)
                 
-                # Format to desired string (milliseconds and 'Z' for UTC)
                 timestamp_str_parsed = timestamp_obj_utc.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
             else:
                 raise ValueError("Timestamp format not recognized by regex.")
@@ -249,11 +219,9 @@ def process_message(msg):
             sys.stderr.write(f"ERROR: Unexpected error during timestamp parsing for '{created_at}': {e}. Using current UTC time.\n")
             timestamp_str_parsed = datetime.utcnow().isoformat(timespec='milliseconds') + 'Z'
 
-        # Extract tickers and compute sentiment
         tickers = extract_tickers(text)
         score = compute_sentiment(text)
 
-        # Prepare output JSON
         out = {
             "timestamp": timestamp_str_parsed,
             "social": "bluesky",
@@ -264,14 +232,14 @@ def process_message(msg):
         return json.dumps(out)
     except Exception as e:
         sys.stderr.write(f"ERROR: Failed to process message: {e}\n")
-        # Return a structured error message to Kafka if processing fails
+
         return json.dumps({
             "timestamp": datetime.utcnow().isoformat(timespec='milliseconds') + 'Z',
             "social": "bluesky",
-            "ticker": ["ERROR"], # Indicate an error for ticker
-            "sentiment_score": 0.0, # Default sentiment score
+            "ticker": ["ERROR"],
+            "sentiment_score": 0.0,
             "error_message": str(e),
-            "original_message": msg # Include original message for debugging
+            "original_message": msg 
         })
 
 def main():
@@ -280,7 +248,7 @@ def main():
     It reads from a Kafka source, processes messages, and writes results to a Kafka sink.
     """
     env = StreamExecutionEnvironment.get_execution_environment()
-    env.set_parallelism(1) # Set parallelism for the Flink job
+    env.set_parallelism(1)
 
     # Kafka source configuration
     kafka_consumer = FlinkKafkaConsumer(
@@ -289,7 +257,7 @@ def main():
         properties={
             "bootstrap.servers": KAFKA_BROKER,
             "group.id": "sentiment-flink-group",
-            "auto.offset.reset": "earliest" # Start reading from the beginning of the topic if no offset is committed
+            "auto.offset.reset": "earliest"
         }
     )
 
@@ -310,7 +278,6 @@ def main():
     # Add a console sink to print processed messages to the container's log
     processed_stream.print()
 
-    # Execute the Flink job
     sys.stderr.write("INFO: Starting Flink job: Sentiment Analysis with Flink\n")
     env.execute("Sentiment Analysis with Flink")
     sys.stderr.write("INFO: Flink job finished.\n")

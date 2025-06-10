@@ -14,8 +14,7 @@ import psycopg2
 # Apply nest_asyncio for compatibility in embedded environments (e.g., notebooks).
 nest_asyncio.apply()
 
-# --- Configuration ---
-
+# ====== Configuration ======
 # Alpaca API credentials. Set as environment variables for security.
 API_KEY = os.getenv("API_KEY_ALPACA")
 API_SECRET = os.getenv("API_SECRET_ALPACA")
@@ -25,7 +24,6 @@ KAFKA_BROKER = "kafka:9092"
 KAFKA_TOPIC = 'stock_trades'
 
 # PostgreSQL database connection details for fetching tickers.
-# These must be set as environment variables.
 POSTGRES_HOST = os.getenv("POSTGRES_HOST")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT")
 POSTGRES_DB = os.getenv("POSTGRES_DB")
@@ -35,11 +33,11 @@ POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
 # New York timezone for market hour determination.
 ny_timezone = pytz.timezone("America/New_York")
 
-# --- Database Operations ---
 
+# ====== Database Operations ======
 def fetch_tickers_from_db():
     """
-    Retrieves active stock tickers and their avg_pred_price from the PostgreSQL database.
+    Retrieves active stock tickers and their avg_simulated_price from the PostgreSQL database.
     """
     max_retries = 10
     delay = 5
@@ -51,17 +49,17 @@ def fetch_tickers_from_db():
                 user=POSTGRES_USER, password=POSTGRES_PASSWORD
             )
             cursor = conn.cursor()
-            cursor.execute("SELECT ticker, avg_simulated_price FROM companies_info WHERE is_active = TRUE AND avg_pred_price IS NOT NULL;")
+            cursor.execute("SELECT ticker, avg_simulated_price FROM companies_info WHERE is_active = TRUE AND avg_simulated_price IS NOT NULL;")
             result = cursor.fetchall()
             cursor.close()
             conn.close()
 
             if not result:
-                print("No tickers with avg_pred_price found.")
+                print("No tickers with avg_simulated_price found.")
                 return {}
 
             ticker_price_map = {row[0]: float(row[1]) for row in result if row[0] and row[1]}
-            print(f"Loaded {len(ticker_price_map)} tickers with avg_pred_price from DB.")
+            print(f"Loaded {len(ticker_price_map)} tickers with avg_simulated_price from DB.")
             return ticker_price_map
 
         except Exception as e:
@@ -71,15 +69,13 @@ def fetch_tickers_from_db():
     print("Failed to connect to database after multiple attempts. Exiting.")
     exit(1)
 
-
 # Fetch tickers on script initialization.
 top_tickers = fetch_tickers_from_db()
 if not top_tickers:
     print("No tickers available from DB. Exiting.")
     exit(1)
 
-# --- Kafka Operations ---
-
+# ====== Kafka Operations ======
 def connect_kafka():
     """Establishes and returns a Kafka producer connection, with retries."""
     while True:
@@ -97,8 +93,7 @@ def connect_kafka():
 # Initialize Kafka producer.
 producer = connect_kafka()
 
-# --- Stock Data Generation & Streaming ---
-
+# ====== Stock Data Generation & Streaming ======
 # Initialize the last known price for each ticker for random data generation.
 ticker_price_map = fetch_tickers_from_db()
 top_tickers = list(ticker_price_map.keys())
@@ -111,8 +106,7 @@ stream_running = False
 
 async def handle_trade_data(data):
     """
-    Callback for live trade data from Alpaca.
-    Formats the data and sends it to Kafka.
+    Callback for live trade data from Alpaca. Formats the data and sends it to Kafka.
     """
     row = {
         "ticker": data.symbol,
@@ -126,10 +120,7 @@ async def handle_trade_data(data):
     producer.flush()
 
 async def generate_random_trade_data():
-    """
-    Generates simulated stock trade data for all tickers.
-    Simulates price and size fluctuations and sends data to Kafka.
-    """
+    """Generates simulated stock trade data for all tickers and sends it to Kafka."""
     global last_prices
     current_time_utc = datetime.now(pytz.utc).isoformat()
 
@@ -152,8 +143,7 @@ async def generate_random_trade_data():
         producer.send(KAFKA_TOPIC, value=row)
     producer.flush()
 
-# --- Market Hours Logic ---
-
+# ====== Market Hours Logic ======
 def is_market_open():
     """
     Checks if the New York stock market is currently open (9:30 AM - 4:00 PM ET, weekdays).
@@ -166,8 +156,7 @@ def is_market_open():
         return False
     return market_open_time <= current_time_ny < market_close_time
 
-# --- Main Execution Loop ---
-
+# ====== Main Execution Loop ======
 async def main():
     """
     Main asynchronous function. Manages Alpaca stream during market hours
@@ -175,7 +164,6 @@ async def main():
     """
     global stream_running
 
-    # Subscribe to live trade data for all tickers on startup.
     for symbol in top_tickers:
         stream.subscribe_trades(handle_trade_data, symbol)
 
@@ -185,13 +173,13 @@ async def main():
         if is_market_open():
             if not stream_running:
                 print("Market open. Starting Alpaca streaming...")
-                asyncio.create_task(stream.run()) # Run stream in background
+                asyncio.create_task(stream.run())
                 stream_running = True
-            await asyncio.sleep(1) # Allow Alpaca stream to process.
+            await asyncio.sleep(1)
         else:
             if stream_running:
                 print("Market closed. Stopping Alpaca streaming and switching to random data...")
-                await stream.stop() # Stop Alpaca stream
+                await stream.stop()
                 stream_running = False
             await generate_random_trade_data()
             await asyncio.sleep(1) # Wait one second before next data cycle.
