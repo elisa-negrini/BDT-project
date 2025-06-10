@@ -104,8 +104,6 @@ After modifying and saving the companies_info.csv file, you need to update the f
 
 **API Limits for Fundamental Data**: The API for fundamental data has a limit of 250 requests per day. Each company requires 3 API calls. Therefore, you cannot modify the full set of 30 companies more than 2 times on the same day.
 
-### Managing Docker Compose
-
 #### Shutting Down a Docker Compose
 
 To shut down any Docker Compose configuration, use the command:
