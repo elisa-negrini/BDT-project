@@ -788,11 +788,11 @@ import pytz
 
 # Paths for saving artifacts
 #MODELS_BASE_PATH = "create_model_lstm/models"  # Cartella che contiene tutti i modelli
-MODELS_BASE_PATH = "create_model_lstm/models_2" 
+MODELS_BASE_PATH = "models_lstm/models" 
 #SCALERS_BASE_PATH = "create_model_lstm/scalers" # Cartella che contiene tutti gli scalers
-SCALERS_BASE_PATH = "create_model_lstm/scalers_2"
+SCALERS_BASE_PATH = "models_lstm/scalers"
 
-TICKER_MAP_FILENAME =  "create_model_lstm/ticker_map2.json"
+TICKER_MAP_FILENAME =  "models_lstm/ticker_map.json"
 
 # TICKER_MAP_FILENAME rimane, ma il suo uso potrebbe cambiare se ogni modello ha il suo input specifico
 # TICKER_MAP_FILENAME = os.path.join(MODEL_SAVE_PATH, "ticker_map.json") # Potrebbe non servire se i modelli sono per singolo ticker
@@ -828,10 +828,10 @@ KEY_FEATURE_TO_EMPHASIZE = "price_mean_1min"
 # --- Funzioni per ottenere i percorsi dei file ---
 def get_model_path(ticker_name):
     #return os.path.join(MODELS_BASE_PATH, f"lstm_model_{ticker_name}.h5")
-    return os.path.join(MODELS_BASE_PATH, f"lstm_model2_{ticker_name}.h5")
+    return os.path.join(MODELS_BASE_PATH, f"lstm_model_{ticker_name}.h5")
 
 def get_scaler_path(ticker_name):
-    return os.path.join(SCALERS_BASE_PATH, f"scaler2_{ticker_name}.pkl")
+    return os.path.join(SCALERS_BASE_PATH, f"scaler_{ticker_name}.pkl")
 
 # --- Funzione per verificare se siamo nel periodo di warmup del mercato ---
 def is_market_warmup_period(timestamp):
@@ -877,27 +877,103 @@ def is_market_warmup_period(timestamp):
     return is_warmup
 
 # --- Funzione per caricare dinamicamente Modelli e Scalers ---
+# def load_model_and_scaler_for_ticker(ticker_name):
+#     """Carica il modello e lo scaler per un dato ticker, con caching."""
+#     if ticker_name not in loaded_models:
+#         model_path = get_model_path(ticker_name)
+#         scaler_path = get_scaler_path(ticker_name)
+#         try:
+#             model = tf.keras.models.load_model(model_path)
+#             scaler = joblib.load(scaler_path)
+#             loaded_models[ticker_name] = model
+#             loaded_scalers[ticker_name] = scaler
+#             num_features = scaler.n_features_in_
+#             print(f"\u2705 Loaded model and scaler for {ticker_name} from {model_path} and {scaler_path}. Features: {num_features}")
+#         except Exception as e:
+#             print(f"\u274C Error loading artifacts for {ticker_name}: {e}")
+#             return None, None, None
+    
+#     return loaded_models[ticker_name], loaded_scalers[ticker_name], loaded_scalers[ticker_name].n_features_in_
+
+# def load_ticker_map():
+#     global ticker_name_to_code_map
+#     print("provo a prendere il ticker_map")
+#     try:
+#         with open(TICKER_MAP_FILENAME, 'r') as f:
+#             ticker_name_to_code_map = json.load(f)
+#             print(f"\u2705 Loaded ticker map from {TICKER_MAP_FILENAME}: {ticker_name_to_code_map}")
+#     except FileNotFoundError:
+#         print(f"\u274C Ticker map file not found at {TICKER_MAP_FILENAME}. Ensure training script ran successfully and saved it.", file=sys.stderr)
+#         sys.exit(1) # Exit if the map is not found, as it's crucial
+#     except Exception as e:
+#         print(f"\u274C Error loading ticker map from {TICKER_MAP_FILENAME}: {e}", file=sys.stderr)
+#         sys.exit(1)
+
+
+
+
+
+# --- Funzione per caricare dinamicamente Modelli e Scalers (con ricaricamento) ---
 def load_model_and_scaler_for_ticker(ticker_name):
-    """Carica il modello e lo scaler per un dato ticker, con caching."""
-    if ticker_name not in loaded_models:
-        model_path = get_model_path(ticker_name)
-        scaler_path = get_scaler_path(ticker_name)
+    """
+    Carica il modello e lo scaler per un dato ticker, con caching e ricaricamento
+    se i file sono stati modificati sul disco.
+    """
+    model_path = get_model_path(ticker_name)
+    scaler_path = get_scaler_path(ticker_name)
+
+    model_needs_reload = True
+    scaler_needs_reload = True
+
+    # Controlla se il modello è già in cache e se il file è stato modificato
+    if ticker_name in loaded_models and os.path.exists(model_path):
+        current_model_mtime = os.path.getmtime(model_path)
+        if loaded_models[ticker_name].get('last_modified') == current_model_mtime:
+            model_needs_reload = False
+        else:
+            print(f"\u21BA Model file for {ticker_name} changed. Reloading.")
+
+    # Controlla se lo scaler è già in cache e se il file è stato modificato
+    if ticker_name in loaded_scalers and os.path.exists(scaler_path):
+        current_scaler_mtime = os.path.getmtime(scaler_path)
+        if loaded_scalers[ticker_name].get('last_modified') == current_scaler_mtime:
+            scaler_needs_reload = False
+        else:
+            print(f"\u21BA Scaler file for {ticker_name} changed. Reloading.")
+            
+    # Se il modello non è in cache O ha bisogno di essere ricaricato
+    if model_needs_reload:
         try:
             model = tf.keras.models.load_model(model_path)
-            scaler = joblib.load(scaler_path)
-            loaded_models[ticker_name] = model
-            loaded_scalers[ticker_name] = scaler
-            num_features = scaler.n_features_in_
-            print(f"\u2705 Loaded model and scaler for {ticker_name} from {model_path} and {scaler_path}. Features: {num_features}")
+            loaded_models[ticker_name] = {'model': model, 'last_modified': os.path.getmtime(model_path)}
+            print(f"\u2705 Loaded/Reloaded model for {ticker_name} from {model_path}")
         except Exception as e:
-            print(f"\u274C Error loading artifacts for {ticker_name}: {e}")
+            print(f"\u274C Error loading model for {ticker_name} from {model_path}: {e}")
             return None, None, None
+
+    # Se lo scaler non è in cache O ha bisogno di essere ricaricato
+    if scaler_needs_reload:
+        try:
+            scaler = joblib.load(scaler_path)
+            loaded_scalers[ticker_name] = {'scaler': scaler, 'last_modified': os.path.getmtime(scaler_path)}
+            print(f"\u2705 Loaded/Reloaded scaler for {ticker_name} from {scaler_path}")
+        except Exception as e:
+            print(f"\u274C Error loading scaler for {ticker_name} from {scaler_path}: {e}")
+            # Se lo scaler fallisce, invalidiamo anche il modello perché non possiamo fare prediction senza scaler
+            if ticker_name in loaded_models:
+                del loaded_models[ticker_name]
+            return None, None, None
+            
+    # Recupera il modello e lo scaler dalla cache
+    model_obj = loaded_models[ticker_name]['model']
+    scaler_obj = loaded_scalers[ticker_name]['scaler']
+    num_features = scaler_obj.n_features_in_
     
-    return loaded_models[ticker_name], loaded_scalers[ticker_name], loaded_scalers[ticker_name].n_features_in_
+    return model_obj, scaler_obj, num_features
 
 def load_ticker_map():
     global ticker_name_to_code_map
-    print("provo a prendere il ticker_map")
+    print(f"Attempting to load ticker_map from {TICKER_MAP_FILENAME}")
     try:
         with open(TICKER_MAP_FILENAME, 'r') as f:
             ticker_name_to_code_map = json.load(f)
