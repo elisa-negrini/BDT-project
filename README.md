@@ -64,7 +64,7 @@ To download historical data, perform initial model training, and then start cont
 
 <pre lang="markdown"> docker-compose -f docker-compose-historical.yml up --build -d </pre>
 
-Monitor the container logs (docker-compose logs -f) to determine when the initial training process has finished. This process can take a significant amount of time depending on your system's resources and data volume.
+Monitor the container logs (docker-compose logs -f) to determine when the initial training process has finished. This process can take a significant amount of time (around 7 + 1 hours) depending on your system's resources and data volume.
 
 2. **Once initial training is complete, shut down the docker-compose-historical.yml configuration:**
 
