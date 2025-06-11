@@ -1143,35 +1143,80 @@ def extract_key(json_str: str) -> str:
         return "unknown_general_error"
 
 # Aggiungi questa funzione dopo le altre funzioni helper
-def create_kafka_topic_if_not_exists(topic_name, num_partitions=1, replication_factor=1):
-    """Crea il topic Kafka se non esiste già."""
-    try:
-        admin_client = KafkaAdminClient(
-            bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-            client_id='topic_creator'
-        )
+# def create_kafka_topic_if_not_exists(topic_name, num_partitions=1, replication_factor=1):
+#     """Crea il topic Kafka se non esiste già."""
+#     try:
+#         admin_client = KafkaAdminClient(
+#             bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+#             client_id='topic_creator'
+#         )
         
-        # Controlla se il topic esiste già
-        existing_topics = admin_client.list_topics()
-        if topic_name in existing_topics:
-            print(f"[INFO] Topic '{topic_name}' già esistente.")
+#         # Controlla se il topic esiste già
+#         existing_topics = admin_client.list_topics()
+#         if topic_name in existing_topics:
+#             print(f"[INFO] Topic '{topic_name}' già esistente.")
+#             return
+        
+#         # Crea il nuovo topic
+#         topic = NewTopic(
+#             name=topic_name,
+#             num_partitions=num_partitions,
+#             replication_factor=replication_factor
+#         )
+        
+#         admin_client.create_topics([topic])
+#         print(f"[INFO] Topic '{topic_name}' creato con successo.")
+        
+#     except Exception as e:
+#         print(f"[ERROR] Errore nella creazione del topic '{topic_name}': {e}", file=sys.stderr)
+#         # Non bloccare l'esecuzione se la creazione del topic fallisce
+#     finally:
+#         admin_client.close()
+
+
+def create_kafka_topic_if_not_exists(topic_name, num_partitions=1, replication_factor=1, max_retries=20, retry_delay=10):
+    """Crea il topic Kafka se non esiste già."""
+    admin_client = None 
+    for attempt in range(max_retries):
+        try: 
+            print(f"[INFO] Tentativo {attempt + 1}/{max_retries} di connessione a Kafka per creare topic '{topic_name}'...")
+                
+            admin_client = KafkaAdminClient(
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                client_id='topic_creator'
+            )
+            
+            # Controlla se il topic esiste già
+            existing_topics = admin_client.list_topics()
+            if topic_name in existing_topics:
+                print(f"[INFO] Topic '{topic_name}' già esistente.")
+                return
+            
+            # Crea il nuovo topic
+            topic = NewTopic(
+                name=topic_name,
+                num_partitions=num_partitions,
+                replication_factor=replication_factor
+            )
+            
+            admin_client.create_topics([topic])
+            print(f"[INFO] Topic '{topic_name}' creato con successo.")
             return
         
-        # Crea il nuovo topic
-        topic = NewTopic(
-            name=topic_name,
-            num_partitions=num_partitions,
-            replication_factor=replication_factor
-        )
-        
-        admin_client.create_topics([topic])
-        print(f"[INFO] Topic '{topic_name}' creato con successo.")
-        
-    except Exception as e:
-        print(f"[ERROR] Errore nella creazione del topic '{topic_name}': {e}", file=sys.stderr)
-        # Non bloccare l'esecuzione se la creazione del topic fallisce
-    finally:
-        admin_client.close()
+        except Exception as e:
+            print(f"[WARNING] Tentativo {attempt + 1} fallito per topic '{topic_name}': {e}", file=sys.stderr)
+            if attempt < max_retries - 1:
+                print(f"[INFO] Attendo {retry_delay} secondi prima del prossimo tentativo...")
+                time.sleep(retry_delay)
+            else:
+                print(f"[ERROR] Tutti i {max_retries} tentativi falliti per creare topic '{topic_name}'. Continuo senza creazione topic.", file=sys.stderr)
+        finally:
+            if admin_client is not None:  # Only close if it was successfully created
+                try:
+                    admin_client.close()
+                    admin_client = None 
+                except Exception as close_e:
+                    print(f"[WARNING] Error closing admin client: {close_e}", file=sys.stderr)
 
 # --- Main Flink Job Execution ---
 def main():
