@@ -10,7 +10,7 @@ import pyarrow
 
 # === Configuration ===
 KAFKA_BROKER = 'kafka:9092'
-TOPICS = ['reddit_sentiment', 'news_sentiment', 'bluesky_sentiment']
+TOPICS = ['news_sentiment', 'bluesky_sentiment']
 S3_ENDPOINT_URL = os.getenv('S3_ENDPOINT_URL')
 S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY')
 S3_SECRET_KEY = os.getenv('S3_SECRET_KEY')
@@ -87,14 +87,14 @@ try:
 
         for ticker in tickers:
             row = {
-                "Social": social,
-                "Ticker": ticker,
-                "Timestamp": ts.isoformat(),
-                "SentimentScore": score
+                "timestamp": ts.isoformat(),
+                "social": social,
+                "ticker": ticker,
+                "sentiment_score": score
             }
             df = pd.DataFrame([row])
 
-            month_str = f"{ts.year % 100:02d}-{ts.month:02d}"  # e.g., '25-01'
+            month_str = f"{ts.year % 100:02d}-{ts.month:02d}"
             filename = f"{social}_{ticker}_{ts.strftime('%Y%m%dT%H%M%S')}.parquet"
             path = f"{S3_BUCKET}/social={social}/ticker={ticker}/month={month_str}/{filename}"
 

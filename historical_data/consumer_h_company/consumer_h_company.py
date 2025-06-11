@@ -194,7 +194,7 @@ MINIO_BUCKET ="company-fundamentals"
 # How long the consumer waits for new messages in each poll before returning (in milliseconds)
 CONSUMER_POLL_TIMEOUT_MS = 5000
 # How long the consumer waits for any messages before deciding to shut down due to inactivity (in seconds)
-INACTIVITY_SHUTDOWN_SECONDS = 30
+INACTIVITY_SHUTDOWN_SECONDS = 100
 
 # === KAFKA CONSUMER FUNCTION ===
 def connect_kafka_consumer():

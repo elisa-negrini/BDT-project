@@ -366,6 +366,32 @@ services:
       - prediction_layer
     restart: always
 
+### MODEL RETRAIN
+
+  retrain:
+      container_name: retrain
+      build:
+        context: .
+        dockerfile: ml_model/retrain/Dockerfile
+      depends_on:
+        - storage_aggregated
+      environment:
+        POSTGRES_HOST: ${POSTGRES_HOST}  
+        POSTGRES_PORT: ${POSTGRES_PORT} 
+        POSTGRES_DB: ${POSTGRES_DB}
+        POSTGRES_USER: ${POSTGRES_USER}  
+        POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      volumes:
+        - ./prediction_layer/models_lstm:/app/models_lstm
+      deploy:
+        resources:
+          limits:
+            memory: 2G
+            cpus: '1.0'
+          reservations:
+            memory: 2G
+            cpus: '1.0'
+
 ### DASHBOARD 
 
   dashboard:
@@ -407,8 +433,8 @@ services:
     depends_on:
       - kafka
       - minio
-      - producer_h_company    
-    restart: always
+      - producer_h_company   
+    restart: always 
 
 networks:
   flink_net:
@@ -421,7 +447,7 @@ volumes:
   pgdata:
     driver: local 
 
-# Other resources not used in this project
+# Other sources not used in this project
 
 # producer_reddit:
 #   container_name: producer_reddit

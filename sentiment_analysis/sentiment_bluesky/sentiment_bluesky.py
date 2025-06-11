@@ -95,7 +95,7 @@ def load_finbert_model():
     """
     global finbert_tokenizer, finbert_session
     
-    base_model_dir = os.environ.get("FINBERT_MODEL_BASE_PATH", "/model")
+    base_model_dir = "/model"
 
     if finbert_tokenizer is None:
         try:
