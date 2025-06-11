@@ -45,3 +45,9 @@ This folder contains three PyFlink jobs responsible for ingesting, aggregating, 
  -   Required Python libs: `kafka-python`, `pyflink`, `minio`, `psycopg2`, `pytz`, `numpy`, `pandas`, `dateutil`
 
 #### ENVIRONMENTAL VARIABLES
+
+- MinIO (S3): `S3_ENDPOINT_URL`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`
+
+- PostgreSQL: `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
+
+- Other: `ANOMALY_DETECTION`
