@@ -68,7 +68,7 @@ DISPLAY_NAMES = list(NAME_TO_TICKER.keys())
 ny_timezone = pytz.timezone('America/New_York')
 utc_timezone = timezone.utc
 MARKET_OPEN_TIME = time(9, 30, 0) 
-MARKET_SECOND_REFERENCE_TIME = time(16, 1, 0)
+MARKET_SECOND_REFERENCE_TIME = time(16, 0, 0)
 
 # ====== Streamlit UI Selection ======
 selected_name = st.selectbox("Select a company:", DISPLAY_NAMES)

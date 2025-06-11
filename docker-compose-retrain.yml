@@ -421,13 +421,6 @@ services:
       - producer_h_company   
     restart: always 
 
-networks:
-  flink_net:
-    driver: bridge
-
-  minio_network:
-    driver: bridge
-
 volumes:
   pgdata:
     driver: local 

@@ -171,13 +171,6 @@ services:
           memory: 4G
           cpus: '3.0' 
 
-networks:
-  flink_net:
-    driver: bridge
-
-  minio_network:
-    driver: bridge
-
 volumes:
   pgdata:
     driver: local 
