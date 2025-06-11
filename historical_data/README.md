@@ -8,33 +8,33 @@ These components set the past data ingestion pipeline and populate the system wi
 
 `producer_h_stockdata`:
 
-- **Source**: Historical stock trade data downloaded via Alpaca API.
+- **Source**: Historical stock trade data downloaded via Alpaca API
 
 - **Tickers**: Automatically retrieved from PostgreSQL (`companies_info` table)
 
 - **Output Topic**: `h_alpaca`
 
-- **Frequency**: Sends 1 week of 1-minute data per message per ticker.
+- **Frequency**: Sends 1 week of 1-minute data per message per ticker
 
 - **Features**: Time range: from 2021-01-01 to yesterday (09:30–16:00 ET)
 
 `producer_h_macrodata`:
 
-- **Source**: Daily macroeconomic indicators from FRED API.
+- **Source**: Daily macroeconomic indicators from FRED API
 
 - **Variables**: Includes CPI, GDP, unemployment, interest rates, etc.
 
 - **Output Topic**: `historical_macro`
 
-- **Frequency**: One message per macro-variable per file.
+- **Frequency**: One message per macro-variable per file
 
 `producer_h_company`:
 
-- **Source**: Pre-collected Parquet file of company fundamentals (`df_company_fundamentals.parquet`).
+- **Source**: Pre-collected Parquet file of company fundamentals (`df_company_fundamentals.parquet`)
 
 - **Output Topic**: `h_company`
 
-- **Frequency**: Each record includes ticker, calendarYear, and financial metrics.
+- **Frequency**: Each record includes ticker, calendarYear, and financial metrics
 
 ## Kafka Consumers Overview
 
@@ -66,11 +66,11 @@ These components set the past data ingestion pipeline and populate the system wi
 
 `historical_aggregated`:
 
-- **Purpose**: It combines raw stock, macroeconomic, and fundamental data, performs necessary feature engineering, and then stores the enriched dataset in PostgreSQL for model training. Upon completion, it sends a signal to trigger the next steps in our MLOps pipeline.
+- **Purpose**: It combines raw stock, macroeconomic, and fundamental data, performs necessary feature engineering, and then stores the enriched dataset in PostgreSQL for model training. Upon completion, it sends a signal to trigger the next steps in our MLOps pipeline
 
-- **Inputs**: Raw data from Kafka topics (`h_alpaca`, `historical_macro`, `h_company`) and active ticker information from PostgreSQL.
+- **Inputs**: Raw data from Kafka topics (`h_alpaca`, `historical_macro`, `h_company`) and active ticker information from PostgreSQL
 
-- **Output**: A comprehensive, feature-engineered historical dataset in PostgreSQL (`aggregated_data` table), plus a completion signal sent to the start_model Kafka topic.
+- **Output**: A comprehensive, feature-engineered historical dataset in PostgreSQL (`aggregated_data` table), plus a completion signal sent to the start_model Kafka topic
 
 ## Configuration
 
