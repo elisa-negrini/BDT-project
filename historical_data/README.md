@@ -34,7 +34,7 @@ These components set the past data ingestion pipeline and populate the system wi
 
 - **Output Topic**: `h_company`
 
-- **Frequency**: Each record includes symbol, year, and financial metrics.
+- **Frequency**: Each record includes ticker, calendarYear, and financial metrics.
 
 ## Kafka Consumers Overview
 
@@ -60,7 +60,7 @@ These components set the past data ingestion pipeline and populate the system wi
 
 - **Storage**: MinIO → Bucket `company-fundamentals/`, partitioned by symbol and year
 
-- **Format**: One Parquet file per (symbol, calendarYear)
+- **Format**: One Parquet file per (ticker, calendarYear)
 
 ### Historical Data Aggregation module
 
