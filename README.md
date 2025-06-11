@@ -1,3 +1,27 @@
+# Stock Market Big Data Platform - Executive Summary
+
+## Table of Contents
+- [Project Startup Guide](#project-startup-guide)
+  - [Prerequisites](#prerequisites)
+  - [Essential Setup](#essential-setup)
+    - [1. Predefined Model for Continuous Streaming](#1-predefined-model-for-continuous-streaming-docker-compose-streamyml)
+    - [2. Customizable Full Model Training](#2-customizable-full-model-training-docker-compose-historicalyml)
+  - [Company Configuration](#company-configuration)
+- [Complete Overview](#complete-overview)
+  - [Key Objectives](#key-objectives)
+  - [Problem Statement and Motivation](#problem-statement-and-motivation)
+  - [Data Exploration](#data-exploration)
+  - [System Architecture](#system-architecture)
+    - [Data Flow](#data-flow)
+  - [Technologies Used](#technologies-used)
+  - [Results](#results)
+  - [System Performance](#system-performance)
+  - [Lessons Learned](#lessons-learned)
+  - [Limitations and Future Work](#limitations-and-future-work)
+  - [References and Acknowledgments](#references-and-acknowledgments)
+
+
+
 # Project Startup Guide
 
 This project analyzes stock market trends in real time by combining financial data, macroeconomic indicators, and sentiment analysis from news and social media. The goal is to **provide a one-minute-ahead forecast for a customizable selection of company's stock prices**. The prediction will be displayed on an interactive dashboard, which also allows real-time monitoring of market price anomalies.
@@ -34,7 +58,7 @@ Once obtained, modify the environment variables in the .env file with your crede
 
 The Alpaca (stock market) streaming data is real and is provided Monday to Friday from 9:30 AM to 4:00 PM (US Eastern Time, ET), which corresponds to **3:30 PM to 10:00 PM (Italian Summer Time, CEST)**. For the rest of the time, synthetic data will be generated to maintain the flow, and therefore, it is not necessary to have updated **API_KEY_ALPACA** and **API_SECRET_ALPACA**. The other data streams (macroeconomics data, company fundamentals, bluesky’s sentiment and news’ bluesky) are always real.
 
-## 1. Predefined Model for continous streaming (docker-compose-stream.yml)
+## 1. Predefined Model for continuous streaming (docker-compose-stream.yml)
 
 This configuration is designed to start the real-time data stream and use an already trained model for prediction. It's the ideal option for those who want to see the project in action without having to manage the initial model training.
 
@@ -64,7 +88,9 @@ To download historical data, perform initial model training, and then start cont
 
 <pre lang="markdown"> docker-compose -f docker-compose-historical.yml up --build -d </pre>
 
-Monitor the container logs (docker-compose logs -f) to determine when the initial training process has finished. This process can take a significant amount of time (around 7 + 1 hours) depending on your system's resources and data volume.
+Monitor the container logs:
+<pre lang="markdown"> docker-compose logs -f ml_model_train </pre>
+to determine when the initial training process has finished. This process can take a significant amount of time (around 5 hours) depending on your system's resources and data volume. This line will appear in the container's logs once the process has been completed succesfully: "Model training process finished successfully. Exiting."
 
 2. **Once initial training is complete, shut down the docker-compose-historical.yml configuration:**
 
@@ -121,3 +147,181 @@ To shut down any Docker Compose configuration, use the command:
 For example, to shut down the historical configuration:
 
 <pre lang="markdown"> docker-compose -f docker-compose-historical.yml down </pre>
+
+
+
+# Complete Overview
+
+The primary objective of this project is the design and implementation of a big data platform for real-time analysis and prediction of stock market trends. The system integrates streaming and historical data with sentiment analysis and predictive modeling to support informed investment decisions.
+
+## Key Objectives
+
+To achieve this goal, the following key objectives have been defined:
+
+**Data Ingestion**: Ingestion of real-time and historical data from sources such as Alpaca (stock data), Reddit and Bluesky (social media data), and Finnhub (news).
+
+**Sentiment Extraction**: Sentiment extraction from news and social media data using FinBERT and Apache Flink.
+
+**Data Storage**: Storage of non-aggregated streams in MinIO and aggregated data in PostgreSQL.
+
+**Unified Aggregation Pipeline**: Development of a unified aggregation pipeline for historical and streaming data, implemented with Flink.
+
+**Prediction Model**: Creation of a model for short-term price forecasting based on LSTM models.
+
+**Visualization Dashboard**: Development of an interactive dashboard with Streamlit to visualize trends, predictions, and anomaly detection.
+
+**Data Recoverability**: Storage of data at different stages to ensure recovery capability.
+
+## Problem Statement and Motivation
+
+This project stems from the difficulty of predicting stock market trends and making informed investment decisions due to the vast and rapidly changing volume of market data. A big data system with real-time processing is essential for extracting meaningful insights. Traditional approaches often lack comprehensive sentiment analysis.
+
+This system aims to empower investors with advanced decision-making tools through timely detection of trends and risks, leading to improved investment outcomes and reduced exposure to losses. Additionally, it enables the unlocking of new insights from unstructured data (news and social media).
+
+## Data Exploration
+
+The project utilizes various data sources, both streaming and historical:
+
+### Streaming Data:
+- **Stock Market (Alpaca)**: timestamp, ticker, price, size, exchange. Frequency: approximately 1 observation/second/ticker.
+- **Macroeconomics**: timestamp, gdp_real, cpi, ffr, t10y, t2y, spread_10y_2y, unemployment. Frequency: daily, monthly, or quarterly.
+- **Bluesky**: timestamp, ticker, text. Frequency: undefined.
+- **Reddit**: timestamp, ticker, text. Frequency: undefined.
+- **News (Finnhub)**: timestamp, ticker, title, description. Frequency: undefined.
+
+### Historical Data:
+- **Stock Market (Alpaca)**: timestamp, ticker, open, close, size, exchange. Frequency: 1 observation/minute/ticker.
+- **Macroeconomics**: timestamp, gdp_real, cpi, ffr, t10y, t2y, spread_10y_2y, unemployment. Frequency: daily, monthly, or quarterly.
+- **Company Fundamentals**: calendar year, eps, freeCashFlow, revenue, netIncome, balance_totalDebt, balance_totalStockholdersEquity. Frequency: 1 observation/year.
+
+## System Architecture
+
+The system comprises several modules that manage data flow from ingestion to visualization:
+
+![Screenshot from 2025-06-11 17-17-09](https://github.com/user-attachments/assets/287f5ff6-187a-4348-b9f2-7ac91c8a6f13)
+
+
+**Stream Data Module**: Ingests data from macroeconomics, Bluesky, news, and Alpaca stock data.
+
+**Kafka**: Serves as a message broker for data streaming.
+
+**Flink Global Job / Flink Aggregator Job / Flink Main Job**: Handle transformation and aggregation of streaming and historical data.
+
+**Raw Storage (Data Lake)**: MinIO is used for high-performance, S3-compatible object storage for managing large raw datasets.
+
+**Sentiment Analysis**: News and Bluesky data are processed for sentiment analysis, with results stored in Sentiment Storage.
+
+**Prediction Model + Stream Aggregated Data**: Utilizes the LSTM model to generate predictions based on aggregated data.
+
+**PostgreSQL**: Used as a robust relational database for reliable storage of structured data, including company configurations and processed results.
+
+**Historical Data Storage**: Stores historical stock, company fundamental, and macroeconomic data.
+
+**Dashboard (Streamlit)**: Provides interactive visualization of real-time data, predictions, and historical trends.
+
+### Data Flow
+
+![Screenshot from 2025-06-11 17-18-00](https://github.com/user-attachments/assets/32622d6d-9448-4107-bc32-34222356da51)
+
+The **data flows** through the different layers as follows:
+
+1. **Ingestion Layer**: All streaming data (stock market, macroeconomics, Bluesky, news) and historical data (company fundamentals, macroeconomics, stock market) are ingested.
+2. **Sentiment Analysis Layer**: Bluesky and news data are routed for sentiment analysis and stored in MinIO.
+3. **Aggregation Layer**: Streaming and historical data are aggregated and stored in PostgreSQL. For company fundamentals, only the latest record is used.
+4. **Model Training Layer**: Aggregated data from PostgreSQL is used for model training.
+5. **Prediction Layer**: The trained model generates predictions.
+6. **Dashboard**: All predictions and relevant data are displayed on the dashboard.
+
+## Technologies Used
+
+| Objective | Technology | Role |
+|-----------|------------|------|
+| Containerization/Orchestration | Docker | Used for reproducible and consistent environments, simple configuration, and deployment management of multi-service applications. |
+| Streaming Data Management | Kafka (with Zookeeper) | Facilitates robust, efficient, scalable, and real-time data streaming between all project components. |
+| Data Storage | MinIO | Provides flexible, high-performance, S3-compatible object storage for managing large datasets. |
+| | PostgreSQL | Used as a robust relational database for reliable storage of structured data, including company configurations and processed results. |
+| Models | Quantized FinBERT | A specialized pre-trained model for accurate sentiment analysis of financial text. |
+| | LSTM Model | A type of neural network specifically used for time series prediction, enabling accurate stock price predictions one minute ahead. |
+| Live Insight Visualization | Streamlit | Used to rapidly build an interactive dashboard for easily visualizing real-time data, predictions, and historical trends. |
+| Stream Processing | Apache Flink | Used for powerful, real-time stream processing, enabling complex data transformations and stateful computations on live data streams. |
+
+## Results
+
+The dashboard (accessible via Streamlit) allows interactive visualization of actual and predicted price trends. It includes a dropdown menu to select the company (ticker), trend lines for actual price (blue) and predicted price (red), an opening price line as a reference level, and display of the opening price level with percentage and absolute change.
+
+![vlc-record-2025-06-11-15h50m18s-Registrazionedelloschermo2025-06-11142342 mp4--ezgif com-video-to-gif-converter](https://github.com/user-attachments/assets/beaf1293-0c25-47ec-a508-b1477b7da530)
+
+**Anomaly Detection**: Anomalies, defined as rapid price changes (upward or downward), are highlighted on the dashboard. Negative changes are in red, positive ones in green. The anomaly detection threshold is customizable through environment variables. The dashboard also displays the last detected anomaly and its details, with gradient shading highlighting areas where anomalies were detected.
+
+![Screenshot from 2025-06-10 16-44-28](https://github.com/user-attachments/assets/81469c12-5fac-42f9-8a28-63ff9a07e41a)
+
+**Aggregated Data**: Each row of aggregated data represents a (ticker, timestamp) pair with all features used by the predictive model. Features include:
+
+- **Stock price-derived features**: price_mean_1min, price_mean_5min, price_std_5min, price_mean_30min, price_std_30min, size_tot_1min, size_tot_5min, size_tot_30min.
+- **Sentiment features**: sentiment_bluesky_mean_2hours, sentiment_bluesky_mean_1day, sentiment_news_mean_1day, sentiment_news_mean_3days, sentiment_general_bluesky_mean_2hours, sentiment_general_bluesky_mean_1day.
+- **Temporal features**: minutes_since_open, day_of_week, day_of_month, week_of_year, month_of_year, market_open_spike_flag, market_close_spike_flag.
+- **Fundamental features**: eps, free_cash_flow, profit_margin, debt_to_equity.
+- **Macroeconomic features**: gdp_real, cpi, ffr, t10y, t2y, spread_10y_2y, unemployment.
+- **Target**: y1 — Next-minute price (prediction target).
+
+
+## System Performance
+The system demonstrates robust performance characteristics during operation, as evidenced by comprehensive monitoring metrics:
+
+![Screenshot from 2025-06-11 17-50-28](https://github.com/user-attachments/assets/51259d28-6534-4b14-8d26-03f4a914e073)
+
+These metrics demonstrate the system's ability to handle real-time data processing workloads while maintaining stable resource utilization patterns, essential for continuous operation in production environments.
+
+## Lessons Learned
+
+During project development, several challenges and successes were encountered:
+
+### Major Challenges:
+- LSTM model setup: Managing different granularity between historical and streaming data.
+- Broadcast state: Joining global data with ticker-specific data.
+- Module parallelization.
+- Using EXCLUSIVELY real data.
+- Sentiment analysis setup: For example, sentiment score polarization.
+
+### What didn't work well:
+- Broadcast state.
+- Historical data retrieval for sentiment analysis.
+
+### What worked well:
+- API retrieval and configuration.
+- Dashboard configuration.
+- Teamwork.
+- Docker Compose and Kafka container configuration.
+
+## Limitations and Future Work
+
+### Current system limitations:
+- No predictions outside market hours: Replaced with simulated data.
+- API limitations: Some APIs expire or offer limited access.
+- No historical news or social media data: The current model is not trained on historical sentiment scores.
+
+### What would break first when the system scales and why:
+- Streaming data aggregation: Not easily parallelizable without broadcast state.
+
+### Potential improvements:
+- Enable predictions even when the stock market is closed.
+- Improve models for more reliable predictions.
+- Add customizable options for short and long-term predictions.
+- Incorporate more sources for sentiment analysis.
+- Expand the system to more stock markets.
+
+### What would be done with more time/resources:
+- Train the model on sentiment as well.
+- Provide predictions over different time horizons.
+- Implement robust predictions even when the stock market is closed.
+- Parallelize historical data aggregation.
+- Offer personalized portfolio insights.
+
+## References and Acknowledgments
+
+### References:
+- Prasad, A., & Seetharaman, A. (2021). Importance of machine learning in making investment decision in stock market. Vikalpa, 46(4), 209-222.
+- Bhandari, H. N., Rimal, B., Pokhrel, N. R., Rimal, R., Dahal, K. R., & Khatri, R. K. (2022). Predicting stock market index using LSTM. Machine Learning with Applications, 9, 100320.
+
+### Contributors:
+- Pietro Lovato, Machine Learning researcher at the University of Verona.
