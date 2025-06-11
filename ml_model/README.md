@@ -6,7 +6,7 @@ This folder contains the two configurations to train and retrain the model on bo
 
 `retrain`:
 
-- **Source**: Live aggregated data stock.
+- **Source**: Historical and stream aggregated data stock
 
 - **Output**: Different model for each ticker
 
@@ -14,57 +14,57 @@ This folder contains the two configurations to train and retrain the model on bo
 
 `train`:
 
-- **Source**: Historical aggregated data stock stored in a postegres table. 
+- **Source**: Historical aggregated data stock stored in a postegres table
 
 - **Output **: Different model for each ticker
 
-- **Volume**: 12 millions historical 
+- **Volume**: Around 13 millions historical data stocks
 
-- **Train logic**: Once aggregated data are sent to a kafka topic and then u
+- **Train logic**: Once aggregated data are sent to the postgres dedicated table from which they will be taken as training set
 
-`producer_h_company`:
 
-- **Source**: Pre-collected Parquet file of company fundamentals (`df_company_fundamentals.parquet`).
+## Model Overview
 
-- **Output Topic**: `h_company`
+**Inputs features**:
+- price_mean_1min,
+- price_mean_5min,
+- rice_std_5min,
+- price_mean_30min,
+- price_std_30min,
+- size_tot_1min,
+- size_tot_5min,
+- size_tot_30min,
+- sentiment_bluesky_mean_2hours,
+- sentiment_bluesky_mean_1day,
+- sentiment_news_mean_1day,
+- sentiment_news_mean_3days,
+- sentiment_general_bluesky_mean_2hours,
+- sentiment_general_bluesky_mean_1day,
+- minutes_since_open,
+- day_of_week,
+- day_of_month,
+- week_of_year,
+- month_of_year,
+- market_open_spike_flag,
+- market_close_spike_flag,
+- eps,
+- free_cash_flow,
+- profit_margin,
+- debt_to_equity,
+- gdp_real,
+- cpi,
+- ffr,
+- t10y,
+- t2y,
+- spread_10y_2y,
+- unemployment
 
-- **Frequency**: Each record includes ticker, calendarYear, and financial metrics.
+**Target Variable**
+- y1 (prediction for one minute ahead)
 
-## Kafka Consumers Overview
+**Choice of the model**
 
-`consumer_h_stockdata`:
-
-- **Input Kafka Topic**: `h_alpaca`
-
-- **Storage**: MinIO → Bucket `stock-data/`, organized by ticker/year/month/
-
-- **Format**: Stores raw 1-minute data with timestamps, one Parquet file per (ticker, week)
-
-`consumer_h_macrodata`:
-
-- **Input Kafka Topic**: `h_macrodata`
-
-- **Storage**: MinIO → Bucket `macro-data/`, partitioned by series and year
-
-- **Format**: Each Parquet file contains a single macroeconomic record (series, date, value)
-
-`consumer_h_company`:
-
-- **Input Kafka Topic**: `h_company`
-
-- **Storage**: MinIO → Bucket `company-fundamentals/`, partitioned by symbol and year
-
-- **Format**: One Parquet file per (ticker, calendarYear)
-
-### Historical Data Aggregation module
-
-`historical_aggregated`:
-
-- **Purpose**: It combines raw stock, macroeconomic, and fundamental data, performs necessary feature engineering, and then stores the enriched dataset in PostgreSQL for model training. Upon completion, it sends a signal to trigger the next steps in our MLOps pipeline.
-
-- **Inputs**: Raw data from Kafka topics (`h_alpaca`, `historical_macro`, `h_company`) and active ticker information from PostgreSQL.
-
-- **Output**: A comprehensive, feature-engineered historical dataset in PostgreSQL (`aggregated_data` table), plus a completion signal sent to the start_model Kafka topic.
+We use an LSTM (Long Short-Term Memory) model with a sequence length of 5 and a buffering strategy aligned to our data’s 10-second granularity. For each minute, we collect six buffers corresponding to the 00, 10, 20, 30, 40, and 50-second marks. Each buffer is paired with the subsequent minute’s value as the prediction target. This approach allows the model to preserve the one-minute granularity of the historical training set while leveraging all sub-minute aggregations. 
 
 ## Configuration
 
