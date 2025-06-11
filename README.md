@@ -100,9 +100,15 @@ In the companies_info.csv file:
 - Use the **"related_words"** column to add a second keyword to search for that company (e.g., a company nickname or a closely related term, like "Facebook" for "META").
 - Set **"is_active"** to TRUE or FALSE to include or exclude a company from the project.
 
-After modifying and saving the companies_info.csv file, you need to update the fundamental data for the companies. To do this, run the following command:
+After modifying and saving the companies_info.csv file, you need to update the fundamental data for the companies. To do this, run the following commands:
 
-<pre lang="markdown"> docker exec -it app python company_fundamentals.py </pre>
+1. **Build the Docker image for updating company fundamentals.**
+
+<pre lang="markdown"> docker build -f company_fundamentals.Dockerfile -t company_fundamentals-image . </pre>
+
+2. **Run the image to update fundamentals using .env variables.**
+
+<pre lang="markdown"> docker run --rm --env-file .env company_fundamentals-image </pre>
 
 **API Limits for Fundamental Data**: The API for fundamental data has a limit of 250 requests per day. Each company requires 3 API calls. Therefore, you cannot modify the full set of 30 companies more than 2 times on the same day.
 
