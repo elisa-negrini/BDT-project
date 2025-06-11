@@ -50,21 +50,6 @@ services:
     restart: always
 
 ### PRODUCER STREAM
-  producer_stockdata:
-    container_name: producer_stockdata
-    build: ./stream_data/producer_stockdata
-    environment:
-      API_KEY_ALPACA: ${API_KEY_ALPACA}
-      API_SECRET_ALPACA: ${API_SECRET_ALPACA}
-      POSTGRES_HOST: ${POSTGRES_HOST} 
-      POSTGRES_PORT: ${POSTGRES_PORT} 
-      POSTGRES_DB: ${POSTGRES_DB}   
-      POSTGRES_USER: ${POSTGRES_USER} 
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} 
-    depends_on:
-      - kafka
-      - postgres
-    restart: always
 
   producer_stockdata_real:
     container_name: producer_stockdata_real
