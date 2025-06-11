@@ -559,12 +559,12 @@ class SlidingAggregator(KeyedProcessFunction):
             }
 
             result = json.dumps(features)
-            print(f"[PREDICTION] {ts_str} - {ticker} => {result}", file=sys.stderr)
+            print(f"[AGGREGATION] {ts_str} - {ticker} => {result}", file=sys.stderr)
 
             outputs = [result]
             if anomaly_result:
                 outputs.append(anomaly_result)
-                print(F"ANOMALIA RILEVATA {ts_str} - {ticker}", file=sys.stderr)
+                print(F"ANOMALY DETECTED {ts_str} - {ticker}", file=sys.stderr)
             return outputs
         
         except Exception as e:
