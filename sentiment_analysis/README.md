@@ -10,7 +10,7 @@ This folder contains modules for real-time sentiment analysis on financial text 
 
   -  **Task**: Performs sentiment analysis on financial news (headline + summary)
 
-  -  **Features**: Identifies relevant tickers via company/keyword matching from PostgreSQL
+  -  **Features**: Ticker detection via ticker/company name/keywords in headline and summery (at least one, for the request made to the API)
 
   -  **Outputs to**: Kafka topic `news_sentiment`
 
@@ -20,7 +20,7 @@ This folder contains modules for real-time sentiment analysis on financial text 
 
   -  **Task**: Performs sentiment analysis on social posts
 
-  -  **Features**: Ticker detection via $TICKER or company name/keywords + Fallback to "GENERAL" if no ticker found
+  -  **Features**: Ticker detection via ticker/company name/keywords in text or fallback to "GENERAL" if no ticker found
 
   -  **Outputs to**: Kafka topic `bluesky_sentiment`
 
