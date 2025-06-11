@@ -8,11 +8,11 @@ This folder contains three PyFlink jobs responsible for ingesting, aggregating, 
 
   -  Aggregates prices, sizes, and sentiment over sliding windows (1/5/30min)
 
-  -  Fetches fundamentals from MinIO (EPS, FCF, margins, etc.)
+  -  Fetches fundamentals from MinIO (eps, free_cash_flow, margins, etc.)
 
   -  Detects anomalies (e.g., price spikes)
 
-  -  Emits predictions to Kafka topic `main_data`
+  -  Emits aggregation to Kafka topic `main_data`
 
   -  Sends alerts to `anomaly_detection`
 
@@ -20,9 +20,9 @@ This folder contains three PyFlink jobs responsible for ingesting, aggregating, 
 
   -  Tracks macro indicators (GDP, CPI, FFR, etc.)
 
-  -  Aggregates general sentiment (e.g., from "GENERAL" Bluesky posts)
+  -  Aggregates general sentiment (from "GENERAL" Bluesky posts)
 
-  -  Emits global context updates to global_data topic
+  -  Emits global context updates to `global_data` topic
 
 `aggregates_job` joins ticker-level data with global context:
 
@@ -30,9 +30,7 @@ This folder contains three PyFlink jobs responsible for ingesting, aggregating, 
 
   -  Merges into one record using a fixed schema
 
-  -  Emits to `aggregated_data` topic with partitioning
-
-  -  Creates the topic if it doesn't exist
+  -  Emits enriched aggregation to Kafka topic `aggregated_data` with partitioning
 
 ## Requirements
 
