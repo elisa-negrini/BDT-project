@@ -27,6 +27,8 @@ This folder contains modules for real-time sentiment analysis on financial text 
 `sentiment_consumer`
 
   -  Consumes from: `news_sentiment` and `bluesky_sentiment`
+    
+  -  Saves results as partitioned Parquet files to MinIO/S3
 
 ## Model
 
@@ -47,3 +49,7 @@ This folder contains modules for real-time sentiment analysis on financial text 
    - Dependencies: `onnxruntime`, `transformers`, `psycopg2`, `pandas`, `pyarrow`, `s3fs`, `confluent_kafka`, `numpy`, `scipy`
 
 #### ENVIRONMENT VARIABLES
+
+- MinIO (S3): `S3_ENDPOINT_URL`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`
+
+- PostgreSQL: `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
