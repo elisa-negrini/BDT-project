@@ -62,6 +62,16 @@ These components set the past data ingestion pipeline and populate the system wi
 
 - **Format**: One Parquet file per (symbol, calendarYear)
 
+### Historical Data Aggregation module
+
+`historical_aggregated`:
+
+- **Purpose**: It combines raw stock, macroeconomic, and fundamental data, performs necessary feature engineering, and then stores the enriched dataset in PostgreSQL for model training. Upon completion, it sends a signal to trigger the next steps in our MLOps pipeline.
+
+- **Inputs**: Raw data from Kafka topics (`h_alpaca`, `historical_macro`, `h_company`) and active ticker information from PostgreSQL.
+
+- **Output**: A comprehensive, feature-engineered historical dataset in PostgreSQL (`aggregated_data` table), plus a completion signal sent to the start_model Kafka topic.
+
 ## Configuration
 
 All producers and consumers use environment variables from .env. Required variables:
