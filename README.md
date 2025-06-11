@@ -35,7 +35,7 @@ This repository provides two configurations to launch the Stock Market Trend Ana
 ### Prerequisites
 
 To start and use the project, ensure you have **Docker** installed on your system. Furthermore, it is essential that Docker is configured with the following minimum resources:
-- **RAM**: Minimum 8 GB RAM (allocated to Docker)
+- **RAM**: Minimum 10 GB RAM (allocated to Docker)
 - **CPU**: Minimum 12 CPUs (allocated to Docker)
 
 ### Essential Setup
@@ -44,11 +44,24 @@ To start and use the project, ensure you have **Docker** installed on your syste
 
 First, clone this repository to your local system using the repository url: https://github.com/elisa-negrini/BDT-project.git
 
-**2. Download of the .env file**
+**2. Configure git large file storage (LFS)**
+To ensure the correct `model.onnx` file is properly downloaded when cloning this repository, users must have Git Large File Storage (LFS) installed and configured.
+
+Please follow these steps:
+
+1. To install Git LFS (if you haven't already) run this command once in your terminal:
+
+<pre lang="markdown"> git lfs install </pre>
+
+2. Pull Large Files: If you've already cloned the repository but the large files (like `model.onnx`) appear as small pointer files, navigate into the repository's directory and run:
+
+<pre lang="markdown"> git lfs pull </pre>
+
+**3. Download of the .env file**
 
 Download the provided .env file and place it in the root directory of this repository. This file will contain necessary credentials and configuration settings.
 
-**3. Alpaca Credentials**
+**4. Alpaca Credentials**
 
 To use real stock market streaming and historical data, you need to configure your Alpaca credentials. You can obtain an **API_KEY_ALPACA** and an **API_SECRET_ALPACA** by registering through the Alpaca Trading API: https://alpaca.markets/. Alternatively, you can send an email to samuele.viola@studenti.unitn.it to receive updated credentials.
 
@@ -186,7 +199,6 @@ The project utilizes various data sources, both streaming and historical:
 - **Stock Market (Alpaca)**: timestamp, ticker, price, size, exchange. Frequency: approximately 1 observation/second/ticker.
 - **Macroeconomics**: timestamp, gdp_real, cpi, ffr, t10y, t2y, spread_10y_2y, unemployment. Frequency: daily, monthly, or quarterly.
 - **Bluesky**: timestamp, ticker, text. Frequency: undefined.
-- **Reddit**: timestamp, ticker, text. Frequency: undefined.
 - **News (Finnhub)**: timestamp, ticker, title, description. Frequency: undefined.
 
 ### Historical Data:
@@ -270,7 +282,18 @@ The system demonstrates robust performance characteristics during operation, as 
 
 ![Screenshot from 2025-06-11 17-50-28](https://github.com/user-attachments/assets/51259d28-6534-4b14-8d26-03f4a914e073)
 
-These metrics demonstrate the system's ability to handle real-time data processing workloads while maintaining stable resource utilization patterns, essential for continuous operation in production environments.
+**CPU Usage:**
+ - Initial spike above 1000% due to many containers being created simultaneously during system startup.
+  
+ -    After the bootstrap phase, usage stabilizes between 300% and 600% (roughly 3–6 out of 12 available cores).
+   
+ - Occasional spikes are caused by intensive phases of active Flink jobs or retrain module.
+
+**Memory Usage:**
+ - The rapid growth up to ~8.3GB at startup, followed by a consistently high memory footprint is caused by the presence of numerous in-memory buffers associated with time windowing logic used in stream processing.
+
+- Buffers remain filled and are not frequently emptied, due to the stateful nature of multiple active Flink jobs.
+
 
 ## Lessons Learned
 
