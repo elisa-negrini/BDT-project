@@ -1,9 +1,0 @@
-pyspark
-pandas
-kafka-python
-requests
-alpaca-py
-pytz
-nest_asyncio
-aiohttp
-psycopg2-binary

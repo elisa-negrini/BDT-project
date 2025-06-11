@@ -53,7 +53,7 @@ def load_tickers_from_db():
 
     except Exception as e:
         st.error(f"Failed to load tickers from the database: {e}")
-        st.stop()  # Blocca l’esecuzione della dashboard
+        st.stop()
 
 
 # ====== Configuration ======

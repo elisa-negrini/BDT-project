@@ -1,11 +1,10 @@
-#!/usr/bin/env python3
 import sys
 import os
 import json
 import time
 import pandas as pd
 from kafka import KafkaProducer
-from kafka.errors import NoBrokersAvailable # Import for specific exception handling
+from kafka.errors import NoBrokersAvailable
 
 # === CONFIGURATION ===
 KAFKA_BOOTSTRAP_SERVERS = "kafka:9092"
@@ -20,7 +19,7 @@ def connect_kafka():
     """
     if not KAFKA_BOOTSTRAP_SERVERS:
         print("Error: KAFKA_BOOTSTRAP_SERVERS environment variable is not set. Exiting.")
-        sys.exit(1) # Using sys.exit for critical configuration errors
+        sys.exit(1)
 
     while True:
         try:
@@ -57,21 +56,15 @@ except Exception as e:
 # === PRODUCE TO KAFKA ===
 print(f"Starting to send records to Kafka topic: {KAFKA_TOPIC}")
 for index, row in df.iterrows():
-    # Convert row to dictionary, dropping NaN values
     record = row.dropna().to_dict()
     
     try:
-        # Send the record to Kafka
         producer.send(KAFKA_TOPIC, value=record)
-        # Log which record was sent
         print(f"Sent record for Symbol: {record.get('symbol', 'N/A')} - Year: {record.get('calendarYear', 'N/A')}")
     except Exception as e:
         print(f"Error sending record for Symbol: {record.get('symbol', 'N/A')} - Year: {record.get('calendarYear', 'N/A')}: {e}")
-        # Depending on criticality, you might want to exit or implement more robust retry logic here
 
-# Ensure all buffered messages are sent to Kafka
 producer.flush()
-# Close the producer connection
 producer.close()
 
 print("Finished sending all records to Kafka.")

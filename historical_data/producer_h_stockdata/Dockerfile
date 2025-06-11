@@ -1,5 +1,3 @@
-# producer_h_stockdata / Dockerfile
-
 FROM python:3.9-slim
 
 USER root

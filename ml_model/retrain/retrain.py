@@ -9,12 +9,12 @@ import psycopg2
 import time
 from psycopg2 import OperationalError
 from sklearn.preprocessing import MinMaxScaler
-import joblib # Import to save/load the scaler
+import joblib 
 import sys
-import multiprocessing # Import for parallelization
-import json # To save the ticker_map
+import multiprocessing
+import json
 from datetime import datetime, timedelta
-import pytz # For timezone handling
+import pytz
 
 
 try:
@@ -23,27 +23,30 @@ except ImportError:
     os.system(f"{sys.executable} -m pip install pytz")
     import pytz
 
+# === TENSORFLOW THREADING CONFIGURATION ===
 num_cpu_cores = os.cpu_count()
 if num_cpu_cores:
     tf.config.threading.set_inter_op_parallelism_threads(1) 
-    tf.config.threading.set_intra_op_parallelism_threads(num_cpu_cores // multiprocessing.cpu_count() if multiprocessing.cpu_count() > 0 else 1) # Divide cores among processes if useful
-    print(f"\u2705 TensorFlow configured for CPU parallelism with {num_cpu_cores} cores detected.")
+    tf.config.threading.set_intra_op_parallelism_threads(num_cpu_cores // multiprocessing.cpu_count() if multiprocessing.cpu_count() > 0 else 1)
+    print(f"TensorFlow configured for CPU parallelism with {num_cpu_cores} cores detected.")
 else:
-    print("\u274C Could not determine number of CPU cores. TensorFlow using default threading.")
+    print("Could not determine number of CPU cores. TensorFlow using default threading.")
 
-
+# === GLOBAL PARAMETERS ===
 N_STEPS = 5
 BATCH_SIZE = 256
 EPOCHS = 15
 
-
+# === DATABASE CREDENTIALS ===
 POSTGRES_HOST = os.getenv("POSTGRES_HOST")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT")
 POSTGRES_DB = os.getenv("POSTGRES_DB")
 POSTGRES_USER = os.getenv("POSTGRES_USER")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
 
+# === FETCHING TICKERS ===
 def fetch_tickers_from_db():
+    """Fetches active tickers from PostgreSQL database."""
     max_retries = 10
     delay = 5
 
@@ -88,6 +91,7 @@ if not ALL_TICKERS:
 
 NUM_WORKERS = min(len(ALL_TICKERS), 2)
 
+# === PATHS FOR SAVING MODELS AND SCALERS ===
 CONTAINER_OUTPUT_BASE = "/app/models_lstm"  
 
 MODEL_SAVE_PATH = os.path.join(CONTAINER_OUTPUT_BASE, "models")
@@ -100,7 +104,9 @@ os.makedirs(SCALAR_SAVE_PATH, exist_ok=True)
 
 KEY_FEATURE_TO_EMPHASIZE = "price_mean_1min"
 
+# === DB CONNECTION WITH RETRIES ===
 def connect_to_db_with_retries(max_retries=15, delay=5):
+    """Attempts to connect to PostgreSQL with retries."""
     db_name = os.getenv("POSTGRES_DB")
     db_user = os.getenv("POSTGRES_USER")
     db_password = os.getenv("POSTGRES_PASSWORD")
@@ -122,7 +128,6 @@ def connect_to_db_with_retries(max_retries=15, delay=5):
         time.sleep(delay)
     sys.stderr.write("Max retries reached. Could not connect to PostgreSQL. Exiting.\n")
     raise Exception("Failed to connect to database.")
-
 
 
 def train_model_for_ticker(ticker_info):
@@ -171,12 +176,12 @@ def train_model_for_ticker(ticker_info):
         nan_counts_after_coerce = df.isnull().sum()
         print(nan_counts_after_coerce[nan_counts_after_coerce > 0])
         if nan_counts_after_coerce.sum() > 0:
-            print("\n    \u27A1 Esempio di righe con NaN (prima di droppare):")
+            print("\n Example of lines with NaN (before dropping):")
             rows_with_nan = df[df.isnull().any(axis=1)]
             if not rows_with_nan.empty:
                 print(rows_with_nan.head(5).to_string())
             else:
-                print("Nessuna riga con NaN dopo la coercizione (strano, controlla output precedenti).")
+                print("No lines with NaN.")
 
 
         df = df.dropna()
@@ -277,10 +282,10 @@ def train_model_for_ticker(ticker_info):
         input_ticker_code = layers.Input(shape=(1,), name='input_ticker_code', dtype=tf.int32)
 
         # Embedding layer for the ticker code
-        max_ticker_code = len(ALL_TICKERS) + 1 # A safe value that includes all possible codes
-        embedding_dim = 4 # Embedding dimension
+        max_ticker_code = len(ALL_TICKERS) + 1
+        embedding_dim = 4
         ticker_embedding = layers.Embedding(input_dim=max_ticker_code, output_dim=embedding_dim)(input_ticker_code)
-        ticker_embedding = layers.Flatten()(ticker_embedding) # Flatten the embedding
+        ticker_embedding = layers.Flatten()(ticker_embedding)
 
         # LSTM for feature sequences
         lstm_out = layers.LSTM(64, return_sequences=False)(input_seq)
@@ -292,9 +297,9 @@ def train_model_for_ticker(ticker_info):
         # If the key feature is specified, add its input stream
         if X_seq_key_feature_only is not None:
             input_key_feature_sequence = layers.Input(shape=(N_STEPS, 1), name='input_key_feature_sequence')
-            # Apply a dense neural network to each time step of the key feature
+
             key_feature_processed = layers.TimeDistributed(layers.Dense(8, activation='relu'))(input_key_feature_sequence)
-            key_feature_processed = layers.Flatten()(key_feature_processed) # Flatten the sequential output
+            key_feature_processed = layers.Flatten()(key_feature_processed)
 
             merged_inputs.append(key_feature_processed)
             model_inputs.append(input_key_feature_sequence)
@@ -313,8 +318,7 @@ def train_model_for_ticker(ticker_info):
         print(f"\u2705 [{current_ticker}] Model built")
 
         print(f"\n\U0001F535 [{current_ticker}] Step 5: Training")
-        # For training, we need to provide all inputs to the model
-        # Create ticker code arrays and, if present, key feature arrays
+
         ticker_code_array_train = np.full((X_seq_train.shape[0], 1), ticker_code, dtype=np.int32)
         ticker_code_array_val = np.full((X_seq_val.shape[0], 1), ticker_code, dtype=np.int32)
 
@@ -344,13 +348,12 @@ def train_model_for_ticker(ticker_info):
         return current_ticker, False
 
 
-
 if __name__ == "__main__":
     italy_tz = pytz.timezone('Europe/Rome')
     TARGET_HOUR = 1
     TARGET_MINUTE = 0
     TARGET_WEEKDAY = 5 
-    print(f"\n\u2139 Re-training scheduler turned on. Waiting for next scheduled time: Saturday at 01:00 AM (Italy time).")
+    print(f"Re-training scheduler turned on. Waiting for next scheduled time: Saturday at 01:00 AM (Italy time).")
 
     while True:
         now_italy = datetime.now(italy_tz)
@@ -359,7 +362,7 @@ if __name__ == "__main__":
         current_minute = now_italy.minute
 
         if current_weekday == TARGET_WEEKDAY and current_hour == TARGET_HOUR and current_minute == TARGET_MINUTE:
-            print(f"\n\u2705 {now_italy.strftime('%Y-%m-%d %H:%M:%S %Z%z')}: Condizioni soddisfatte. Inizio re-training schedulato.")
+            print(f"\n\u2705 {now_italy.strftime('%Y-%m-%d %H:%M:%S %Z%z')}: Conditions satisfied. Scheduled re-training.")
 
             print("\n" + "="*80)
             print("STARTING BATCH TRAINING FOR ALL TICKERS (PARALLELIZED)")
@@ -414,5 +417,5 @@ if __name__ == "__main__":
             
             sleep_duration = min(time_to_wait_seconds, 600) 
 
-            print(f"\u2139 {now_italy.strftime('%Y-%m-%d %H:%M:%S %Z%z')}: Attesa. Prossimo re-training schedulato per Sabato alle 01:00 AM. Mancano {hours_to_wait} ore e {minutes_to_wait} minuti. Controllo tra {int(sleep_duration/60)} minuti.")
+            print(f"\u2139 {now_italy.strftime('%Y-%m-%d %H:%M:%S %Z%z')}: Waiting. Next re-training scheduled on Saturday at 01:00 AM. {hours_to_wait} hours left and {minutes_to_wait} minutes left. Checking in {int(sleep_duration/60)} minutes.")
             time.sleep(sleep_duration)
