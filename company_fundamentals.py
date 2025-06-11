@@ -4,6 +4,7 @@ import time
 import os
 
 # === CONFIGURATION ===
+#API_KEY = "PJcSVU8gR4wG9S9HVANWyssG62n2M6Sy"
 API_KEY = os.getenv("COMPANY_F_API_KEY")
 COMPANY_CSV_PATH = "postgresql/companies_info.csv"
 LIMIT = 10
