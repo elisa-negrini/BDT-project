@@ -173,9 +173,9 @@ def route_global_data_by_type(json_str):
     """
     try:
         data = json.loads(json_str)
-        if "alias" in data: # Riconosce i dati macro
+        if "alias" in data:
             return GLOBAL_DATA_KEY 
-        elif "ticker" in data and "GENERAL" in data["ticker"]: # Riconosce il sentiment generale
+        elif "ticker" in data and "GENERAL" in data["ticker"]:
             return GLOBAL_DATA_KEY
         else:
             print(f"[DEBUG-ROUTE] Discarding data (no alias/not general sentiment): {json_str}", file=sys.stderr)

@@ -110,7 +110,6 @@ services:
       - minio
       - producer_h_macrodata
 
-
   consumer_h_company:
     container_name: consumer_h_company
     build:
