@@ -1,4 +1,4 @@
-# Real-Time Stream Data Module
+# Real-Time Kafka Stream Module
 
 This folder contains all Kafka producers and consumers responsible for real-time data ingestion, and storage for the Stock Market Trend Analysis project.
 
@@ -9,30 +9,93 @@ Each data source (e.g., stock trades, macroeconomic indicators, sentiment) has:
   -  A **Kafka Consumer** to process and store data in MinIO as Parquet files
 
 
-## Producers Overview
+## Kafka Producers Overview
 
-producer_stockdata:
+`producer_stockdata`:
 
-- Streams real-time trade data using Alpaca API.
+- **Source**: Alpaca API (live trades) or synthetic data outside market hours.
 
-- Falls back to synthetic data outside market hours.
+- **Tickers**: Loaded dynamically from PostgreSQL (`companies_info`).
 
-- Tickers are loaded dynamically from PostgreSQL.
+- **Output Topic**: `stock_trades`
 
-- Sends to topic: stock_trades.
+- **Frequency**: Real-time (around 1 second per cycle).
 
-producer_macrodata:
+`producer_macrodata`:
 
-- Periodically fetches data from FRED.
+- **Source**: FRED API (e.g., GDP, CPI, interest rates).
 
-- Sends the latest observations for indicators like GDP, CPI, T10Y, etc.
+- **Output Topic**: `macrodata`
 
-- Sends to topic: macrodata.
+- **Frequency**: Every 60 minutes (latest daily values only).
 
-producer_bluesky:
+`producer_bluesky`:
 
-- Authenticates with the Bluesky API.
+- **Source**: Bluesky API — searches posts by: static financial keywords and dynamic keywords from PostgreSQL (e.g., `company_name`, `related_words`)
 
-- Uses keywords from both static financial terms and the companies_info table.
+- **Output Topic**: `bluesky`
 
-- Sends matched posts to topic: bluesky.
+- **Frequency**: Every ~30 seconds, with 2s delay per keyword.
+
+`producer_news`:
+
+- **Source**: Finnhub API — retrieves company-related news.
+
+- **Tickers**: Loaded from PostgreSQL (`companies_info`)
+
+- **Output Topic**: `finnhub`
+
+- **Frequency**: Every 60 seconds (1-day sliding window)
+
+## Kafka Consumers Overview
+
+`consumer_stockdata`:
+
+- **Input topic**: `stock_trades`
+
+- **Validates**:  Only saves data during NYSE trading hours (09:30–16:00 ET)
+
+- **Storage**: MinIO → Bucket `stock-data`, partitioned by ticker and date
+
+`consumer_macrodata`:
+
+- **Input topic**: `macrodata`
+
+- **Storage**: MinIO → Bucket `macro-data`, partitioned by alias and year
+
+`consumer_bluesky`:
+
+- **Input topic**: `bluesky`
+
+- **Storage**: MinIO → Bucket `bluesky-data`, partitioned by date and keyword
+
+`consumer_news`:
+
+- **Input topic**: `finnhub`
+
+- **Storage**: MinIO → Bucket `finnhub-data`, partitioned by ticker and date
+
+
+## Configuration
+
+All scripts are configured via environment variables from the .env file in the project root. Required variables include:
+
+ -   MinIO (S3): `S3_ENDPOINT_URL`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`
+
+-  Alpaca: `API_KEY_ALPACA`, `API_SECRET_ALPACA`
+
+ -   Finnhub: `FINNHUB_API_KEY`
+
+-    FRED: `API_KEY_FRED`
+
+ -   PostgreSQL: `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
+
+ -   Bluesky: `BLUESKY_IDENTIFIER`, `BLUESKY_PASSWORD`
+
+## Notes
+
+- Make sure the PostgreSQL database is running and the `companies_info` table is populated with active companies.
+
+- The `companies_info` table must include relevant values for ticker, company_name, and related_words. These are used for dynamic keyword extraction.
+
+- MinIO buckets will be automatically created by the consumers if they don't exist.
